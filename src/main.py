@@ -9,6 +9,7 @@ current_user_wwid = None
 current_user_name = None
 current_user_privilege = None
 current_user_permissions = {}
+selected_user = None  # Para controlar a seleção de usuários na aba Users
 
 # ===== DEFINIÇÕES CENTRALIZADAS DE TEMAS =====
 THEME_DEFINITIONS = {
@@ -40,10 +41,10 @@ THEME_DEFINITIONS = {
             "outline_variant": "#E0E0E0",       # Contornos mais suaves
             
             # Cores específicas da aplicação
-            "card_background": "#F8F9FA",       # Fundo dos cards
+            "card_background": "#EDF2F7",       # Fundo dos cards
             "field_background": "#FAFAFA",      # Fundo dos campos de entrada
             "button_text": "#FFFFFF",           # Texto dos botões
-            "hover_color": "#F5F5F5",          # Cor de hover
+            "hover_color": "#D9D3F1",          # Cor de hover
             "selected_text": "#1976D2",        # Texto de itens selecionados
             "selected_background": "#E3F2FD",   # Fundo de itens selecionados
             "normal_text": "#212121",           # Texto normal
@@ -77,7 +78,7 @@ THEME_DEFINITIONS = {
             "outline_variant": "#616161",       # Contornos mais suaves
             
             # Cores específicas da aplicação
-            "card_background": "#1E1E1E",       # Fundo dos cards
+            "card_background": "#303030",       # Fundo dos cards
             "field_background": "#2C2C2C",      # Fundo dos campos de entrada
             "button_text": "#000000",           # Texto dos botões
             "hover_color": "#424242",           # Cor de hover
@@ -223,10 +224,10 @@ def login_screen(page: ft.Page):
                     'wwid': result[0],
                     'password': result[1],
                     'privilege': result[2],
-                    'otif': bool(result[3]),
-                    'nil': bool(result[4]),
-                    'pickup': bool(result[5]),
-                    'package': bool(result[6])
+                    'otif': result[3] == '1' or result[3] == 1,
+                    'nil': result[4] == '1' or result[4] == 1,
+                    'pickup': result[5] == '1' or result[5] == 1,
+                    'package': result[6] == '1' or result[6] == 1
                 }
             return None
             
@@ -289,6 +290,8 @@ def login_screen(page: ft.Page):
             # Carregar aplicação principal (sem animação)
             page.controls.clear()
             page.title = "Score App"
+            page.window.min_width = 850
+            page.window.min_height = 900
             page.window.resizable = True
             page.window.maximized = True
             page.update() # Aplica a maximização
@@ -1801,7 +1804,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         if not month_val or not year_val:
             # Limpar as notas se a data for desmarcada
             for card in results_list.controls:
-                if isinstance(card, ft.Card) and hasattr(card, 'data') and card.data:
+                if isinstance(card, ft.Card) and hasattr(card, 'data') and card.data and "spinbox_refs" in card.data:
                     for ref in card.data["spinbox_refs"].values():
                         ref.value = "0.0"
                         ref.update()
@@ -1890,6 +1893,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         supplier_number = record[4] if len(record) > 4 else "?"
 
         print(f"Criando card para: {supplier_name} (ID: {supplier_id})")
+        print(f"🔍 DEBUG PERMISSÕES NO CARD:")
+        print(f"  current_user_permissions = {current_user_permissions}")
 
         # Ordem dos spinboxes na interface
         ui_order = ["NIL", "Pickup", "Package", "OTIF"]
@@ -1909,29 +1914,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             permission_key = permission_map.get(ui_name)
             has_permission = (current_user_permissions.get(permission_key, False) if current_user_permissions else True)
             
-            spinbox = create_spinbox()
-            spinbox_field = spinbox.controls[1]  # O TextField é o segundo controle
+            print(f"  {ui_name}: permission_key='{permission_key}', has_permission={has_permission}")
             
-            # Aplicar controle de acesso
-            if not has_permission:
-                spinbox_field.disabled = True
-                spinbox_field.bgcolor = "#EEEEEE"  # Cinza para indicar desabilitado
-                spinbox_field.hint_text = "Sem permissão"
-            
-            spinbox_refs[ui_name] = spinbox_field
-            
-            # Criar o texto do label com indicação de permissão
-            label_text = ui_name
-            if not has_permission:
-                label_text += " 🔒"  # Ícone de cadeado para campos sem permissão
-            
-            spinboxes_rows.append(
-                ft.Row(
-                    [ft.Text(label_text, weight="bold", width=80), spinbox], 
-                    alignment=ft.MainAxisAlignment.START, 
-                    spacing=10
+            # Apenas criar o campo se o usuário tiver permissão
+            if has_permission:
+                print(f"    ✅ Criando campo {ui_name}")
+                spinbox = create_spinbox()
+                spinbox_field = spinbox.controls[1]  # O TextField é o segundo controle
+                spinbox_refs[ui_name] = spinbox_field
+                
+                spinboxes_rows.append(
+                    ft.Row(
+                        [ft.Text(ui_name, weight="bold", width=80), spinbox], 
+                        alignment=ft.MainAxisAlignment.START, 
+                        spacing=10
+                    )
                 )
-            )
+            else:
+                print(f"    ❌ Ocultando campo {ui_name}")
 
         comment_field = ft.TextField(
             label="Comentário", 
@@ -1964,18 +1964,48 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             try:
                 cursor = db_conn.cursor()
                 
-                # Preparar os dados para salvar - apenas campos com permissão
+                # Buscar critérios atuais da tabela criteria_table
+                cursor.execute("SELECT criteria_category, value FROM criteria_table")
+                criteria_results = cursor.fetchall()
+                criteria_values = {}
+                for row in criteria_results:
+                    criteria_name = row[0]
+                    criteria_value = float(row[1])
+                    criteria_values[criteria_name] = criteria_value
+                
+                print(f"🎯 Critérios carregados para cálculo (spinbox): {criteria_values}")
+                
+                # Preparar os dados para salvar - nota * critério (apenas campos com permissão)
                 values_to_save = {}
                 
-                # Verificar permissões antes de salvar cada campo
-                if current_user_permissions.get('otif', False):
-                    values_to_save['otif'] = float(spinbox_refs["OTIF"].value or 0)
-                if current_user_permissions.get('pickup', False):
-                    values_to_save['quality_pickup'] = float(spinbox_refs["Pickup"].value or 0)
-                if current_user_permissions.get('package', False):
-                    values_to_save['quality_package'] = float(spinbox_refs["Package"].value or 0)
-                if current_user_permissions.get('nil', False):
-                    values_to_save['nil'] = float(spinbox_refs["NIL"].value or 0)
+                # Verificar permissões e calcular valores finais (nota * critério)
+                if current_user_permissions.get('otif', False) and "OTIF" in spinbox_refs:
+                    raw_score = float(spinbox_refs["OTIF"].value or 0)
+                    criteria_weight = criteria_values.get('OTIF', 0.22)  # Default 0.22 se não encontrar
+                    final_value = round(raw_score * criteria_weight, 1)
+                    values_to_save['otif'] = final_value
+                    print(f"  OTIF: {raw_score} × {criteria_weight} = {final_value}")
+                    
+                if current_user_permissions.get('pickup', False) and "Pickup" in spinbox_refs:
+                    raw_score = float(spinbox_refs["Pickup"].value or 0)
+                    criteria_weight = criteria_values.get('Quality of Pick Up', 0.28)  # Default 0.28
+                    final_value = round(raw_score * criteria_weight, 1)
+                    values_to_save['quality_pickup'] = final_value
+                    print(f"  Pickup: {raw_score} × {criteria_weight} = {final_value}")
+                    
+                if current_user_permissions.get('package', False) and "Package" in spinbox_refs:
+                    raw_score = float(spinbox_refs["Package"].value or 0)
+                    criteria_weight = criteria_values.get('Quality-Supplier Package', 0.28)  # Default 0.28
+                    final_value = round(raw_score * criteria_weight, 1)
+                    values_to_save['quality_package'] = final_value
+                    print(f"  Package: {raw_score} × {criteria_weight} = {final_value}")
+                    
+                if current_user_permissions.get('nil', False) and "NIL" in spinbox_refs:
+                    raw_score = float(spinbox_refs["NIL"].value or 0)
+                    criteria_weight = criteria_values.get('NIL', 0.22)  # Default 0.22
+                    final_value = round(raw_score * criteria_weight, 1)
+                    values_to_save['nil'] = final_value
+                    print(f"  NIL: {raw_score} × {criteria_weight} = {final_value}")
                 
                 if not values_to_save:
                     page.snack_bar = ft.SnackBar(ft.Text("Você não tem permissão para salvar nenhum campo."), open=True)
@@ -2028,10 +2058,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 db_conn.commit()
                 
-                # Mostrar apenas os campos salvos
+                # Mostrar apenas os campos que foram realmente salvos
                 saved_fields = []
                 for field, db_field in [("OTIF", "otif"), ("Pickup", "pickup"), ("Package", "package"), ("NIL", "nil")]:
-                    if current_user_permissions.get(db_field, False):
+                    if current_user_permissions.get(db_field, False) and field in spinbox_refs:
                         saved_fields.append(field)
                 
                 page.snack_bar = ft.SnackBar(
@@ -2118,7 +2148,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             max=10,
             divisions=100,  # (10 - 0) / 0.1 = 100
             value=0,
-            expand=True
+            width=200  # Largura mínima do slider (removido expand=True que conflitava)
         )
 
         def on_slider_change(e):
@@ -2128,10 +2158,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         score_slider.on_change = on_slider_change
         
-        # Retorna o slider e o texto em uma linha
-        slider_row = ft.Row([score_slider, score_text], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
+        # Retorna o slider e o texto em uma coluna (texto centralizado embaixo)
+        slider_column = ft.Column([
+            score_slider, 
+            ft.Container(
+                content=score_text,
+                alignment=ft.alignment.center,
+                width=200,  # Mesma largura do slider para centralizar perfeitamente
+                margin=ft.margin.only(top=-20)  # Margem negativa para aproximar do slider
+            )
+        ], spacing=0, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
         
-        return slider_row, score_slider, score_text
+        return slider_column, score_slider, score_text
 
     def create_result_widget(record):
         """Cria um card de resultado otimizado para um registro do banco."""
@@ -2142,6 +2180,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         supplier_number = record[4] if len(record) > 4 else "?"
 
         print(f"Criando card para: {supplier_name} (ID: {supplier_id})")
+        print(f"🔍 DEBUG PERMISSÕES NO CARD (SLIDER VERSION):")
+        print(f"  current_user_permissions = {current_user_permissions}")
 
         # Criar sliders com referências
         score_sliders = {}
@@ -2157,35 +2197,36 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         }
 
         for ui_name in ["NIL", "Pickup", "Package", "OTIF"]:
-            slider_row, slider_control, text_control = create_score_slider()
-            
             # Verificar se o usuário tem permissão para este campo
             permission_key = permission_map.get(ui_name)
             has_permission = (current_user_permissions.get(permission_key, False) if current_user_permissions else True)
-
-            # Aplicar controle de acesso
-            if not has_permission:
-                slider_control.disabled = True
             
-            score_sliders[ui_name] = slider_control
-            score_texts[ui_name] = text_control
+            print(f"  {ui_name}: permission_key='{permission_key}', has_permission={has_permission}")
             
-            label_text = ui_name + (" 🔒" if not has_permission else "")
-            
-            row = ft.Row([
-                ft.Container(
-                    content=ft.Text(label_text, weight="bold", size=14),
-                    alignment=ft.alignment.center_left,
-                    expand=1
-                ),
-                slider_row
-            ], 
-            alignment=ft.MainAxisAlignment.START, 
-            spacing=10,
-            tight=True
-            )
-            slider_row.expand = 2
-            score_rows.append(row)
+            # Apenas criar o campo se o usuário tiver permissão
+            if has_permission:
+                print(f"    ✅ Criando slider {ui_name}")
+                slider_row, slider_control, text_control = create_score_slider()
+                
+                score_sliders[ui_name] = slider_control
+                score_texts[ui_name] = text_control
+                
+                row = ft.Row([
+                    ft.Container(
+                        content=ft.Text(ui_name, weight="bold", size=14),
+                        alignment=ft.alignment.center_left,
+                        expand=1
+                    ),
+                    slider_row
+                ], 
+                alignment=ft.MainAxisAlignment.START, 
+                spacing=10,
+                tight=True
+                )
+                slider_row.expand = 2
+                score_rows.append(row)
+            else:
+                print(f"    ❌ Ocultando slider {ui_name}")
 
         # Campo de comentário mais simples
         comment_field = ft.TextField(
@@ -2241,18 +2282,48 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 cursor = db_conn.cursor()
                 
-                # Preparar os dados para salvar - apenas campos com permissão
+                # Buscar critérios atuais da tabela criteria_table
+                cursor.execute("SELECT criteria_category, value FROM criteria_table")
+                criteria_results = cursor.fetchall()
+                criteria_values = {}
+                for row in criteria_results:
+                    criteria_name = row[0]
+                    criteria_value = float(row[1])
+                    criteria_values[criteria_name] = criteria_value
+                
+                print(f"🎯 Critérios carregados para cálculo: {criteria_values}")
+                
+                # Preparar os dados para salvar - nota * critério (apenas campos com permissão)
                 values_to_save = {}
                 
-                # Verificar permissões antes de salvar cada campo
-                if current_user_permissions.get('otif', False):
-                    values_to_save['otif'] = round(float(score_sliders["OTIF"].value or 0), 1)
-                if current_user_permissions.get('pickup', False):
-                    values_to_save['quality_pickup'] = round(float(score_sliders["Pickup"].value or 0), 1)
-                if current_user_permissions.get('package', False):
-                    values_to_save['quality_package'] = round(float(score_sliders["Package"].value or 0), 1)
-                if current_user_permissions.get('nil', False):
-                    values_to_save['nil'] = round(float(score_sliders["NIL"].value or 0), 1)
+                # Verificar permissões e calcular valores finais (nota * critério)
+                if current_user_permissions.get('otif', False) and "OTIF" in score_sliders:
+                    raw_score = float(score_sliders["OTIF"].value or 0)
+                    criteria_weight = criteria_values.get('OTIF', 0.22)  # Default 0.22 se não encontrar
+                    final_value = round(raw_score * criteria_weight, 1)
+                    values_to_save['otif'] = final_value
+                    print(f"  OTIF: {raw_score} × {criteria_weight} = {final_value}")
+                    
+                if current_user_permissions.get('pickup', False) and "Pickup" in score_sliders:
+                    raw_score = float(score_sliders["Pickup"].value or 0)
+                    criteria_weight = criteria_values.get('Quality of Pick Up', 0.28)  # Default 0.28
+                    final_value = round(raw_score * criteria_weight, 1)
+                    values_to_save['quality_pickup'] = final_value
+                    print(f"  Pickup: {raw_score} × {criteria_weight} = {final_value}")
+                    
+                if current_user_permissions.get('package', False) and "Package" in score_sliders:
+                    raw_score = float(score_sliders["Package"].value or 0)
+                    criteria_weight = criteria_values.get('Quality-Supplier Package', 0.28)  # Default 0.28
+                    final_value = round(raw_score * criteria_weight, 1)
+                    values_to_save['quality_package'] = final_value
+                    print(f"  Package: {raw_score} × {criteria_weight} = {final_value}")
+                    
+                if current_user_permissions.get('nil', False) and "NIL" in score_sliders:
+                    raw_score = float(score_sliders["NIL"].value or 0)
+                    criteria_weight = criteria_values.get('NIL', 0.22)  # Default 0.22
+                    final_value = round(raw_score * criteria_weight, 1)
+                    values_to_save['nil'] = final_value
+                    print(f"  NIL: {raw_score} × {criteria_weight} = {final_value}")
                 
                 if not values_to_save:
                     show_snackbar("Você não tem permissão para salvar nenhum campo.")
@@ -2700,6 +2771,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         value="white",
         on_change=theme_changed,
     )
+    
+    # Carregar tema salvo do usuário e aplicar ao radio group
+    if current_user_wwid:
+        saved_theme = load_user_theme(current_user_wwid)
+        if saved_theme:
+            theme_radio_group.value = saved_theme
+            print(f"Tema carregado para radio group: {saved_theme}")
+        else:
+            print("Nenhum tema salvo encontrado para usuário, usando padrão")
+    else:
+        # Se não há usuário logado, carregar tema padrão da tabela
+        try:
+            if db_conn:
+                cursor = db_conn.cursor()
+                cursor.execute("SELECT theme_mode FROM theme_settings ORDER BY last_updated DESC LIMIT 1")
+                default_theme = cursor.fetchone()
+                if default_theme:
+                    theme_radio_group.value = default_theme[0]
+                    print(f"Tema padrão carregado: {default_theme[0]}")
+        except Exception as e:
+            print(f"Erro ao carregar tema padrão: {e}")
 
     # Controle de duração do toast
     toast_duration_slider = ft.Slider(
@@ -4257,6 +4349,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     )
 
     # Conteúdo da sub-aba Users
+    users_list_ref = ft.Ref()  # Referência para o ListView dos usuários
     users_content = ft.Container(
         content=ft.Column([
             # Título fixo (fora do scroll)
@@ -4388,7 +4481,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 content=ft.ListView(
                                     spacing=8,
                                     expand=True,
-                                    ref=ft.Ref(),
+                                    ref=users_list_ref,  # Referência específica para a lista de usuários
                                 ),
                                 height=300,
                                 border=ft.border.all(1, "outline"),
@@ -4441,9 +4534,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         users_refs['delete_btn'] = buttons_row.controls[1]
         users_refs['clear_btn'] = buttons_row.controls[2]
         
-        # Lista de usuários (após o divider)
-        users_list_container = scroll_container.controls[4].content  # Container da lista (após Divider)
-        users_refs['users_list'] = users_list_container.controls[1].content
+        # Lista de usuários - usar referência direta
+        users_refs['users_list'] = users_list_ref.current
         
         return users_refs
 
@@ -4538,15 +4630,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     colors = get_current_theme_colors(page)
                     
                     users_list.controls.append(
-                        ft.ListTile(
-                            title=ft.Text(line1, size=14, weight="bold"),
-                            subtitle=ft.Text(line2, size=12, color="outline"),
-                            content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                            dense=True,
-                            on_click=lambda e, w=user_wwid: select_user(w),
-                            selected=is_selected,
-                            selected_tile_color=colors.get('primary_container'),
-                            selected_color=colors.get('selected_text', colors['on_surface'])
+                        ft.Container(
+                            content=ft.ListTile(
+                                title=ft.Text(
+                                    line1, 
+                                    size=14, 
+                                    weight="bold",
+                                    color=colors['primary'] if is_selected else colors['on_surface']
+                                ),
+                                subtitle=ft.Text(line2, size=12, color="outline"),
+                                content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                dense=True,
+                                on_click=lambda e, w=user_wwid: select_user(w),
+                            ),
+                            bgcolor=colors['primary_container'] if is_selected else None,
+                            border_radius=4,
+                            padding=ft.padding.all(2)
                         )
                     )
             
@@ -4959,12 +5058,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # Carregar usuários na inicialização
     refresh_users_list()
-    
-    # Tema já foi carregado no início da função main
-    # Apenas atualizar o valor do radio group se necessário
-    saved_theme_for_radio = load_user_theme(current_user_wwid) if current_user_wwid else None
-    if saved_theme_for_radio and 'theme_radio_group' in locals():
-        theme_radio_group.value = saved_theme_for_radio
     
     # Carregar critérios salvos na inicialização
     saved_criteria = load_user_criteria(current_user_wwid)
