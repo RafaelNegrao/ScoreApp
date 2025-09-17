@@ -1,0 +1,5008 @@
+import flet as ft
+import datetime
+import sqlite3
+import random
+import string
+
+# ===== VARIÁVEIS GLOBAIS =====
+current_user_wwid = None
+current_user_name = None
+current_user_privilege = None
+current_user_permissions = {}
+
+# ===== DEFINIÇÕES CENTRALIZADAS DE TEMAS =====
+THEME_DEFINITIONS = {
+    "white": {
+        "name": "Tema Claro",
+        "mode": ft.ThemeMode.LIGHT,
+        "custom_theme": None,
+        "colors": {
+            # Cores primárias
+            "primary": "#1976D2",               # Azul Material para seleção e destaque
+            "primary_container": "#E3F2FD",     # Fundo azul muito claro para itens selecionados
+            "on_primary": "#FFFFFF",            # Texto branco sobre primary
+            "on_primary_container": "#0D47A1",  # Texto azul escuro sobre primary_container
+            
+            # Cores de superfície
+            "surface": "#FFFFFF",               # Fundo branco das superfícies
+            "surface_variant": "#F5F5F5",       # Cinza claro para hover e campos
+            "on_surface": "#212121",            # Texto escuro principal
+            "on_surface_variant": "#424242",    # Texto em superfícies variantes
+            
+            # Cores secundárias e terciárias
+            "secondary": "#9C27B0",             # Roxo para elementos secundários
+            "secondary_container": "#F3E5F5",   # Fundo roxo claro
+            "tertiary": "#00BCD4",              # Ciano para elementos terciários
+            "tertiary_container": "#E0F7FA",    # Fundo ciano claro
+            
+            # Cores de contorno e divisores
+            "outline": "#BDBDBD",               # Contornos e bordas
+            "outline_variant": "#E0E0E0",       # Contornos mais suaves
+            
+            # Cores específicas da aplicação
+            "card_background": "#F8F9FA",       # Fundo dos cards
+            "field_background": "#FAFAFA",      # Fundo dos campos de entrada
+            "button_text": "#FFFFFF",           # Texto dos botões
+            "hover_color": "#F5F5F5",          # Cor de hover
+            "selected_text": "#1976D2",        # Texto de itens selecionados
+            "selected_background": "#E3F2FD",   # Fundo de itens selecionados
+            "normal_text": "#212121",           # Texto normal
+        }
+    },
+    "dark": {
+        "name": "Tema Escuro",
+        "mode": ft.ThemeMode.DARK,
+        "custom_theme": None,
+        "colors": {
+            # Cores primárias
+            "primary": "#90CAF9",               # Azul claro para seleção e destaque
+            "primary_container": "#1565C0",     # Azul escuro para fundo de seleção
+            "on_primary": "#000000",            # Texto preto sobre primary
+            "on_primary_container": "#002F50",  # Texto azul claro sobre primary_container
+            
+            # Cores de superfície
+            "surface": "#121212",               # Fundo escuro das superfícies
+            "surface_variant": "#424242",       # Cinza escuro para hover e campos
+            "on_surface": "#E0E0E0",            # Texto claro principal
+            "on_surface_variant": "#BDBDBD",    # Texto em superfícies variantes
+            
+            # Cores secundárias e terciárias
+            "secondary": "#CE93D8",             # Roxo claro para elementos secundários
+            "secondary_container": "#7B1FA2",   # Roxo escuro para fundo
+            "tertiary": "#80DEEA",              # Ciano claro para elementos terciários
+            "tertiary_container": "#006064",    # Ciano escuro para fundo
+            
+            # Cores de contorno e divisores
+            "outline": "#757575",               # Contornos e bordas
+            "outline_variant": "#616161",       # Contornos mais suaves
+            
+            # Cores específicas da aplicação
+            "card_background": "#1E1E1E",       # Fundo dos cards
+            "field_background": "#2C2C2C",      # Fundo dos campos de entrada
+            "button_text": "#000000",           # Texto dos botões
+            "hover_color": "#424242",           # Cor de hover
+            "selected_text": "#90CAF9",         # Texto de itens selecionados
+            "selected_background": "#1565C0",   # Fundo de itens selecionados
+            "normal_text": "#E0E0E0",           # Texto normal
+        }
+    },
+    "dracula": {
+        "name": "Tema Dracula",
+        "mode": ft.ThemeMode.DARK,
+        "custom_theme": True,
+        "colors": {
+            # Cores primárias
+            "primary": "#B081EC",               # Roxo Dracula para seleção e destaque
+            "primary_container": "#44475A",     # Current Line para fundo de seleção
+            "on_primary": "#282A36",            # Fundo Dracula sobre primary
+            "on_primary_container": "#F8F8F2",  # Foreground Dracula sobre primary_container
+            
+            # Cores de superfície
+            "surface": "#282A36",               # Background Dracula
+            "surface_variant": "#44475A",       # Current Line para hover e campos
+            "on_surface": "#F8F8F2",            # Foreground Dracula (texto principal)
+            "on_surface_variant": "#F8F8F2",    # Foreground em superfícies variantes
+            
+            # Cores secundárias e terciárias
+            "secondary": "#FF79C6",             # Pink Dracula para elementos secundários
+            "secondary_container": "#6B2748",   # Pink escuro para fundo
+            "tertiary": "#8BE9FD",              # Cyan Dracula para elementos terciários
+            "tertiary_container": "#1E3A4A",    # Cyan escuro para fundo
+            
+            # Cores de contorno e divisores
+            "outline": "#6272A4",               # Comment Dracula para contornos
+            "outline_variant": "#44475A",       # Current Line para contornos suaves
+            
+            # Cores específicas da aplicação
+            "card_background": "#44475A",       # Current Line para cards
+            "field_background": "#44475A",      # Current Line para campos
+            "button_text": "#8BE9FD",           # Cyan para texto de botões
+            "hover_color": "#44475A",           # Current Line para hover
+            "selected_text": "#B081EC",         # Roxo para texto selecionado
+            "selected_background": "#44475A",   # Current Line para fundo selecionado
+            "normal_text": "#F8F8F2",           # Foreground para texto normal
+            
+            # Cores extras do Dracula (para referência)
+            "green": "#50FA7B",                 # Verde Dracula
+            "yellow": "#F1FA8C",                # Amarelo Dracula
+            "orange": "#FFB86C",                # Laranja Dracula
+            "red": "#FF5555"                    # Vermelho Dracula
+        }
+    }
+}
+
+def get_current_theme_colors(page_ref):
+    """Retorna as cores do tema atual baseado no estado da aplicação"""
+    try:
+        # Acessa o nome do tema armazenado de forma confiável no objeto da página
+        theme_name = page_ref.data.get("theme_name", "white")
+        return THEME_DEFINITIONS.get(theme_name, THEME_DEFINITIONS["white"])["colors"]
+    except Exception:
+        # Fallback para tema claro se houver qualquer erro
+        return THEME_DEFINITIONS["white"]["colors"]
+
+# ===== FIM DAS DEFINIÇÕES DE TEMAS =====
+
+# ===== SISTEMA DE LOGIN =====
+def login_screen(page: ft.Page):
+    """Tela de login para autenticação do usuário"""
+    global current_user_wwid, current_user_name, current_user_privilege, current_user_permissions
+    
+    # Configurações da janela de login
+    page.title = "Score App - Login"
+    page.window.width = 480
+    page.window.height = 600
+    page.window.resizable = False
+    page.window.center()
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    
+    # Obter cores do tema padrão
+    colors = THEME_DEFINITIONS["white"]["colors"]
+    
+    # Campos de entrada com tema aplicado
+    wwid_field = ft.TextField(
+        label="WWID",
+        width=300,
+        autofocus=True,
+        border_radius=8,
+        bgcolor=colors['field_background'],
+        border_color=colors['outline'],
+        prefix_icon=ft.Icons.PERSON
+    )
+    
+    password_field = ft.TextField(
+        label="Password", 
+        password=True,
+        can_reveal_password=True,
+        width=300,
+        border_radius=8,
+        bgcolor=colors['field_background'],
+        border_color=colors['outline'],
+        prefix_icon=ft.Icons.LOCK
+    )
+    
+    error_text = ft.Text(
+        "",
+        color="#D32F2F",
+        text_align=ft.TextAlign.CENTER,
+        size=12
+    )
+    
+    login_button = ft.ElevatedButton(
+        "Entrar",
+        width=300,
+        height=45,
+        style=ft.ButtonStyle(
+            bgcolor=colors['primary'],
+            color=colors['on_primary'],
+            shape=ft.RoundedRectangleBorder(radius=8),
+            elevation=2
+        ),
+        icon=ft.Icons.LOGIN
+    )
+    
+    def authenticate_user(wwid, password):
+        """Verifica credenciais na tabela users_table"""
+        try:
+            conn = sqlite3.connect('db.db')
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT user_wwid, user_password, user_privilege, otif, nil, pickup, package 
+                FROM users_table 
+                WHERE user_wwid = ? AND user_password = ?
+            """, (wwid, password))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return {
+                    'wwid': result[0],
+                    'password': result[1],
+                    'privilege': result[2],
+                    'otif': bool(result[3]),
+                    'nil': bool(result[4]),
+                    'pickup': bool(result[5]),
+                    'package': bool(result[6])
+                }
+            return None
+            
+        except Exception as e:
+            print(f"Erro na autenticação: {e}")
+            return None
+    
+    def get_user_theme(wwid):
+        """Busca tema do usuário na tabela theme_settings"""
+        try:
+            conn = sqlite3.connect('db.db')
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT theme_mode FROM theme_settings WHERE user_wwid = ?", (wwid,))
+            result = cursor.fetchone()
+            conn.close()
+            
+            return result[0] if result else "white"
+            
+        except Exception as e:
+            print(f"Erro ao carregar tema: {e}")
+            return "white"
+
+    def on_login_click(e):
+        wwid = wwid_field.value.strip()
+        password = password_field.value.strip()
+
+        if not wwid or not password:
+            error_text.value = "Por favor, preencha todos os campos"
+            page.update()
+            return
+
+        # Apenas desabilita o botão para evitar múltiplos cliques
+        login_button.disabled = True
+        page.update()
+
+        # Autenticar usuário
+        user_data = authenticate_user(wwid, password)
+
+        if user_data:
+            # Definir variáveis globais
+            global current_user_wwid, current_user_name, current_user_privilege, current_user_permissions
+            current_user_wwid = user_data['wwid']
+            current_user_name = user_data['wwid']  # Pode ser expandido com nome real
+            current_user_privilege = user_data['privilege']
+            current_user_permissions = {
+                'otif': user_data['otif'],
+                'nil': user_data['nil'],
+                'pickup': user_data['pickup'],
+                'package': user_data['package']
+            }
+
+            # Buscar tema do usuário
+            user_theme = get_user_theme(wwid)
+
+            print(f"Login bem-sucedido: {current_user_wwid} ({current_user_privilege})")
+            print(f"Permissões: {current_user_permissions}")
+            print(f"Tema: {user_theme}")
+
+            # Carregar aplicação principal (sem animação)
+            page.controls.clear()
+            page.title = "Score App"
+            page.window.resizable = True
+            page.window.maximized = True
+            page.update() # Aplica a maximização
+
+            # Inicializar aplicação principal na mesma página
+            initialize_main_app(page, user_theme)
+
+        else:
+            # Reabilita o botão e mostra o erro
+            login_button.disabled = False
+            error_text.value = "WWID ou senha incorretos"
+            password_field.value = ""
+            page.update()
+
+    login_button.on_click = on_login_click
+    
+    # Permitir login com Enter
+    def on_key_press(e):
+        if e.key == "Enter":
+            on_login_click(e)
+    
+    wwid_field.on_submit = on_login_click
+    password_field.on_submit = on_login_click
+    
+    # Layout da tela de login
+    login_container = ft.Container(
+        content=ft.Column(
+            [
+                ft.Container(height=20),
+                ft.Icon(
+                    ft.Icons.ANALYTICS,
+                    size=48,
+                    color=colors['primary']
+                ),
+                ft.Container(height=15),
+                ft.Text(
+                    "Score App",
+                    size=28,
+                    weight=ft.FontWeight.BOLD,
+                    text_align=ft.TextAlign.CENTER,
+                    color=colors['on_surface']
+                ),
+                ft.Text(
+                    "Sistema de Avaliação de Fornecedores",
+                    size=14,
+                    text_align=ft.TextAlign.CENTER,
+                    color=colors['on_surface_variant']
+                ),
+                ft.Container(height=20),
+                wwid_field,
+                ft.Container(height=12),
+                password_field,
+                ft.Container(height=8),
+                error_text,
+                ft.Container(height=15),
+                login_button,
+                ft.Container(height=20)
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=0
+        ),
+        bgcolor=colors['surface'],
+        border_radius=12,
+        padding=ft.padding.all(25),
+        shadow=ft.BoxShadow(
+            spread_radius=1,
+            blur_radius=8,
+            color="#DDDDDD",
+            offset=ft.Offset(0, 4)
+        ),
+        alignment=ft.alignment.center,
+        width=400,
+        height=550,
+        animate_opacity=300  # Habilitar animação de opacity
+    )
+    
+    page.add(login_container)
+# ===== FIM DO SISTEMA DE LOGIN =====
+
+class DeleteSupplierConfirmationDialog(ft.AlertDialog):
+    def __init__(self, supplier_name, supplier_id, on_confirm, on_cancel, scale_func=None):
+        super().__init__()
+        self.supplier_name = supplier_name
+        self.supplier_id = supplier_id
+        self.on_confirm_callback = on_confirm
+        self.on_cancel_callback = on_cancel
+        self.random_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+        self.scale_func = scale_func or (lambda x: x)
+        
+        self.confirmation_text = ft.TextField(
+            label="Digite o código de confirmação",
+            width=self.scale_func(300),
+            text_align=ft.TextAlign.CENTER
+        )
+        self.title = ft.Text("🗑️ Excluir Supplier")
+        self.error_text = ft.Text("Código incorreto. Tente novamente.", color="red", visible=False)
+        self.code_display_text = ft.Text(self.random_code, weight=ft.FontWeight.BOLD, size=20, color="primary")
+        
+        self.content = ft.Column([
+            ft.Text(f"Tem certeza que deseja excluir '{self.supplier_name}'?"),
+            ft.Text("Esta ação não pode ser desfeita."),
+            ft.Text("Para confirmar, digite o código abaixo:"),
+            ft.Row([self.code_display_text], alignment=ft.MainAxisAlignment.CENTER),
+            self.confirmation_text,
+            self.error_text
+        ], tight=True, spacing=15, width=350)
+        
+        self.actions = [
+            ft.TextButton("Cancelar", on_click=self.cancel),
+            ft.TextButton("Excluir", on_click=self.confirm, style=ft.ButtonStyle(color="red"))
+        ]
+        self.actions_alignment = ft.MainAxisAlignment.END
+    
+    def confirm(self, e):
+        if self.confirmation_text.value.strip().upper() == self.random_code:
+            self.on_confirm_callback(e)
+        else:
+            self.error_text.visible = True
+            self.update()
+    
+    def cancel(self, e):
+        self.on_cancel_callback(e)
+
+
+class DeleteListItemConfirmationDialog(ft.AlertDialog):
+    def __init__(self, item_name, item_type, on_confirm, on_cancel, scale_func=None):
+        super().__init__()
+        self.item_name = item_name
+        self.item_type = item_type
+        self.on_confirm_callback = on_confirm
+        self.on_cancel_callback = on_cancel
+        self.random_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+        self.scale_func = scale_func or (lambda x: x)
+        
+        self.confirmation_text = ft.TextField(
+            label="Digite o código de confirmação",
+            width=self.scale_func(300),
+            text_align=ft.TextAlign.CENTER
+        )
+        self.title = ft.Text("🗑️ Excluir Item da Lista")
+        self.error_text = ft.Text("Código incorreto. Tente novamente.", color="red", visible=False)
+        self.code_display_text = ft.Text(self.random_code, weight=ft.FontWeight.BOLD, size=20, color="primary")
+        
+        self.content = ft.Column([
+            ft.Text(f"Tem certeza que deseja excluir '{self.item_name}'?"),
+            ft.Text(f"Lista: {self.item_type}"),
+            ft.Text("Esta ação não pode ser desfeita."),
+            ft.Text("Para confirmar, digite o código abaixo:"),
+            ft.Row([self.code_display_text], alignment=ft.MainAxisAlignment.CENTER),
+            self.confirmation_text,
+            self.error_text
+        ], tight=True, spacing=15, width=350)
+        
+        self.actions = [
+            ft.TextButton("Cancelar", on_click=self.cancel),
+            ft.TextButton("Excluir", on_click=self.confirm, style=ft.ButtonStyle(color="red"))
+        ]
+        self.actions_alignment = ft.MainAxisAlignment.END
+    
+    def confirm(self, e):
+        if self.confirmation_text.value.strip().upper() == self.random_code:
+            self.on_confirm_callback(e)
+        else:
+            self.error_text.visible = True
+            self.update()
+    
+    def cancel(self, e):
+        self.on_cancel_callback(e)
+
+
+class AddSupplierDialog(ft.AlertDialog):
+    def __init__(self, on_confirm, on_cancel, scale_func=None, list_options=None):
+        super().__init__()
+        self.on_confirm_callback = on_confirm
+        self.on_cancel_callback = on_cancel
+        self.scale_func = scale_func or (lambda x: x)
+        self.list_options = list_options or {}
+        
+        # Campos do formulário organizados por seção (sem supplier_id)
+        self.fields = {
+            # Informações Básicas
+            "vendor_name": ft.TextField(label="Vendor Name*", width=250),
+            "supplier_name": ft.TextField(label="Supplier Name", width=250),
+            "supplier_category": ft.Dropdown(
+                label="Supplier Category",
+                width=250,
+                options=[ft.dropdown.Option(v) for v in (self.list_options.get('category') or ["", "Raw Materials", "Components", "Services", "Equipment"])]
+            ),
+            
+            # Informações de Contato
+            "supplier_email": ft.TextField(label="Email", width=250),
+            "supplier_number": ft.TextField(label="Número", width=250),
+            
+            # Configurações Organizacionais
+            "bu": ft.Dropdown(
+                label="BU (Business Unit)",
+                width=200,
+                options=[ft.dropdown.Option(v) for v in (self.list_options.get('bu') or ["", "Operations", "Manufacturing", "Procurement", "Quality", "Logistics"]) ]
+            ),
+            "supplier_status": ft.Dropdown(
+                label="Status",
+                width=200,
+                value="Active",  # Valor padrão
+                options=[
+                    ft.dropdown.Option("Active"),
+                    ft.dropdown.Option("Inactive"),
+                ]
+            ),
+            
+            # Configurações de Gestão
+            "planner": ft.Dropdown(
+                label="Planner",
+                width=200,
+                options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('planner') or []))]
+            ),
+            "continuity": ft.Dropdown(
+                label="Continuity", 
+                width=200,
+                options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('continuity') or []))]
+            ),
+            "sourcing": ft.Dropdown(
+                label="Sourcing",
+                width=200,
+                options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('sourcing') or []))]
+            ),
+            "sqie": ft.Dropdown(
+                label="SQIE",
+                width=200,
+                options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('sqie') or []))]
+            ),
+        }
+        
+        self.title = ft.Text("➕ Adicionar Novo Supplier", size=18, weight=ft.FontWeight.BOLD)
+        self.error_text = ft.Text("", color="red", visible=False)
+        
+        # Criar seções organizadas com tema padrão
+        basic_info_section = ft.Container(
+            content=ft.Column([
+                ft.Text("📋 Informações Básicas", size=14, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=1),
+                ft.Row([self.fields["vendor_name"], self.fields["supplier_name"]], spacing=15),
+                self.fields["supplier_category"],
+            ], spacing=10),
+            padding=ft.padding.all(15),
+            bgcolor="surface_variant",
+            border_radius=8
+        )
+        
+        contact_section = ft.Container(
+            content=ft.Column([
+                ft.Text("📞 Informações de Contato", size=14, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=1),
+                ft.Row([self.fields["supplier_email"], self.fields["supplier_number"]], spacing=15),
+            ], spacing=10),
+            padding=ft.padding.all(15),
+            bgcolor="surface_variant",
+            border_radius=8
+        )
+        
+        org_section = ft.Container(
+            content=ft.Column([
+                ft.Text("🏢 Configurações Organizacionais", size=14, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=1),
+                ft.Row([self.fields["bu"], self.fields["supplier_status"]], spacing=15),
+            ], spacing=10),
+            padding=ft.padding.all(15),
+            bgcolor="surface_variant",
+            border_radius=8
+        )
+        
+        management_section = ft.Container(
+            content=ft.Column([
+                ft.Text("⚙️ Configurações de Gestão", size=14, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=1),
+                ft.Row([self.fields["planner"], self.fields["continuity"]], spacing=15),
+                ft.Row([self.fields["sourcing"], self.fields["sqie"]], spacing=15),
+            ], spacing=10),
+            padding=ft.padding.all(15),
+            bgcolor="surface_variant",
+            border_radius=8
+        )
+        
+        self.content = ft.Container(
+            content=ft.Column([
+                ft.Text("* Campos obrigatórios", size=12, color="red", weight=ft.FontWeight.BOLD),
+                basic_info_section,
+                contact_section,
+                org_section,
+                management_section,
+                self.error_text
+            ], spacing=20, scroll=ft.ScrollMode.AUTO),
+            width=600,
+            height=500
+        )
+        
+        self.actions = [
+            ft.TextButton("Cancelar", on_click=self.cancel, icon=ft.Icons.CANCEL),
+            ft.ElevatedButton("💾 Salvar", on_click=self.confirm, 
+                            style=ft.ButtonStyle(
+                                bgcolor="primary",
+                                color="on_primary"
+                            ))
+        ]
+        self.actions_alignment = ft.MainAxisAlignment.END
+    
+    def get_field_value(self, field):
+        """Obtém valor tanto de TextField quanto de Dropdown"""
+        if hasattr(field, 'value') and field.value:
+            return str(field.value).strip()
+        return ""
+    
+    def validate_fields(self):
+        """Valida os campos obrigatórios"""
+        vendor_name_value = self.get_field_value(self.fields["vendor_name"])
+        print(f"🔍 DEBUG: Validando vendor_name: '{vendor_name_value}'")
+        
+        if not vendor_name_value:
+            print("🔍 DEBUG: Vendor Name está vazio")
+            self.error_text.value = "❌ Campo Vendor Name é obrigatório!"
+            self.error_text.visible = True
+            return False
+        
+        print("🔍 DEBUG: Validação passou")
+        self.error_text.visible = False
+        return True
+    
+    def confirm(self, e):
+        print("🔍 DEBUG: Método confirm chamado")
+        if self.validate_fields():
+            print("🔍 DEBUG: Validação passou, chamando callback")
+            self.on_confirm_callback(e)
+        else:
+            print("🔍 DEBUG: Validação falhou")
+            self.update()
+    
+    def cancel(self, e):
+        self.on_cancel_callback(e)
+
+# Variável global para o usuário atual
+# Variáveis globais de usuário definidas no início do arquivo
+
+# Configurações globais do aplicativo
+app_settings = {'toast_duration': 3}
+
+def load_app_settings(user_wwid=None):
+    """Carrega as configurações gerais do aplicativo."""
+    try:
+        conn = sqlite3.connect("db.db", check_same_thread=False)
+        cur = conn.cursor()
+        if user_wwid:
+            cur.execute("SELECT toast_duration FROM app_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
+        else:
+            cur.execute("SELECT toast_duration FROM app_settings WHERE user_wwid = 'default' ORDER BY last_updated DESC LIMIT 1")
+        result = cur.fetchone()
+        conn.close()
+        if result:
+            return {'toast_duration': result[0]}
+        return {'toast_duration': 3}  # Valor padrão
+    except Exception as ex:
+        print(f"Erro ao carregar configurações do app: {ex}")
+        return {'toast_duration': 3}
+
+def save_app_settings(settings, user_wwid=None):
+    """Salva as configurações gerais do aplicativo."""
+    try:
+        conn = sqlite3.connect("db.db", check_same_thread=False)
+        cur = conn.cursor()
+        user_id = user_wwid or 'default'
+        
+        cur.execute("SELECT id FROM app_settings WHERE user_wwid = ?", (user_id,))
+        existing = cur.fetchone()
+        
+        if existing:
+            # Atualizar configuração existente
+            cur.execute("UPDATE app_settings SET toast_duration = ?, last_updated = CURRENT_TIMESTAMP WHERE user_wwid = ?", 
+                      (settings['toast_duration'], user_id))
+        else:
+            # Inserir nova configuração
+            cur.execute("INSERT INTO app_settings (user_wwid, toast_duration) VALUES (?, ?)", 
+                      (user_id, settings['toast_duration']))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as ex:
+        print(f"Erro ao salvar configurações do app: {ex}")
+        return False
+
+def initialize_main_app(page: ft.Page, user_theme="white"):
+    global app_settings, current_user_wwid, current_user_name, current_user_privilege, current_user_permissions
+    
+    # Armazenar nome do tema na página para acesso global e confiável
+    page.data = {"theme_name": user_theme}
+
+    # Carregar configurações do app
+    app_settings = load_app_settings()
+    
+    # Funções de tema antigas removidas - agora usando THEME_DEFINITIONS centralizado
+    
+    def menu_item(icon, text, idx, show_text=True):
+        is_selected = selected_index.current == idx
+        colors = get_current_theme_colors(page)
+        
+        def on_hover(e):
+            e.control.bgcolor = colors['surface_variant'] if e.data == "true" else (colors['primary_container'] if is_selected else None)
+            e.control.update()
+        row_controls = [
+            ft.Icon(icon, color=colors['primary'] if is_selected else colors['on_surface'])
+        ]
+        if show_text:
+            row_controls.append(
+                ft.Text(
+                    text,
+                    size=16,
+                    weight="bold" if is_selected else "normal",
+                    color=colors['primary'] if is_selected else colors['on_surface'],
+                )
+            )
+        # Corrige: passa a função handler sem executar
+        return ft.Container(
+            content=ft.Row(row_controls, alignment=ft.MainAxisAlignment.CENTER if not show_text else ft.MainAxisAlignment.START, spacing=15),
+            padding=ft.padding.symmetric(horizontal=0 if not show_text else 10, vertical=10),
+            border_radius=8,
+            bgcolor=colors['primary_container'] if is_selected else None,
+            on_hover=on_hover,
+            on_click=lambda e: set_selected(idx)(e),
+            animate=200,
+            width=160 if show_text else 40,
+        )
+    page.title = "Score App"
+    page.padding = 0
+    page.theme_mode = ft.ThemeMode.LIGHT
+
+    # Estado do menu selecionado
+    selected_index = ft.Ref()
+    selected_index.current = 0
+
+    # Funções auxiliares para usuários (definidas antes da interface)
+    def check_user_exists(wwid):
+        """Verifica se um usuário existe no banco de dados pelo WWID."""
+        if not db_conn or not wwid or not wwid.strip():
+            return False
+        try:
+            cur = db_conn.cursor()
+            cur.execute("SELECT 1 FROM users_table WHERE UPPER(user_wwid) = ?", (wwid.upper().strip(),))
+            return cur.fetchone() is not None
+        except Exception as ex:
+            print(f"Erro ao verificar usuário: {ex}")
+            return False
+
+    def update_action_button():
+        """Atualiza o texto e ícone do botão de ação baseado no estado atual."""
+        if 'action_btn' not in users_controls:
+            return
+        
+        wwid = users_controls['wwid'].value.strip() if 'wwid' in users_controls and users_controls['wwid'].value else ''
+        
+        if wwid and check_user_exists(wwid):
+            # Usuário existe - botão Update
+            users_controls['action_btn'].text = "Update"
+            users_controls['action_btn'].icon = ft.Icons.EDIT
+        else:
+            # Usuário não existe - botão Add User
+            users_controls['action_btn'].text = "Add User"
+            users_controls['action_btn'].icon = ft.Icons.PERSON_ADD
+        
+        users_controls['action_btn'].update()
+
+    def on_wwid_change(e):
+        """Função chamada quando o WWID é alterado para verificar em tempo real."""
+        global selected_user
+        wwid = e.control.value.strip().upper() if e.control.value else ''
+        
+        # Atualizar botão
+        update_action_button()
+        
+        # Se WWID existe, carregar dados automaticamente
+        if wwid and check_user_exists(wwid):
+            # Só carregar se não é o usuário já selecionado
+            if selected_user != wwid:
+                load_user_data_by_wwid(wwid)
+        elif wwid:
+            # WWID digitado mas não existe - limpar apenas outros campos, manter WWID
+            clear_other_fields_except_wwid()
+        elif not wwid:
+            # Campo WWID foi limpo - limpar seleção
+            selected_user = None
+
+    def clear_other_fields_except_wwid():
+        """Limpa todos os campos exceto o WWID quando digitando um WWID novo."""
+        try:
+            # Limpar campos de texto (exceto WWID)
+            users_controls['name'].value = ""
+            users_controls['password'].value = ""
+            users_controls['privilege'].value = None
+            
+            # Limpar checkboxes
+            users_controls['otif_check'].value = False
+            users_controls['nil_check'].value = False
+            users_controls['pickup_check'].value = False
+            users_controls['package_check'].value = False
+            
+            # Atualizar controles
+            users_controls['name'].update()
+            users_controls['password'].update()
+            users_controls['privilege'].update()
+            users_controls['otif_check'].update()
+            users_controls['nil_check'].update()
+            users_controls['pickup_check'].update()
+            users_controls['package_check'].update()
+            
+            # Não limpar selected_user automaticamente para evitar problemas com exclusão
+            # A limpeza será feita apenas manualmente através da função clear_users_fields()
+            
+        except Exception as ex:
+            print(f"Erro ao limpar campos: {ex}")
+
+    def load_user_data_by_wwid(wwid):
+        """Carrega os dados de um usuário pelo WWID e preenche os campos."""
+        try:
+            cur = db_conn.cursor()
+            cur.execute("""
+                SELECT user_name, user_password, user_privilege,
+                       otif, nil, pickup, package
+                FROM users_table 
+                WHERE UPPER(user_wwid) = ?
+            """, (wwid.upper(),))
+            
+            row = cur.fetchone()
+            if row:
+                name, password, privilege, otif, nil, pickup, package = row
+                
+                print(f"🔄 Preenchimento automático para WWID {wwid}")
+                
+                # Preencher campos de texto
+                users_controls['name'].value = str(name) if name else ""
+                users_controls['password'].value = str(password) if password else ""
+                users_controls['privilege'].value = str(privilege) if privilege else None
+                
+                # Definir valores dos checkboxes
+                users_controls['otif_check'].value = int(otif) == 1
+                users_controls['nil_check'].value = int(nil) == 1
+                users_controls['pickup_check'].value = int(pickup) == 1
+                users_controls['package_check'].value = int(package) == 1
+                
+                # Atualizar controles
+                users_controls['name'].update()
+                users_controls['password'].update()
+                users_controls['privilege'].update()
+                users_controls['otif_check'].update()
+                users_controls['nil_check'].update()
+                users_controls['pickup_check'].update()
+                users_controls['package_check'].update()
+                
+                # Definir usuário selecionado globalmente
+                global selected_user
+                selected_user = wwid
+                
+                print(f"✅ Dados carregados automaticamente para {wwid}")
+                
+        except Exception as ex:
+            print(f"Erro ao carregar dados do usuário {wwid}: {ex}")
+
+    # Variáveis globais para controles de usuário
+    users_controls = {}
+    selected_user = None
+
+    # Estado do menu (expandido/recolhido)
+    menu_is_expanded = ft.Ref()
+    menu_is_expanded.current = True
+
+    menu_column_ref = ft.Ref()
+
+    def load_user_theme(user_wwid=None):
+        """Carrega o tema salvo do usuário ou o tema padrão."""
+        try:
+            if not db_conn:
+                return "light"
+            
+            cur = db_conn.cursor()
+            if user_wwid:
+                cur.execute("SELECT theme_mode FROM theme_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
+            else:
+                # Se não há usuário logado, pegar o último tema usado
+                cur.execute("SELECT theme_mode FROM theme_settings ORDER BY last_updated DESC LIMIT 1")
+            
+            result = cur.fetchone()
+            return result[0] if result else "light"
+            
+        except Exception as e:
+            print(f"Erro ao carregar tema: {e}")
+            return "light"
+
+    def save_user_theme(theme_mode, user_wwid=None):
+        """Salva o tema do usuário no banco de dados."""
+        try:
+            if not db_conn:
+                return
+            
+            cur = db_conn.cursor()
+            
+            # Inserir ou atualizar tema
+            if user_wwid:
+                # Verificar se já existe configuração para este usuário
+                cur.execute("SELECT id FROM theme_settings WHERE user_wwid = ?", (user_wwid,))
+                if cur.fetchone():
+                    # Atualizar existente
+                    cur.execute("UPDATE theme_settings SET theme_mode = ?, last_updated = CURRENT_TIMESTAMP WHERE user_wwid = ?", 
+                              (theme_mode, user_wwid))
+                else:
+                    # Inserir novo
+                    cur.execute("INSERT INTO theme_settings (user_wwid, theme_mode) VALUES (?, ?)", 
+                              (user_wwid, theme_mode))
+            else:
+                # Sem usuário específico, inserir como configuração geral
+                cur.execute("INSERT INTO theme_settings (theme_mode) VALUES (?)", (theme_mode,))
+            
+            db_conn.commit()
+            print(f"Tema '{theme_mode}' salvo com sucesso!")
+            
+        except Exception as e:
+            print(f"Erro ao salvar tema: {e}")
+
+
+
+    def apply_theme(theme_mode):
+        """Aplica o tema especificado à página."""
+        if theme_mode == "dracula":
+            colors = THEME_DEFINITIONS["dracula"]["colors"]
+            page.theme = ft.Theme(
+                color_scheme=ft.ColorScheme(
+                    primary=colors['primary'],
+                    primary_container=colors['primary_container'],
+                    secondary=colors['secondary'],
+                    tertiary=colors['tertiary'],
+
+                    # Backgrounds e superfícies
+                    background="#282A36",  # Background do Dracula
+                    surface="#282A36",
+                    surface_variant="#44475A",
+
+                    # Cores de texto
+                    on_surface="#F8F8F2",
+                    on_surface_variant="#F8F8F2",
+                    on_primary="#282A36",
+                    on_primary_container="#F8F8F2",
+                    on_secondary="#282A36",
+                    on_background="#F8F8F2",
+
+                    # Cores adicionais para elementos específicos
+                    outline="#6272A4",
+                    outline_variant="#44475A",
+                )
+            )
+            page.theme_mode = ft.ThemeMode.DARK
+            page.bgcolor = "#282A36"  # Dracula Background
+        elif theme_mode == "dark":
+            page.theme = None
+            page.theme_mode = ft.ThemeMode.DARK
+            page.bgcolor = "#121212"  # Material Design Dark Background
+        else:  # light
+            page.theme = None
+            page.theme_mode = ft.ThemeMode.LIGHT
+            page.bgcolor = "#FAFAFA"  # Material Design Light Background
+        page.update()
+        
+        # Atualizar listas para refletir as novas cores do tema
+        try:
+            refresh_users_list()
+            update_menu()
+            # Atualizar todas as listas da aba configs
+            for key in ['planner', 'continuity', 'sourcing', 'sqie']:
+                refresh_list_ui(key)
+        except Exception as e:
+            print(f"Erro ao atualizar listas após mudança de tema: {e}")
+
+    # ===== CARREGAMENTO INICIAL DO TEMA =====
+    # Carregar tema salvo ANTES de criar qualquer componente UI
+    # Versão simplificada que não depende de db_conn ou funções de refresh
+    def apply_theme_initial(theme_mode):
+        """Aplica tema inicial sem dependências externas"""
+        if theme_mode == "dracula":
+            colors = THEME_DEFINITIONS["dracula"]["colors"]
+            page.theme = ft.Theme(
+                color_scheme=ft.ColorScheme(
+                    primary=colors['primary'],
+                    primary_container=colors['primary_container'],
+                    secondary=colors['secondary'],
+                    tertiary=colors['tertiary'],
+                    background="#282A36",
+                    surface="#282A36",
+                    surface_variant="#44475A",
+                    on_surface="#F8F8F2",
+                    on_surface_variant="#F8F8F2",
+                    on_primary="#282A36",
+                    on_primary_container="#F8F8F2",
+                    on_secondary="#282A36",
+                    on_background="#F8F8F2",
+                    outline="#6272A4",
+                    outline_variant="#44475A",
+                )
+            )
+            page.theme_mode = ft.ThemeMode.DARK
+            page.bgcolor = "#282A36"
+        elif theme_mode == "dark":
+            page.theme = None
+            page.theme_mode = ft.ThemeMode.DARK
+            page.bgcolor = "#121212"
+        else:  # light
+            page.theme = None
+            page.theme_mode = ft.ThemeMode.LIGHT
+            page.bgcolor = "#FAFAFA"
+    
+    # Aplicar tema padrão ou salvo se disponível
+    saved_theme = None
+    try:
+        # Carregar tema salvo do banco de dados
+        if current_user_wwid:
+            try:
+                import sqlite3
+                import os
+                
+                # Verificar se o banco de dados existe
+                db_path = 'db.db'
+                if os.path.exists(db_path):
+                    temp_conn = sqlite3.connect(db_path)
+                    cursor = temp_conn.cursor()
+                    
+                    # Criar tabela se não existir
+                    cursor.execute('''
+                        CREATE TABLE IF NOT EXISTS user_themes (
+                            user_wwid TEXT PRIMARY KEY,
+                            theme TEXT NOT NULL
+                        )
+                    ''')
+                    
+                    # Buscar tema do usuário
+                    cursor.execute("SELECT theme FROM user_themes WHERE user_wwid = ?", (current_user_wwid,))
+                    result = cursor.fetchone()
+                    saved_theme = result[0] if result else None
+                    temp_conn.close()
+                    
+                    if saved_theme:
+                        print(f"Tema encontrado no banco para usuário {current_user_wwid}: {saved_theme}")
+                    else:
+                        print(f"Nenhum tema salvo encontrado para usuário {current_user_wwid}")
+                else:
+                    print("Banco de dados não encontrado, usando tema padrão")
+            except Exception as e:
+                print(f"Erro ao acessar banco de dados: {e}")
+                saved_theme = None
+        
+        # Aplicar tema carregado ou usar padrão
+        if user_theme and user_theme in ["white", "dark", "dracula"]:
+            apply_theme_initial(user_theme)
+            print(f"Tema aplicado na inicialização: {user_theme}")
+        else:
+            apply_theme_initial("white")  # tema padrão
+            print("Aplicando tema padrão (white) na inicialização")
+            
+    except Exception as e:
+        print(f"Erro durante carregamento de tema: {e}")
+        apply_theme_initial("white")  # fallback para tema padrão
+    # ===== FIM DO CARREGAMENTO INICIAL DO TEMA =====
+
+    def show_toast(message, color="green"):
+        """Mostra um toast com duração configurável."""
+        global app_settings
+        
+        page.overlay.append(
+            ft.Container(
+                content=ft.Text(message, color="white", weight="bold"),
+                bgcolor=color,
+                padding=10,
+                border_radius=5,
+                top=50,
+                right=20,
+                animate_opacity=300,
+            )
+        )
+        page.update()
+        
+        # Remover toast após a duração configurada
+        import threading
+        def remove_toast():
+            import time
+            time.sleep(app_settings['toast_duration'])
+            if page.overlay:
+                page.overlay.pop()
+                page.update()
+        
+        threading.Thread(target=remove_toast, daemon=True).start()
+
+    def load_user_criteria(user_wwid=None):
+        """Carrega os pesos dos critérios salvos no banco."""
+        if not db_conn:
+            return None
+        try:
+            cur = db_conn.cursor()
+            
+            # Primeiro tenta carregar da criteria_settings (configurações personalizadas)
+            if user_wwid:
+                cur.execute("SELECT nil_weight, otif_weight, pickup_weight, package_weight, target_weight FROM criteria_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
+                result = cur.fetchone()
+                if result:
+                    return {
+                        'NIL': result[0],
+                        'OTIF': result[1], 
+                        'Quality of Pick Up': result[2],
+                        'Quality-Supplier Package': result[3],
+                        'Target': result[4]
+                    }
+            
+            # Se não encontrou configurações personalizadas, carrega da criteria_table original
+            print("Carregando critérios da tabela criteria_table...")
+            cur.execute("SELECT criteria_category, value FROM criteria_table")
+            results = cur.fetchall()
+            
+            criteria_data = {}
+            for row in results:
+                criteria_name = row[0]
+                value_str = row[1]
+                
+                try:
+                    # Converter valor para float
+                    raw_value = float(value_str)
+                    
+                    # Target mantém escala 0-10, outros critérios ficam na escala 0-1
+                    if criteria_name == "Target":
+                        value = raw_value  # Manter escala 0-10
+                        print(f"Target mantido na escala 0-10: {value}")
+                    else:
+                        value = raw_value  # Outros critérios já estão na escala 0-1
+                    
+                    criteria_data[criteria_name] = value
+                    print(f"Critério carregado: {criteria_name} = {value}")
+                    
+                except ValueError as e:
+                    print(f"Erro ao converter valor para {criteria_name}: {value_str} - {e}")
+            
+            if criteria_data:
+                return criteria_data
+                
+            return None
+        except Exception as ex:
+            print(f"Erro ao carregar critérios: {ex}")
+            return None
+
+    def save_user_criteria(criteria_weights, user_wwid=None):
+        """Salva os pesos dos critérios no banco."""
+        if not db_conn:
+            return False
+        try:
+            cur = db_conn.cursor()
+            if user_wwid:
+                # Verificar se já existe configuração para este usuário
+                cur.execute("SELECT id FROM criteria_settings WHERE user_wwid = ?", (user_wwid,))
+                existing = cur.fetchone()
+                
+                if existing:
+                    # Atualizar configuração existente
+                    cur.execute("""UPDATE criteria_settings SET 
+                                   nil_weight = ?, otif_weight = ?, pickup_weight = ?, 
+                                   package_weight = ?, target_weight = ?, 
+                                   last_updated = CURRENT_TIMESTAMP 
+                                   WHERE user_wwid = ?""", 
+                              (criteria_weights['NIL'], criteria_weights['OTIF'], 
+                               criteria_weights['Quality of Pick Up'], criteria_weights['Quality-Supplier Package'], 
+                               criteria_weights['Target'], user_wwid))
+                else:
+                    # Inserir nova configuração
+                    cur.execute("""INSERT INTO criteria_settings 
+                                   (user_wwid, nil_weight, otif_weight, pickup_weight, package_weight, target_weight) 
+                                   VALUES (?, ?, ?, ?, ?, ?)""", 
+                              (user_wwid, criteria_weights['NIL'], criteria_weights['OTIF'], 
+                               criteria_weights['Quality of Pick Up'], criteria_weights['Quality-Supplier Package'], 
+                               criteria_weights['Target']))
+                
+                db_conn.commit()
+                return True
+            return False
+        except Exception as ex:
+            print(f"Erro ao salvar critérios: {ex}")
+            return False
+
+    def theme_changed(e):
+        global current_user_wwid
+        theme_mode = e.control.value
+
+        # Atualizar o nome do tema armazenado na página para que get_current_theme_colors funcione
+        page.data["theme_name"] = theme_mode
+        
+        # Aplicar tema
+        apply_theme(theme_mode)
+        
+        # Salvar tema no banco
+        save_user_theme(theme_mode, current_user_wwid)
+        
+        # Atualizar os menus para refletir as novas cores
+        update_menu()
+        update_config_tabs()
+        
+        # Atualizar as listas para refletir as novas cores
+        load_all_lists_data()
+        load_users_full()
+        
+        # Mostrar confirmação
+        page.snack_bar = ft.SnackBar(ft.Text(f"✅ Tema '{theme_mode}' aplicado e salvo!"))
+        page.snack_bar.open = True
+        page.update()
+
+    def set_selected(idx):
+        def handler(e):
+            selected_index.current = idx
+            score_view.visible = idx == 0
+            timeline_view.visible = idx == 1
+            risks_view.visible = idx == 2
+            email_view.visible = idx == 3
+            configs_view.visible = idx == 4
+            update_menu()
+            page.update()
+        return handler
+
+    # Dropdowns de mês e ano
+    month_options = [ft.dropdown.Option(str(i).zfill(2), text=str(i)) for i in range(1, 13)]
+    year_options = [ft.dropdown.Option(str(y)) for y in range(2025, 2036)]
+    selected_month = ft.Ref()
+    selected_year = ft.Ref()
+    selected_bu = ft.Ref()
+
+    def on_month_year_change(e):
+        # A busca é chamada sempre que um dropdown muda. A função de busca verificará os valores.
+        load_scores()
+
+    def update_menu():
+        if menu_column_ref.current:
+            show_text = menu_is_expanded.current
+            menu_column_ref.current.controls = [
+                menu_item("score_outlined", "Score", 0, show_text),
+                menu_item("timeline_outlined", "Timeline", 1, show_text),
+                menu_item("warning_outlined", "Risks", 2, show_text),
+                menu_item("email_outlined", "Email", 3, show_text),
+                menu_item("settings_outlined", "Configs", 4, show_text),
+            ]
+            menu_column_ref.current.width = 160 if show_text else 40
+            menu_column_ref.current.update()
+
+    def toggle_menu(e):
+        menu_is_expanded.current = not menu_is_expanded.current
+        update_menu()
+        page.update()
+
+    # --- Início: Lógica do Banco de Dados e Pesquisa ---
+
+    # Conexão com o banco de dados local. check_same_thread=False é necessário para Flet.
+    try:
+        db_conn = sqlite3.connect("db.db", check_same_thread=False)
+        print("Conexão com banco de dados estabelecida com sucesso!")
+        
+        # Criar tabela de favoritos se não existir
+        cursor = db_conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS favorites_table (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_wwid TEXT NOT NULL,
+                supplier_id TEXT NOT NULL,
+                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_wwid, supplier_id)
+            )
+        ''')
+        db_conn.commit()
+        print("Tabela de favoritos verificada/criada com sucesso!")
+
+        # Criar tabelas de listas usadas em comboboxes (se não existirem)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sqie_table (
+                sqie_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                alias TEXT UNIQUE,
+                email TEXT,
+                register_date TIMESTAMP,
+                registered_by TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS continuity_table (
+                continuity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                alias TEXT UNIQUE,
+                email TEXT,
+                register_date TIMESTAMP,
+                registered_by TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS planner_table (
+                planner_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                alias TEXT UNIQUE,
+                email TEXT,
+                register_date TIMESTAMP,
+                registered_by TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sourcing_table (
+                sourcing_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                alias TEXT UNIQUE,
+                email TEXT,
+                register_date TIMESTAMP,
+                registered_by TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS business_unit_table (
+                business_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bu TEXT UNIQUE,
+                register_date TIMESTAMP,
+                registered_by TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS categories_table (
+                categories_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT UNIQUE,
+                register_date TIMESTAMP,
+                registered_by TEXT
+            )
+        ''')
+        
+        # Criar tabela de usuários
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users_table (
+                user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_wwid TEXT UNIQUE NOT NULL,
+                user_name TEXT,
+                user_password TEXT NOT NULL,
+                user_privilege TEXT NOT NULL,
+                otif INTEGER DEFAULT 0,
+                nil INTEGER DEFAULT 0,
+                pickup INTEGER DEFAULT 0,
+                package INTEGER DEFAULT 0,
+                register_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                registered_by TEXT
+            )
+        ''')
+        
+        # Verificar se a coluna user_name existe, se não, adicionar
+        try:
+            cursor.execute("ALTER TABLE users_table ADD COLUMN user_name TEXT")
+            print("Coluna user_name adicionada à tabela users_table")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                pass  # Coluna já existe
+            else:
+                print(f"Erro ao adicionar coluna user_name: {e}")
+        
+        # Criar tabela de configurações de tema
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS theme_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_wwid TEXT,
+                theme_mode TEXT NOT NULL DEFAULT 'light',
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Criar tabela de configurações de critérios
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS criteria_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_wwid TEXT,
+                nil_weight REAL DEFAULT 0.2,
+                otif_weight REAL DEFAULT 0.2,
+                pickup_weight REAL DEFAULT 0.2,
+                package_weight REAL DEFAULT 0.2,
+                target_weight REAL DEFAULT 5.0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Criar tabela de configurações gerais do aplicativo
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS app_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_wwid TEXT,
+                toast_duration INTEGER DEFAULT 3,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Adicionar coluna target_weight se não existir (para bancos existentes)
+        try:
+            cursor.execute("ALTER TABLE criteria_settings ADD COLUMN target_weight REAL DEFAULT 0.2")
+            print("Coluna target_weight adicionada à tabela criteria_settings")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                print(f"Erro ao adicionar coluna target_weight: {e}")
+        
+        db_conn.commit()
+        
+    except sqlite3.Error as e:
+        print(f"Erro ao conectar ao banco de dados: {e}")
+        db_conn = None # Garante que o app não quebre se a conexão falhar
+
+    def create_spinbox():
+        """Cria um widget de spinbox customizado para notas."""
+        score_field = ft.TextField(value="0.0", text_align=ft.TextAlign.CENTER, width=70, border_radius=8)
+
+        def adjust_score(e):
+            try:
+                current_value = float(score_field.value)
+                if e.control.data == "+":
+                    current_value += 0.5
+                elif e.control.data == "-":
+                    current_value -= 0.5
+                score_field.value = str(round(max(0, current_value), 2)) # Impede notas negativas
+                score_field.update()
+            except ValueError:
+                score_field.value = "0.0"
+                score_field.update()
+
+        return ft.Row([
+            ft.IconButton(ft.Icons.REMOVE, on_click=adjust_score, data="-"),
+            score_field,
+            ft.IconButton(ft.Icons.ADD, on_click=adjust_score, data="+"),
+        ], alignment=ft.MainAxisAlignment.CENTER)
+
+    # ---------- Utilitários para listas (sqie, planner, sourcing, continuity, bu, category) ----------
+    
+    def load_all_lists_data():
+        """Carrega dados existentes de todas as tabelas para popular as listas na interface."""
+        if not db_conn:
+            return
+        
+        try:
+            cursor = db_conn.cursor()
+            
+            # Carregar dados das tabelas com name, alias, email
+            tables_with_email = {
+                'sqie': ('sqie_table', 'name, alias, email'),
+                'continuity': ('continuity_table', 'name, alias, email'), 
+                'planner': ('planner_table', 'name, alias, email'),
+                'sourcing': ('sourcing_table', 'name, alias, email')
+            }
+            
+            for key, (table_name, columns) in tables_with_email.items():
+                cursor.execute(f"SELECT {columns} FROM {table_name} ORDER BY alias")
+                rows = cursor.fetchall()
+                
+                col = lists_controls[key]['list']
+                col.controls.clear()
+                
+                if not rows:
+                    col.controls.append(
+                        ft.Container(
+                            content=ft.Text(
+                                "Nenhum item adicionado",
+                                color="outline",
+                                italic=True,
+                                text_align=ft.TextAlign.CENTER
+                            ),
+                            alignment=ft.alignment.center,
+                            padding=10
+                        )
+                    )
+                else:
+                    for row in rows:
+                        name, alias, email = row
+                        is_selected = lists_controls[key]['selected_item'] == alias
+                        colors = get_current_theme_colors(page)
+                        col.controls.append(
+                            ft.Container(
+                                content=ft.ListTile(
+                                    title=ft.Text(f"{alias} - {name}", size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
+                                    subtitle=ft.Text(email or "Email não informado", size=12, color="outline") if email else ft.Text("Email não informado", size=12, color="outline"),
+                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                    dense=True,
+                                    on_click=lambda e, k=key, v=alias: select_list_item(k, v),
+                                ),
+                                bgcolor=colors['primary_container'] if is_selected else None,
+                                border_radius=4,
+                                padding=ft.padding.all(2)
+                            )
+                        )
+            
+            # Carregar Business Units
+            cursor.execute("SELECT bu FROM business_unit_table ORDER BY bu")
+            bu_rows = cursor.fetchall()
+            
+            bu_col = lists_controls['bu']['list']
+            bu_col.controls.clear()
+            
+            if not bu_rows:
+                bu_col.controls.append(
+                    ft.Container(
+                        content=ft.Text(
+                            "Nenhum item adicionado",
+                            color="outline",
+                            italic=True,
+                            text_align=ft.TextAlign.CENTER
+                        ),
+                        alignment=ft.alignment.center,
+                        padding=10
+                    )
+                )
+            else:
+                for row in bu_rows:
+                    is_selected = lists_controls['bu']['selected_item'] == row[0]
+                    colors = get_current_theme_colors(page)
+                    bu_col.controls.append(
+                        ft.Container(
+                            content=ft.ListTile(
+                                title=ft.Text(row[0], size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
+                                content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                dense=True,
+                                on_click=lambda e, v=row[0]: select_list_item('bu', v),
+                            ),
+                            bgcolor=colors['primary_container'] if is_selected else None,
+                            border_radius=4,
+                            padding=ft.padding.all(2)
+                        )
+                    )
+            
+            # Carregar Categories
+            cursor.execute("SELECT category FROM categories_table ORDER BY category")
+            category_rows = cursor.fetchall()
+            
+            category_col = lists_controls['category']['list']
+            category_col.controls.clear()
+            
+            if not category_rows:
+                category_col.controls.append(
+                    ft.Container(
+                        content=ft.Text(
+                            "Nenhum item adicionado",
+                            color="outline",
+                            italic=True,
+                            text_align=ft.TextAlign.CENTER
+                        ),
+                        alignment=ft.alignment.center,
+                        padding=10
+                    )
+                )
+            else:
+                for row in category_rows:
+                    is_selected = lists_controls['category']['selected_item'] == row[0]
+                    colors = get_current_theme_colors(page)
+                    category_col.controls.append(
+                        ft.Container(
+                            content=ft.ListTile(
+                                title=ft.Text(row[0], size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
+                                content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                dense=True,
+                                on_click=lambda e, v=row[0]: select_list_item('category', v),
+                            ),
+                            bgcolor=colors['primary_container'] if is_selected else None,
+                            border_radius=4,
+                            padding=ft.padding.all(2)
+                        )
+                    )
+                    
+        except Exception as e:
+            print(f"Erro ao carregar dados das listas: {e}")
+
+    def select_list_item(key, value):
+        """Seleciona ou des-seleciona um item na lista, atualizando apenas o realce visual."""
+        
+        # Se o item clicado já estava selecionado, desmarca (define como None).
+        # Caso contrário, define o item clicado como o selecionado.
+        if lists_controls[key]['selected_item'] == value:
+            lists_controls[key]['selected_item'] = None
+        else:
+            lists_controls[key]['selected_item'] = value
+        
+        # Recarregar apenas a lista específica usando o mesmo estilo de load_all_lists_data
+        reload_single_list_with_style(key)
+        
+        # A atualização da página é necessária para que a lista seja redesenhada na tela.
+        page.update()
+
+    def reload_single_list_with_style(key):
+        """Recarrega uma lista específica mantendo o estilo da load_all_lists_data"""
+        if not db_conn:
+            return
+        
+        try:
+            cursor = db_conn.cursor()
+            colors = get_current_theme_colors(page)
+            
+            if key in ['sqie', 'continuity', 'planner', 'sourcing']:
+                # Tabelas com name, alias, email
+                table_name = f"{key}_table"
+                cursor.execute(f"SELECT name, alias, email FROM {table_name} ORDER BY alias")
+                rows = cursor.fetchall()
+                
+                col = lists_controls[key]['list']
+                col.controls.clear()
+                
+                if not rows:
+                    col.controls.append(
+                        ft.Container(
+                            content=ft.Text(
+                                "Nenhum item adicionado",
+                                color="outline",
+                                italic=True,
+                                text_align=ft.TextAlign.CENTER
+                            ),
+                            alignment=ft.alignment.center,
+                            padding=10
+                        )
+                    )
+                else:
+                    for row in rows:
+                        name, alias, email = row
+                        is_selected = lists_controls[key]['selected_item'] == alias
+                        
+                        # Usar Container para garantir que o bgcolor funcione
+                        col.controls.append(
+                            ft.Container(
+                                content=ft.ListTile(
+                                    title=ft.Text(f"{alias} - {name}", size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
+                                    subtitle=ft.Text(email or "Email não informado", size=12, color="outline") if email else ft.Text("Email não informado", size=12, color="outline"),
+                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                    dense=True,
+                                    on_click=lambda e, k=key, v=alias: select_list_item(k, v),
+                                ),
+                                bgcolor=colors['primary_container'] if is_selected else None,
+                                border_radius=4,
+                                padding=ft.padding.all(2)
+                            )
+                        )
+                        
+            elif key == 'bu':
+                # Business Units
+                cursor.execute("SELECT bu FROM business_unit_table ORDER BY bu")
+                rows = cursor.fetchall()
+                
+                col = lists_controls[key]['list']
+                col.controls.clear()
+                
+                if not rows:
+                    col.controls.append(
+                        ft.Container(
+                            content=ft.Text(
+                                "Nenhum item adicionado",
+                                color="outline",
+                                italic=True,
+                                text_align=ft.TextAlign.CENTER
+                            ),
+                            alignment=ft.alignment.center,
+                            padding=10
+                        )
+                    )
+                else:
+                    for row in rows:
+                        is_selected = lists_controls[key]['selected_item'] == row[0]
+                        col.controls.append(
+                            ft.Container(
+                                content=ft.ListTile(
+                                    title=ft.Text(row[0], size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
+                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                    dense=True,
+                                    on_click=lambda e, v=row[0]: select_list_item('bu', v),
+                                ),
+                                bgcolor=colors['primary_container'] if is_selected else None,
+                                border_radius=4,
+                                padding=ft.padding.all(2)
+                            )
+                        )
+                        
+            elif key == 'category':
+                # Categories
+                cursor.execute("SELECT category FROM categories_table ORDER BY category")
+                rows = cursor.fetchall()
+                
+                col = lists_controls[key]['list']
+                col.controls.clear()
+                
+                if not rows:
+                    col.controls.append(
+                        ft.Container(
+                            content=ft.Text(
+                                "Nenhum item adicionado",
+                                color="outline",
+                                italic=True,
+                                text_align=ft.TextAlign.CENTER
+                            ),
+                            alignment=ft.alignment.center,
+                            padding=10
+                        )
+                    )
+                else:
+                    for row in rows:
+                        is_selected = lists_controls[key]['selected_item'] == row[0]
+                        col.controls.append(
+                            ft.Container(
+                                content=ft.ListTile(
+                                    title=ft.Text(row[0], size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
+                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                    dense=True,
+                                    on_click=lambda e, v=row[0]: select_list_item('category', v),
+                                ),
+                                bgcolor=colors['primary_container'] if is_selected else None,
+                                border_radius=4,
+                                padding=ft.padding.all(2)
+                            )
+                        )
+                        
+        except Exception as e:
+            print(f"Erro ao recarregar lista {key}: {e}")
+
+    def load_list_options(table_name, column_name):
+        """Retorna lista de tuplas (value, text) para popular Dropdowns."""
+        if not db_conn:
+            return []
+        try:
+            cur = db_conn.cursor()
+            if table_name in ("business_unit_table", "categories_table"):
+                # Tabelas que só têm uma coluna principal
+                cur.execute(f"SELECT {column_name} FROM {table_name} ORDER BY {column_name}")
+                rows = cur.fetchall()
+                options = [r[0] for r in rows if r[0]]  # Filtrar valores nulos/vazios
+                return options if options else []  # Não retorna lista vazia se não há dados
+            else:
+                # Para tabelas com name, alias, email (sqie, continuity, planner, sourcing)
+                # Usar apenas o campo 'name' como solicitado
+                cur.execute(f"SELECT name FROM {table_name} WHERE name IS NOT NULL AND name != '' ORDER BY name")
+                rows = cur.fetchall()
+                options = [r[0] for r in rows if r[0]]  # Filtrar valores nulos/vazios
+                return options if options else []  # Não retorna lista vazia se não há dados
+        except Exception as ex:
+            print(f"Erro ao carregar opções de {table_name}: {ex}")
+            return []
+
+    def load_list_items_full(table_name):
+        """Retorna dados completos dos itens da lista com name, alias, email."""
+        if not db_conn:
+            return []
+        try:
+            cur = db_conn.cursor()
+            if table_name in ("business_unit_table",):
+                cur.execute(f"SELECT bu FROM {table_name} ORDER BY bu")
+                rows = cur.fetchall()
+                return [{"display": r[0], "alias": r[0]} for r in rows]
+            elif table_name == "categories_table":
+                cur.execute(f"SELECT category FROM {table_name} ORDER BY category")
+                rows = cur.fetchall()
+                return [{"display": r[0], "alias": r[0]} for r in rows]
+            else:
+                # Para tabelas com name, alias, email
+                cur.execute(f"SELECT name, alias, email FROM {table_name} ORDER BY alias")
+                rows = cur.fetchall()
+                items = []
+                for row in rows:
+                    name, alias, email = row
+                    # Criar texto de exibição com as informações completas
+                    display_parts = []
+                    if name and name.strip():
+                        display_parts.append(f"Nome: {name.strip()}")
+                    if alias and alias.strip():
+                        display_parts.append(f"Alias: {alias.strip()}")
+                    if email and email.strip():
+                        display_parts.append(f"Email: {email.strip()}")
+                    
+                    display_text = " | ".join(display_parts) if display_parts else "Item sem dados"
+                    items.append({
+                        "display": display_text,
+                        "alias": alias or name or "",
+                        "name": name or "",
+                        "email": email or ""
+                    })
+                return items
+        except Exception as ex:
+            print(f"Erro ao carregar itens completos de {table_name}: {ex}")
+            return []
+
+    def insert_list_item(table_name, columns, values):
+        """Insere item em tabela genérica passando colunas e valores."""
+        if not db_conn:
+            raise RuntimeError("DB não conectado")
+        cur = db_conn.cursor()
+        placeholders = ','.join(['?'] * len(values))
+        cols = ','.join(columns)
+        q = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
+        cur.execute(q, values)
+        db_conn.commit()
+
+    def delete_list_item_by_alias(table_name, alias_column, alias):
+        if not db_conn:
+            raise RuntimeError("DB não conectado")
+        cur = db_conn.cursor()
+        q = f"DELETE FROM {table_name} WHERE {alias_column} = ?"
+        cur.execute(q, (alias,))
+        db_conn.commit()
+    
+    def load_scores():
+        """Para os cards de resultado visíveis, carrega as notas do banco de dados
+        com base no mês e ano selecionados.
+        """
+        if not selected_month.current or not selected_year.current:
+            return
+            
+        month_val = selected_month.current.value
+        year_val = selected_year.current.value
+
+        # A função só executa se ambos, mês e ano, estiverem selecionados.
+        if not month_val or not year_val:
+            # Limpar as notas se a data for desmarcada
+            for card in results_list.controls:
+                if isinstance(card, ft.Card) and hasattr(card, 'data') and card.data:
+                    for ref in card.data["spinbox_refs"].values():
+                        ref.value = "0.0"
+                        ref.update()
+            page.update()
+            return
+
+        if not db_conn: 
+            print("Conexão com banco não disponível")
+            return
+
+        print(f"Carregando scores para mês: {month_val}, ano: {year_val}")
+
+        for card in results_list.controls:
+            if not isinstance(card, ft.Card) or not hasattr(card, 'data') or not card.data:
+                continue
+
+            supplier_id = card.data["supplier_id"]
+            score_sliders = card.data.get("score_sliders")
+            score_texts = card.data.get("score_texts")
+            
+            if not score_sliders or not score_texts:
+                continue
+            
+            try:
+                cursor = db_conn.cursor()
+                query = """
+                    SELECT otif, quality_pickup, quality_package, nil, comment
+                    FROM supplier_score_records_table
+                    WHERE supplier_id = ? AND month = ? AND year = ?
+                """
+                cursor.execute(query, (supplier_id, int(month_val), int(year_val)))
+                score_record = cursor.fetchone()
+
+                if score_record:
+                    # Mapeamento direto: OTIF, Pickup, Package, NIL, Comment
+                    scores = {
+                        "OTIF": score_record[0] if score_record[0] is not None else 0.0,
+                        "Pickup": score_record[1] if score_record[1] is not None else 0.0,
+                        "Package": score_record[2] if score_record[2] is not None else 0.0,
+                        "NIL": score_record[3] if score_record[3] is not None else 0.0,
+                    }
+                    comment_value = score_record[4] if score_record[4] is not None else ""
+                    
+                    # Atualizar valores dos sliders e textos
+                    for ui_name, score_value in scores.items():
+                        if ui_name in score_sliders:
+                            val = float(score_value)
+                            score_sliders[ui_name].value = val
+                            score_texts[ui_name].value = f"{val:.1f}"
+                            score_sliders[ui_name].update()
+                            score_texts[ui_name].update()
+                    
+                    # Atualizar comentário se houver referência para ele no card
+                    if "comment_field" in card.data:
+                        card.data["comment_field"].value = comment_value
+                        card.data["comment_field"].update()
+                        print(f"Atualizando comentário: {comment_value}")
+                        
+                else:
+                    # Não encontrou registro, zerar valores
+                    for ui_name in ["OTIF", "Pickup", "Package", "NIL"]:
+                        if ui_name in score_sliders:
+                            score_sliders[ui_name].value = 0.0
+                            score_texts[ui_name].value = "0.0"
+                            score_sliders[ui_name].update()
+                            score_texts[ui_name].update()
+                    
+                    # Limpar comentário
+                    if "comment_field" in card.data:
+                        card.data["comment_field"].value = ""
+                        card.data["comment_field"].update()
+                
+            except sqlite3.Error as e:
+                print(f"Erro ao carregar notas para o supplier_id {supplier_id}: {e}")
+        
+        page.update()
+
+    def create_result_widget(record):
+        """Cria um card de resultado para um registro do banco.
+        Tuple esperada: (supplier_id, supplier_name, BU, supplier_status, supplier_number)
+        """
+        supplier_id = record[0] if len(record) > 0 else "?"
+        supplier_name = record[1] if len(record) > 1 else "?"
+        bu = record[2] if len(record) > 2 else "?"
+        status = record[3] if len(record) > 3 else "?"
+        supplier_number = record[4] if len(record) > 4 else "?"
+
+        print(f"Criando card para: {supplier_name} (ID: {supplier_id})")
+
+        # Ordem dos spinboxes na interface
+        ui_order = ["NIL", "Pickup", "Package", "OTIF"]
+        
+        # Mapeamento das permissões
+        permission_map = {
+            "NIL": "nil",
+            "Pickup": "pickup", 
+            "Package": "package",
+            "OTIF": "otif"
+        }
+
+        spinbox_refs = {}
+        spinboxes_rows = []
+        for ui_name in ui_order:
+            # Verificar se o usuário tem permissão para este campo
+            permission_key = permission_map.get(ui_name)
+            has_permission = (current_user_permissions.get(permission_key, False) if current_user_permissions else True)
+            
+            spinbox = create_spinbox()
+            spinbox_field = spinbox.controls[1]  # O TextField é o segundo controle
+            
+            # Aplicar controle de acesso
+            if not has_permission:
+                spinbox_field.disabled = True
+                spinbox_field.bgcolor = "#EEEEEE"  # Cinza para indicar desabilitado
+                spinbox_field.hint_text = "Sem permissão"
+            
+            spinbox_refs[ui_name] = spinbox_field
+            
+            # Criar o texto do label com indicação de permissão
+            label_text = ui_name
+            if not has_permission:
+                label_text += " 🔒"  # Ícone de cadeado para campos sem permissão
+            
+            spinboxes_rows.append(
+                ft.Row(
+                    [ft.Text(label_text, weight="bold", width=80), spinbox], 
+                    alignment=ft.MainAxisAlignment.START, 
+                    spacing=10
+                )
+            )
+
+        comment_field = ft.TextField(
+            label="Comentário", 
+            expand=True, 
+            border_radius=8, 
+            multiline=True, 
+            min_lines=4, 
+            max_lines=6
+        )
+
+        def save_score(e):
+            if not db_conn:
+                page.snack_bar = ft.SnackBar(ft.Text("Erro: Banco de dados não conectado."), open=True)
+                page.update()
+                return
+                
+            if not selected_month.current or not selected_year.current:
+                page.snack_bar = ft.SnackBar(ft.Text("Selecione mês e ano antes de salvar."), open=True)
+                page.update()
+                return
+                
+            month_val = selected_month.current.value
+            year_val = selected_year.current.value
+            
+            if not month_val or not year_val:
+                page.snack_bar = ft.SnackBar(ft.Text("Selecione mês e ano antes de salvar."), open=True)
+                page.update()
+                return
+
+            try:
+                cursor = db_conn.cursor()
+                
+                # Preparar os dados para salvar - apenas campos com permissão
+                values_to_save = {}
+                
+                # Verificar permissões antes de salvar cada campo
+                if current_user_permissions.get('otif', False):
+                    values_to_save['otif'] = float(spinbox_refs["OTIF"].value or 0)
+                if current_user_permissions.get('pickup', False):
+                    values_to_save['quality_pickup'] = float(spinbox_refs["Pickup"].value or 0)
+                if current_user_permissions.get('package', False):
+                    values_to_save['quality_package'] = float(spinbox_refs["Package"].value or 0)
+                if current_user_permissions.get('nil', False):
+                    values_to_save['nil'] = float(spinbox_refs["NIL"].value or 0)
+                
+                if not values_to_save:
+                    page.snack_bar = ft.SnackBar(ft.Text("Você não tem permissão para salvar nenhum campo."), open=True)
+                    page.update()
+                    return
+                
+                comment_val = comment_field.value or ""
+                
+                # Verificar se já existe um registro
+                check_query = """
+                    SELECT COUNT(*) FROM supplier_score_records_table 
+                    WHERE supplier_id = ? AND month = ? AND year = ?
+                """
+                cursor.execute(check_query, (supplier_id, int(month_val), int(year_val)))
+                exists = cursor.fetchone()[0] > 0
+                
+                # Construir query dinamicamente baseado nas permissões
+                if exists:
+                    # Atualizar apenas os campos permitidos
+                    set_clauses = []
+                    values = []
+                    for field, value in values_to_save.items():
+                        set_clauses.append(f"{field} = ?")
+                        values.append(value)
+                    
+                    if set_clauses:
+                        update_query = f"""
+                            UPDATE supplier_score_records_table 
+                            SET {', '.join(set_clauses)}
+                            WHERE supplier_id = ? AND month = ? AND year = ?
+                        """
+                        values.extend([supplier_id, int(month_val), int(year_val)])
+                        cursor.execute(update_query, values)
+                else:
+                    # Inserir novo registro com campos zerados para campos sem permissão
+                    insert_query = """
+                        INSERT INTO supplier_score_records_table 
+                        (supplier_id, month, year, otif, quality_pickup, quality_package, nil)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                    cursor.execute(insert_query, (
+                        supplier_id, 
+                        int(month_val), 
+                        int(year_val), 
+                        values_to_save.get('otif', 0),
+                        values_to_save.get('quality_pickup', 0), 
+                        values_to_save.get('quality_package', 0), 
+                        values_to_save.get('nil', 0)
+                    ))
+                
+                db_conn.commit()
+                
+                # Mostrar apenas os campos salvos
+                saved_fields = []
+                for field, db_field in [("OTIF", "otif"), ("Pickup", "pickup"), ("Package", "package"), ("NIL", "nil")]:
+                    if current_user_permissions.get(db_field, False):
+                        saved_fields.append(field)
+                
+                page.snack_bar = ft.SnackBar(
+                    ft.Text(f"Campos salvos para {supplier_name}: {', '.join(saved_fields)}"), 
+                    open=True
+                )
+                print(f"Dados salvos para {supplier_name} - Permissões: {saved_fields}")
+                
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(ft.Text(f"Erro ao salvar: {str(ex)}"), open=True)
+                print(f"Erro ao salvar dados: {ex}")
+            
+            page.update()
+
+        def toggle_favorite(e):
+            e.control.selected = not e.control.selected
+            print(f"Favorito -> ID {supplier_id}: {e.control.selected}")
+            e.control.update()
+
+        notas_col = ft.Column(spinboxes_rows, spacing=8)
+
+        info_col = ft.Column([
+            ft.Text(supplier_name, weight="bold", size=16),
+            ft.Text(f"BU: {bu}"),
+            ft.Text(f"PO: {supplier_number}"),
+            ft.Text(f"ID: {supplier_id}"),
+            ft.Text(f"Status: {status}", color="green" if str(status).lower().startswith("active") else "red"),
+        ], width=210, spacing=4, alignment=ft.MainAxisAlignment.START)
+
+        # Reorganizar a estrutura do card para posicionar os botões no canto inferior direito
+        left_section = ft.Row([
+            info_col, 
+            ft.VerticalDivider(), 
+            notas_col, 
+            ft.VerticalDivider()
+        ], alignment=ft.MainAxisAlignment.START)
+
+        # Seção direita com comentário e botões alinhados
+        right_section = ft.Column([
+            comment_field,
+            ft.Container(height=20),  # Espaçamento
+            ft.Row([
+                ft.Container(expand=True),  # Empurra os botões para a direita
+                ft.IconButton(
+                    icon=ft.Icons.FAVORITE_BORDER, 
+                    selected_icon=ft.Icons.FAVORITE, 
+                    on_click=toggle_favorite, 
+                    tooltip="Favoritar"
+                ),
+                ft.ElevatedButton("Salvar", on_click=save_score, icon=ft.Icons.SAVE),
+            ], alignment=ft.MainAxisAlignment.END, tight=True)
+        ], expand=True, alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+        card = ft.Card(
+            content=ft.Container(
+                padding=15,
+                content=ft.Row([
+                    left_section,
+                    right_section
+                ], vertical_alignment=ft.CrossAxisAlignment.STRETCH, expand=True)
+            ),
+            color=get_current_theme_colors(page).get('card_background')
+        )
+        
+        # Anexar dados ao card
+        card.data = {
+            "supplier_id": supplier_id, 
+            "spinbox_refs": spinbox_refs
+        }
+        
+        return card
+
+    search_field_ref = ft.Ref()
+
+    def create_score_slider():
+        """Cria um widget de slider customizado para notas de 0 a 10."""
+        
+        # O texto que exibirá o valor do slider
+        score_text = ft.Text("0.0", width=40, text_align=ft.TextAlign.RIGHT)
+
+        # O slider
+        score_slider = ft.Slider(
+            min=0,
+            max=10,
+            divisions=100,  # (10 - 0) / 0.1 = 100
+            value=0,
+            expand=True
+        )
+
+        def on_slider_change(e):
+            # Formata o valor para ter uma casa decimal
+            score_text.value = f"{e.control.value:.1f}"
+            score_text.update()
+        
+        score_slider.on_change = on_slider_change
+        
+        # Retorna o slider e o texto em uma linha
+        slider_row = ft.Row([score_slider, score_text], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
+        
+        return slider_row, score_slider, score_text
+
+    def create_result_widget(record):
+        """Cria um card de resultado otimizado para um registro do banco."""
+        supplier_id = record[0] if len(record) > 0 else "?"
+        supplier_name = record[1] if len(record) > 1 else "?"
+        bu = record[2] if len(record) > 2 else "?"
+        status = record[3] if len(record) > 3 else "?"
+        supplier_number = record[4] if len(record) > 4 else "?"
+
+        print(f"Criando card para: {supplier_name} (ID: {supplier_id})")
+
+        # Criar sliders com referências
+        score_sliders = {}
+        score_texts = {}
+        score_rows = []
+        
+        # Mapeamento das permissões
+        permission_map = {
+            "NIL": "nil",
+            "Pickup": "pickup", 
+            "Package": "package",
+            "OTIF": "otif"
+        }
+
+        for ui_name in ["NIL", "Pickup", "Package", "OTIF"]:
+            slider_row, slider_control, text_control = create_score_slider()
+            
+            # Verificar se o usuário tem permissão para este campo
+            permission_key = permission_map.get(ui_name)
+            has_permission = (current_user_permissions.get(permission_key, False) if current_user_permissions else True)
+
+            # Aplicar controle de acesso
+            if not has_permission:
+                slider_control.disabled = True
+            
+            score_sliders[ui_name] = slider_control
+            score_texts[ui_name] = text_control
+            
+            label_text = ui_name + (" 🔒" if not has_permission else "")
+            
+            row = ft.Row([
+                ft.Container(
+                    content=ft.Text(label_text, weight="bold", size=14),
+                    alignment=ft.alignment.center_left,
+                    expand=1
+                ),
+                slider_row
+            ], 
+            alignment=ft.MainAxisAlignment.START, 
+            spacing=10,
+            tight=True
+            )
+            slider_row.expand = 2
+            score_rows.append(row)
+
+        # Campo de comentário mais simples
+        comment_field = ft.TextField(
+            label="Comentário",
+            multiline=True,
+            min_lines=2,
+            max_lines=4,
+            dense=True,
+            border_radius=8
+        )
+
+        # Estado do favorito
+        is_favorite = ft.Ref[bool]()
+        is_favorite.current = False
+
+        # Verificar se já está nos favoritos ao criar o card
+        def check_favorite_status():
+            user_wwid = "default_user"  # TODO: Implementar sistema de usuários
+            if not db_conn:
+                return False
+            try:
+                cursor = db_conn.cursor()
+                check_query = "SELECT COUNT(*) FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
+                cursor.execute(check_query, (user_wwid, supplier_id))
+                return cursor.fetchone()[0] > 0
+            except sqlite3.Error:
+                return False
+
+        # Definir estado inicial do favorito
+        is_favorite.current = check_favorite_status()
+
+        def save_score(e):
+            if not db_conn:
+                show_snackbar("Erro: Banco de dados não conectado.")
+                return
+                
+            if not selected_month.current or not selected_year.current:
+                show_snackbar("Selecione mês e ano antes de salvar.")
+                return
+                
+            month_val = selected_month.current.value
+            year_val = selected_year.current.value
+            
+            if not month_val or not year_val:
+                show_snackbar("Selecione mês e ano antes de salvar.")
+                return
+
+            try:
+                # Desabilitar botão temporariamente
+                e.control.disabled = True
+                e.control.text = "Salvando..."
+                page.update()
+                
+                cursor = db_conn.cursor()
+                
+                # Preparar os dados para salvar - apenas campos com permissão
+                values_to_save = {}
+                
+                # Verificar permissões antes de salvar cada campo
+                if current_user_permissions.get('otif', False):
+                    values_to_save['otif'] = round(float(score_sliders["OTIF"].value or 0), 1)
+                if current_user_permissions.get('pickup', False):
+                    values_to_save['quality_pickup'] = round(float(score_sliders["Pickup"].value or 0), 1)
+                if current_user_permissions.get('package', False):
+                    values_to_save['quality_package'] = round(float(score_sliders["Package"].value or 0), 1)
+                if current_user_permissions.get('nil', False):
+                    values_to_save['nil'] = round(float(score_sliders["NIL"].value or 0), 1)
+                
+                if not values_to_save:
+                    show_snackbar("Você não tem permissão para salvar nenhum campo.")
+                    return
+                
+                comment_val = comment_field.value or ""
+                
+                # Verificar se já existe um registro
+                check_query = """
+                    SELECT COUNT(*) FROM supplier_score_records_table 
+                    WHERE supplier_id = ? AND month = ? AND year = ?
+                """
+                cursor.execute(check_query, (supplier_id, int(month_val), int(year_val)))
+                exists = cursor.fetchone()[0] > 0
+                
+                # Construir query dinamicamente baseado nas permissões
+                if exists:
+                    # Atualizar apenas os campos permitidos
+                    set_clauses = [f"{field} = ?" for field in values_to_save.keys()]
+                    update_values = list(values_to_save.values())
+                    
+                    # Sempre atualizar o comentário
+                    set_clauses.append("comment = ?")
+                    update_values.append(comment_val)
+
+                    if set_clauses:
+                        update_query = f"UPDATE supplier_score_records_table SET {', '.join(set_clauses)} WHERE supplier_id = ? AND month = ? AND year = ?"
+                        update_values.extend([supplier_id, int(month_val), int(year_val)])
+                        cursor.execute(update_query, update_values)
+                else:
+                    # Inserir novo registro com campos zerados para campos sem permissão
+                    insert_query = """
+                        INSERT INTO supplier_score_records_table 
+                        (supplier_id, month, year, otif, quality_pickup, quality_package, nil, comment)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """
+                    cursor.execute(insert_query, (
+                        supplier_id, 
+                        int(month_val), 
+                        int(year_val), 
+                        values_to_save.get('otif', 0),
+                        values_to_save.get('quality_pickup', 0), 
+                        values_to_save.get('quality_package', 0), 
+                        values_to_save.get('nil', 0),
+                        comment_val
+                    ))
+                
+                db_conn.commit()
+                
+                saved_fields = [k.replace('quality_', '').replace('_', ' ').title() for k in values_to_save.keys()]
+                show_snackbar(f"Campos salvos para {supplier_name}: {', '.join(saved_fields)}")
+                
+            except Exception as ex:
+                show_snackbar(f"Erro ao salvar: {str(ex)}")
+                print(f"Erro ao salvar dados: {ex}")
+            finally:
+                # Reabilitar botão
+                e.control.disabled = False
+                e.control.text = "Salvar"
+                page.update()
+
+        def toggle_favorite(e):
+            # Por enquanto, vou usar um usuário padrão. Em uma implementação real, 
+            # isso viria de um sistema de login
+            user_wwid = "default_user"  # TODO: Implementar sistema de usuários
+            
+            if not db_conn:
+                show_snackbar("Erro: Banco de dados não conectado.")
+                return
+                
+            try:
+                cursor = db_conn.cursor()
+                
+                # Verificar se já está nos favoritos
+                check_query = "SELECT COUNT(*) FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
+                cursor.execute(check_query, (user_wwid, supplier_id))
+                is_favorited = cursor.fetchone()[0] > 0
+                
+                if is_favorited:
+                    # Remover dos favoritos
+                    delete_query = "DELETE FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
+                    cursor.execute(delete_query, (user_wwid, supplier_id))
+                    is_favorite.current = False
+                    e.control.selected = False
+                    show_snackbar(f"{supplier_name} removido dos favoritos")
+                    print(f"Favorito removido: {supplier_name} (ID: {supplier_id})")
+                else:
+                    # Adicionar aos favoritos
+                    insert_query = "INSERT INTO favorites_table (user_wwid, supplier_id) VALUES (?, ?)"
+                    cursor.execute(insert_query, (user_wwid, supplier_id))
+                    is_favorite.current = True
+                    e.control.selected = True
+                    show_snackbar(f"{supplier_name} adicionado aos favoritos")
+                    print(f"Favorito adicionado: {supplier_name} (ID: {supplier_id})")
+                
+                db_conn.commit()
+                e.control.update()
+                
+            except sqlite3.Error as db_error:
+                show_snackbar(f"Erro ao salvar favorito: {db_error}")
+                print(f"Erro no banco de dados: {db_error}")
+            except Exception as ex:
+                show_snackbar(f"Erro inesperado: {ex}")
+                print(f"Erro ao toggle favorite: {ex}")
+
+        def show_snackbar(message):
+            page.snack_bar = ft.SnackBar(ft.Text(message))
+            page.snack_bar.open = True
+            page.update()
+
+        # Montagem do layout do card
+        info_col = ft.Column([
+            ft.Text(
+                supplier_name, 
+                weight="bold", 
+                size=16, 
+                width=200,  # Define largura para permitir quebra de linha
+                text_align=ft.TextAlign.LEFT
+            ),
+            ft.Text(f"BU: {bu}", size=12),
+            ft.Text(f"PO: {supplier_number}", size=12),
+            ft.Text(f"ID: {supplier_id}", size=12),
+            ft.Text(
+                f"Status: {status}", 
+                size=12,
+                color="green" if str(status).lower().startswith("active") else "red"
+            ),
+        ], 
+        spacing=4, 
+        tight=True,
+        expand=3
+        )
+
+        scores_col = ft.Column(
+            score_rows, 
+            spacing=8, 
+            tight=True,
+            expand=4
+        )
+
+        # Coluna de ações sem os botões (apenas comentário)
+        actions_col = ft.Column([
+            comment_field
+        ], 
+        expand=5,
+        spacing=10
+        )
+
+        # Conteúdo principal do card (sem os botões)
+        main_content = ft.Row([
+            info_col,
+            ft.VerticalDivider(width=1, color="outline"),
+            scores_col,
+            ft.VerticalDivider(width=1, color="outline"),
+            actions_col
+        ], 
+        vertical_alignment=ft.CrossAxisAlignment.START,
+        expand=True,
+        spacing=15
+        )
+
+        # Card principal usando Stack para posicionar botões absolutamente
+        card_content = ft.Container(
+            content=ft.Stack([
+                # Conteúdo principal
+                main_content,
+                # Botões posicionados no canto inferior direito
+                ft.Container(
+                    content=ft.Row([
+                        ft.IconButton(
+                            icon=ft.Icons.FAVORITE_BORDER,
+                            selected_icon=ft.Icons.FAVORITE,
+                            on_click=toggle_favorite,
+                            tooltip="Favoritar",
+                            selected=is_favorite.current,  # Usar o estado real do favorito
+                            
+                        ),
+                        ft.ElevatedButton(
+                            "Salvar",
+                            on_click=save_score,
+                            icon=ft.Icons.SAVE,
+                            style=ft.ButtonStyle(
+                                shape=ft.RoundedRectangleBorder(radius=8)
+                            )
+                        ),
+                    ], 
+                    alignment=ft.MainAxisAlignment.END,
+                    tight=True
+                    ),
+                    right=0,
+                    bottom=0,
+                )
+            ], expand=True),
+            padding=15,
+            border_radius=12
+        )
+
+        card = ft.Card(
+            content=card_content,
+            elevation=2,
+            margin=ft.margin.symmetric(vertical=5, horizontal=0),
+            color=get_current_theme_colors(page).get('card_background')
+        )
+        
+        # Anexar dados necessários ao card
+        card.data = {
+            "supplier_id": supplier_id,
+            "score_sliders": score_sliders,
+            "score_texts": score_texts,
+            "comment_field": comment_field
+        }
+        
+        return card
+
+    def search_suppliers():
+        """Versão otimizada da busca de fornecedores."""
+        if not search_field_ref.current:
+            return
+            
+        search_term = search_field_ref.current.value.strip()
+        bu_val = selected_bu.current.value if selected_bu.current else None
+
+        print(f"Pesquisando por: '{search_term}', BU: {bu_val}")
+
+        # Limpar resultados anteriores
+        results_list.controls.clear()
+        results_list.update()
+
+        if not search_term and (not bu_val or not bu_val.strip()):
+            return
+
+        if not db_conn:
+            results_list.controls.append(
+                ft.Container(
+                    ft.Text("Erro: Não foi possível conectar ao banco de dados.", color="red"),
+                    padding=20
+                )
+            )
+            results_list.update()
+            return
+
+        try:
+            base_query = """
+                SELECT supplier_id, vendor_name, BU, supplier_status, supplier_number
+                FROM supplier_database_table
+            """
+            where_clauses = []
+            params = []
+
+            if search_term:
+                where_clauses.append("(vendor_name LIKE ? OR supplier_id LIKE ?)")
+                params.extend([f"%{search_term}%", f"%{search_term}%"])
+
+            if bu_val and bu_val.strip():
+                where_clauses.append("BU LIKE ?")
+                params.append(f"%{bu_val.strip()}%")
+
+            query = f"{base_query} WHERE {' AND '.join(where_clauses)} ORDER BY vendor_name LIMIT 10"
+            
+            print(f"Executando query: {query}")
+            print(f"Parâmetros: {params}")
+
+            cursor = db_conn.cursor()
+            cursor.execute(query, params)
+            records = cursor.fetchall()
+            
+            print(f"Encontrados {len(records)} registros")
+            
+            if not records:
+                results_list.controls.append(
+                    ft.Container(
+                        ft.Text("Nenhum resultado encontrado.", italic=True, size=16),
+                        alignment=ft.alignment.center,
+                        padding=40
+                    )
+                )
+            else:
+                # Adicionar cada card individualmente
+                for i, record in enumerate(records):
+                    print(f"Criando card {i+1}/{len(records)}: {record[1]}")
+                    try:
+                        card = create_result_widget(record)
+                        results_list.controls.append(card)
+                    except Exception as card_error:
+                        print(f"Erro ao criar card para {record[1]}: {card_error}")
+                        continue
+            
+        except sqlite3.Error as db_error:
+            error_msg = f"Erro no banco de dados: {db_error}"
+            print(error_msg)
+            results_list.controls.append(
+                ft.Container(
+                    ft.Text(error_msg, color="red"),
+                    padding=20
+                )
+            )
+        except Exception as e:
+            error_msg = f"Erro inesperado: {e}"
+            print(error_msg)
+            results_list.controls.append(
+                ft.Container(
+                    ft.Text(error_msg, color="red"),
+                    padding=20
+                )
+            )
+
+        # Atualizar a lista
+        results_list.update()
+        
+        # Carregar scores após criar os cards
+        if results_list.controls and selected_month.current and selected_year.current:
+            load_scores()
+
+    # --- Fim: Lógica do Banco de Dados e Pesquisa ---
+
+    # --- Início: Lógica e Controles da Aba Score ---
+
+    results_list = ft.ListView(expand=True, spacing=10, padding=20)
+
+    # Conteúdo da aba Score
+    score_form = ft.Column(
+        controls=[
+            ft.TextField(
+                hint_text="Pesquisar por nome ou ID do fornecedor...",
+                prefix_icon=ft.Icons.SEARCH,
+                border_radius=8,
+                on_change=lambda e: search_suppliers(),
+                ref=search_field_ref
+            ),
+            ft.Row(
+                controls=[
+                    ft.TextField(label="PO", expand=True, border_radius=8),
+                    ft.TextField(
+                        label="BU", 
+                        expand=True, 
+                        border_radius=8, 
+                        ref=selected_bu, 
+                        on_change=lambda e: search_suppliers()
+                    ),
+                    ft.Dropdown(
+                        label="Mês", 
+                        options=month_options, 
+                        ref=selected_month, 
+                        width=120, 
+                        on_change=on_month_year_change
+                    ),
+                    ft.Dropdown(
+                        label="Ano", 
+                        options=year_options, 
+                        ref=selected_year, 
+                        width=120, 
+                        on_change=on_month_year_change
+                    ),
+                ],
+                spacing=10,
+            ),
+        ],
+        spacing=15,
+        #bgcolor="#162FB9" if page.theme_mode == ft.ThemeMode.DARK and page.theme is not None else None,
+    )
+
+    score_view_content = ft.Card(
+        content=ft.Container(
+            content=score_form, 
+            padding=15,
+            bgcolor=get_current_theme_colors(page).get('field_background'),
+            border_radius=8
+        ),
+        width=600,
+        elevation=2
+    )
+
+    # --- Fim: Lógica e Controles da Aba Score ---
+
+    # --- Início: Lógica e Controles da Aba Configs ---
+
+    # Estado para controlar qual sub-aba está selecionada
+    selected_config_tab = ft.Ref()
+    selected_config_tab.current = 0
+
+    def set_config_tab(idx):
+        def handler(e):
+            selected_config_tab.current = idx
+            themes_content.visible = idx == 0
+            suppliers_content.visible = idx == 1
+            criteria_content.visible = idx == 2
+            users_content.visible = idx == 3
+            lists_content.visible = idx == 4
+            log_content.visible = idx == 5
+            update_config_tabs()
+            page.update()
+        return handler
+
+    def config_tab_item(icon, text, idx):
+        is_selected = selected_config_tab.current == idx
+        colors = get_current_theme_colors(page)
+        return ft.Container(
+            content=ft.Column([
+                ft.Icon(icon, color=colors['primary'] if is_selected else colors['on_surface'], size=24),
+                ft.Text(text, size=12, weight="bold" if is_selected else "normal",
+                       color=colors['primary'] if is_selected else colors['on_surface'])
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=5),
+            padding=ft.padding.symmetric(horizontal=15, vertical=10),
+            border_radius=8,
+            bgcolor=colors['primary_container'] if is_selected else None,
+            on_click=set_config_tab(idx),
+            animate=200,
+        )
+
+    def update_config_tabs():
+        config_tabs_row.controls = [
+            config_tab_item(ft.Icons.PALETTE, "Themes", 0),
+            config_tab_item(ft.Icons.BUSINESS, "Suppliers", 1),
+            config_tab_item(ft.Icons.TUNE, "Criteria", 2),
+            config_tab_item(ft.Icons.PEOPLE, "Users", 3),
+            config_tab_item(ft.Icons.LIST, "Lists", 4),
+            config_tab_item(ft.Icons.HISTORY, "Log", 5),
+        ]
+        config_tabs_row.update()
+
+    def update_all_comboboxes():
+        """Recarrega opções dinâmicas para todos os Dropdowns do app."""
+        try:
+            # Carregar opções de DB
+            bu_opts = load_list_options('business_unit_table', 'bu')
+            planner_opts = load_list_options('planner_table', 'alias')
+            continuity_opts = load_list_options('continuity_table', 'alias')
+            sourcing_opts = load_list_options('sourcing_table', 'alias')
+            sqie_opts = load_list_options('sqie_table', 'alias')
+
+            # Atualizar UI de listas (se existir) e forçar recarregamento das listas exibidas
+            for k in lists_controls.keys():
+                refresh_list_ui(k)
+            page.update()
+        except Exception as ex:
+            print(f"Erro ao atualizar comboboxes: {ex}")
+
+    # RadioGroup para seleção de tema
+    theme_radio_group = ft.RadioGroup(
+        content=ft.Column([
+            ft.Radio(value="white", label="Tema Claro"),
+            ft.Radio(value="dark", label="Tema Escuro"),
+            ft.Radio(value="dracula", label="Tema Dracula"),
+        ]),
+        value="white",
+        on_change=theme_changed,
+    )
+
+    # Controle de duração do toast
+    toast_duration_slider = ft.Slider(
+        min=1,
+        max=10,
+        divisions=9,
+        value=app_settings.get('toast_duration', 3),
+        label="Duração: {value}s",
+        width=300,
+    )
+    
+    def update_toast_duration(e):
+        global app_settings
+        new_duration = int(e.control.value)
+        app_settings['toast_duration'] = new_duration
+        save_app_settings(app_settings)
+        show_toast(f"⚙️ Duração do toast alterada para {new_duration}s", "blue")
+    
+    toast_duration_slider.on_change = update_toast_duration
+
+    # Conteúdo da sub-aba Themes
+    themes_content = ft.Container(
+        content=ft.Column([
+            ft.Text("Configuração de Tema", size=20, weight="bold"),
+            ft.Divider(),
+            theme_radio_group,
+            ft.Divider(),
+            ft.Text("Configurações de Interface", size=16, weight="bold"),
+            ft.Row([
+                ft.Text("Duração das notificações (toast):"),
+                toast_duration_slider,
+            ], alignment=ft.MainAxisAlignment.START),
+        ], spacing=15),
+        padding=20,
+        visible=True
+    )
+
+    # ---------- Sub-aba Lists dentro de Configs (gerenciar opções dinâmicas) ----------
+    # Criar títulos fixos fora do scroll
+    lists_header = ft.Column([
+        ft.Text("Gerenciar Listas de Opções", size=20, weight="bold"),
+        ft.Text("Configure as opções disponíveis nos dropdowns dos suppliers", size=14, color="on_surface_variant"),
+        ft.Divider(height=2),
+    ], spacing=8)
+    
+    # Criar ListView apenas para as ExpansionTiles
+    lists_main_column = ft.ListView([], spacing=8, expand=True)
+
+    lists_content = ft.Container(
+        content=ft.Column([
+            lists_header,
+            ft.Container(
+                content=lists_main_column,
+                expand=True
+            )
+        ], spacing=10),
+        padding=ft.padding.all(20),
+        visible=False,
+        expand=True
+    )
+
+    # Estruturas de UI para cada lista (controls) com feedback e botões de delete
+    lists_controls = {
+        'sqie': {
+            'input': ft.TextField(label='Nome SQIE', expand=True, on_change=lambda e: validate_input_exists('sqie')),
+            'alias': ft.TextField(label='Alias SQIE', width=200, on_change=lambda e: validate_input_exists('sqie')),
+            'email': ft.TextField(label='Email SQIE', expand=True, on_change=lambda e: validate_input_exists('sqie')),
+            'list': ft.Column(spacing=2),
+            'feedback': ft.Text(''),
+            'selected_item': None
+        },
+        'continuity': {
+            'input': ft.TextField(label='Nome Continuity', expand=True, on_change=lambda e: validate_input_exists('continuity')),
+            'alias': ft.TextField(label='Alias Continuity', width=200, on_change=lambda e: validate_input_exists('continuity')),
+            'email': ft.TextField(label='Email Continuity', expand=True, on_change=lambda e: validate_input_exists('continuity')),
+            'list': ft.Column(spacing=2),
+            'feedback': ft.Text(''),
+            'selected_item': None
+        },
+        'planner': {
+            'input': ft.TextField(label='Nome Planner', expand=True, on_change=lambda e: validate_input_exists('planner')),
+            'alias': ft.TextField(label='Alias Planner', width=200, on_change=lambda e: validate_input_exists('planner')),
+            'email': ft.TextField(label='Email Planner', expand=True, on_change=lambda e: validate_input_exists('planner')),
+            'list': ft.Column(spacing=2),
+            'feedback': ft.Text(''),
+            'selected_item': None
+        },
+        'sourcing': {
+            'input': ft.TextField(label='Nome Sourcing', expand=True, on_change=lambda e: validate_input_exists('sourcing')),
+            'alias': ft.TextField(label='Alias Sourcing', width=200, on_change=lambda e: validate_input_exists('sourcing')),
+            'email': ft.TextField(label='Email Sourcing', expand=True, on_change=lambda e: validate_input_exists('sourcing')),
+            'list': ft.Column(spacing=2),
+            'feedback': ft.Text(''),
+            'selected_item': None
+        },
+        'bu': {
+            'input': ft.TextField(label='Nome BU', expand=True, on_change=lambda e: validate_input_exists('bu')),
+            'list': ft.Column(spacing=2),
+            'feedback': ft.Text(''),
+            'selected_item': None
+        },
+        'category': {
+            'input': ft.TextField(label='Nome Category', expand=True, on_change=lambda e: validate_input_exists('category')),
+            'list': ft.Column(spacing=2),
+            'feedback': ft.Text(''),
+            'selected_item': None
+        },
+    }
+
+    def refresh_list_ui(key):
+        try:
+            # Mapear tabelas e colunas
+            table_map = {
+                'sqie': ('sqie_table', 'alias'),
+                'continuity': ('continuity_table', 'alias'),
+                'planner': ('planner_table', 'alias'),
+                'sourcing': ('sourcing_table', 'alias'),
+                'bu': ('business_unit_table', 'bu'),
+                'category': ('categories_table', 'category')
+            }
+            
+            if key in table_map:
+                table_name, column_name = table_map[key]
+                # Usar nova função para dados completos
+                items = load_list_items_full(table_name)
+                col = lists_controls[key]['list']
+                col.controls.clear()
+                
+                # Se não há itens, mostrar mensagem
+                if not items:
+                    col.controls.append(
+                        ft.Container(
+                            content=ft.Text(
+                                "Nenhum item adicionado",
+                                color="outline",
+                                italic=True,
+                                text_align=ft.TextAlign.CENTER
+                            ),
+                            alignment=ft.alignment.center,
+                            padding=10
+                        )
+                    )
+                else:
+                    # Adicionar cada item mantendo o estilo da load_all_lists_data
+                    for item in items:
+                        alias = item["alias"]
+                        display_text = item["display"]
+                        is_selected = lists_controls[key]['selected_item'] == alias
+                        colors = get_current_theme_colors(page)
+                        
+                        # Separar as linhas do display_text
+                        lines = display_text.split('\n')
+                        line1 = lines[0] if lines else display_text
+                        line2 = lines[1] if len(lines) > 1 else ""
+                        
+                        col.controls.append(
+                            ft.ListTile(
+                                title=ft.Text(
+                                    line1, 
+                                    size=14, 
+                                    weight="bold",
+                                    color=colors['primary'] if is_selected else colors['on_surface']
+                                ),
+                                subtitle=ft.Text(
+                                    line2, 
+                                    size=12, 
+                                    color="outline"
+                                ) if line2 else None,
+                                content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                dense=True,
+                                on_click=lambda e, k=key, v=alias: select_list_item(k, v),
+                                selected=is_selected,
+                                bgcolor=colors['primary_container'] if is_selected else None
+                            )
+                        )
+                        
+        except Exception as ex:
+            print(f"Erro ao atualizar UI da lista {key}: {ex}")
+
+    def delete_alias_handler(table, alias_col, value=None):
+        try:
+            # Se não foi fornecido um valor, usar o item selecionado
+            if not value:
+                key = table.replace('_table', '')
+                if key in lists_controls and lists_controls[key]['selected_item']:
+                    value = lists_controls[key]['selected_item']
+                else:
+                    page.snack_bar = ft.SnackBar(ft.Text("❌ Selecione um item da lista para excluir"))
+                    page.snack_bar.open = True
+                    page.update()
+                    return
+            
+            # Mapear nomes amigáveis dos tipos de lista
+            list_type_names = {
+                'sqie_table': 'SQIE',
+                'continuity_table': 'Continuity',
+                'planner_table': 'Planner',
+                'sourcing_table': 'Sourcing',
+                'business_unit_table': 'Business Unit',
+                'categories_table': 'Categories'
+            }
+            
+            list_type = list_type_names.get(table, table)
+            
+            # Função para confirmar e executar a exclusão
+            def confirm_delete(e):
+                try:
+                    delete_list_item_by_alias(table, alias_col, value)
+                    
+                    # Limpar seleção após exclusão
+                    key = table.replace('_table', '')
+                    if key in lists_controls:
+                        lists_controls[key]['selected_item'] = None
+                    
+                    # atualizar todas as comboboxes e a UI
+                    for k in lists_controls.keys():
+                        refresh_list_ui(k)
+                    update_all_comboboxes()
+                    # atualizar lista de suppliers (reconstruir cards)
+                    try:
+                        search_suppliers_config()
+                    except Exception:
+                        pass
+                    
+                    # Fechar dialog
+                    page.close(dialog)
+                    
+                    page.snack_bar = ft.SnackBar(ft.Text(f"✅ Item '{value}' removido de {list_type}"))
+                    page.snack_bar.open = True
+                    page.update()
+                    
+                except Exception as ex:
+                    # Fechar dialog mesmo se der erro
+                    page.close(dialog)
+                    
+                    # mostrar mensagem amigável
+                    import sqlite3 as _sqlite
+                    if isinstance(ex, _sqlite.IntegrityError):
+                        page.snack_bar = ft.SnackBar(ft.Text(f"❌ Não foi possível excluir '{value}': restrição de integridade."))
+                    else:
+                        page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao deletar '{value}': {ex}"))
+                    page.snack_bar.open = True
+                    page.update()
+                    print(f"Erro ao deletar {value} em {table}: {ex}")
+            
+            # Função para cancelar
+            def cancel_delete(e):
+                page.close(dialog)
+                page.update()
+            
+            # Criar e mostrar dialog de confirmação
+            dialog = DeleteListItemConfirmationDialog(
+                item_name=value,
+                item_type=list_type,
+                on_confirm=confirm_delete,
+                on_cancel=cancel_delete,
+                scale_func=lambda x: x
+            )
+            
+            page.open(dialog)
+            page.update()
+            
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao tentar excluir item: {ex}"))
+            page.snack_bar.open = True
+            page.update()
+            print(f"Erro geral no delete_alias_handler: {ex}")
+
+    def validate_input_exists(key):
+        """Valida se o valor digitado no input (ou alias) já existe na tabela correspondente."""
+        try:
+            if key == 'sqie':
+                val_alias = lists_controls['sqie']['alias'].value.strip().upper() if lists_controls['sqie']['alias'].value else ''
+                val = val_alias or lists_controls['sqie']['input'].value.strip()
+                rows = load_list_options('sqie_table','alias')
+                exists = val in rows
+                fb = lists_controls['sqie']['feedback']
+                if exists:
+                    fb.value = f"Já existe: {val}"
+                    fb.color = 'red'
+                else:
+                    fb.value = f"Disponível: {val}"
+                    fb.color = 'green'
+                fb.visible = True
+            elif key == 'continuity':
+                val_alias = lists_controls['continuity']['alias'].value.strip().upper() if lists_controls['continuity']['alias'].value else ''
+                val = val_alias or lists_controls['continuity']['input'].value.strip()
+                rows = load_list_options('continuity_table','alias')
+                exists = val in rows
+                fb = lists_controls['continuity']['feedback']
+                fb.value = (f"Já existe: {val}" if exists else f"Disponível: {val}")
+                fb.color = 'red' if exists else 'green'
+                fb.visible = True
+            elif key == 'planner':
+                val_alias = lists_controls['planner']['alias'].value.strip().upper() if lists_controls['planner']['alias'].value else ''
+                val = val_alias or lists_controls['planner']['input'].value.strip()
+                rows = load_list_options('planner_table','alias')
+                exists = val in rows
+                fb = lists_controls['planner']['feedback']
+                fb.value = (f"Já existe: {val}" if exists else f"Disponível: {val}")
+                fb.color = 'red' if exists else 'green'
+                fb.visible = True
+            elif key == 'sourcing':
+                val_alias = lists_controls['sourcing']['alias'].value.strip().upper() if lists_controls['sourcing']['alias'].value else ''
+                val = val_alias or lists_controls['sourcing']['input'].value.strip()
+                rows = load_list_options('sourcing_table','alias')
+                exists = val in rows
+                fb = lists_controls['sourcing']['feedback']
+                fb.value = (f"Já existe: {val}" if exists else f"Disponível: {val}")
+                fb.color = 'red' if exists else 'green'
+                fb.visible = True
+            elif key == 'bu':
+                val = lists_controls['bu']['input'].value.strip()
+                rows = load_list_options('business_unit_table','bu')
+                exists = val in rows
+                fb = lists_controls['bu']['feedback']
+                fb.value = (f"Já existe: {val}" if exists else f"Disponível: {val}")
+                fb.color = 'red' if exists else 'green'
+                fb.visible = True
+            elif key == 'category':
+                val = lists_controls['category']['input'].value.strip()
+                rows = load_list_options('categories_table','category')
+                exists = val in rows
+                fb = lists_controls['category']['feedback']
+                fb.value = (f"Já existe: {val}" if exists else f"Disponível: {val}")
+                fb.color = 'red' if exists else 'green'
+                fb.visible = True
+            page.update()
+        except Exception as ex:
+            print(f"Erro na validação de {key}: {ex}")
+
+    def add_alias_handler_sqie(e):
+        name = lists_controls['sqie']['input'].value.strip()
+        alias = lists_controls['sqie']['alias'].value.strip().upper()
+        email = lists_controls['sqie']['email'].value.strip()
+        
+        if not name or not alias or not email:
+            lists_controls['sqie']['feedback'].value = 'Informe nome, alias e email para SQIE'
+            lists_controls['sqie']['feedback'].color = 'red'
+            lists_controls['sqie']['feedback'].visible = True
+            page.update()
+            return
+        try:
+            insert_list_item('sqie_table', ['name','alias','email','register_date','registered_by'], (name, alias, email, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
+            lists_controls['sqie']['input'].value = ''
+            lists_controls['sqie']['alias'].value = ''
+            lists_controls['sqie']['email'].value = ''
+            refresh_list_ui('sqie')
+            update_all_comboboxes()
+            try:
+                search_suppliers_config()
+            except Exception:
+                pass
+            lists_controls['sqie']['feedback'].value = f"SQIE '{alias}' adicionado"
+            lists_controls['sqie']['feedback'].color = 'green'
+            lists_controls['sqie']['feedback'].visible = True
+            page.snack_bar = ft.SnackBar(ft.Text(f"✅ SQIE '{alias}' adicionado com sucesso"))
+            page.snack_bar.open = True
+            page.update()
+        except Exception as ex:
+            import sqlite3 as _sqlite
+            if isinstance(ex, _sqlite.IntegrityError):
+                lists_controls['sqie']['feedback'].value = f"Alias '{alias}' já existe"
+                lists_controls['sqie']['feedback'].color = 'red'
+                lists_controls['sqie']['feedback'].visible = True
+                page.update()
+            else:
+                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao inserir sqie: {ex}"))
+                page.snack_bar.open = True
+                page.update()
+            print(f"Erro ao inserir sqie: {ex}")
+        except Exception as ex:
+            print(f"Erro ao inserir sqie: {ex}")
+
+    def add_alias_handler_generic(table, input_field, alias_field=None):
+        name = input_field.value.strip()
+        if alias_field:
+            alias = alias_field.value.strip().upper()
+            if not name or not alias:
+                print("Informe name e alias")
+                return
+        else:
+            if not name:
+                print("Informe nome")
+                return
+        try:
+            if table == 'continuity_table':
+                email = lists_controls['continuity']['email'].value.strip()
+                if not email:
+                    lists_controls['continuity']['feedback'].value = 'Informe nome, alias e email para Continuity'
+                    lists_controls['continuity']['feedback'].color = 'red'
+                    lists_controls['continuity']['feedback'].visible = True
+                    page.update()
+                    return
+                insert_list_item(table, ['name','alias','email','register_date','registered_by'], (name, alias, email, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
+                lists_controls['continuity']['email'].value = ''
+            elif table == 'planner_table':
+                email = lists_controls['planner']['email'].value.strip()
+                if not email:
+                    lists_controls['planner']['feedback'].value = 'Informe nome, alias e email para Planner'
+                    lists_controls['planner']['feedback'].color = 'red'
+                    lists_controls['planner']['feedback'].visible = True
+                    page.update()
+                    return
+                insert_list_item(table, ['name','alias','email','register_date','registered_by'], (name, alias, email, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
+                lists_controls['planner']['email'].value = ''
+            elif table == 'sourcing_table':
+                email = lists_controls['sourcing']['email'].value.strip()
+                if not email:
+                    lists_controls['sourcing']['feedback'].value = 'Informe nome, alias e email para Sourcing'
+                    lists_controls['sourcing']['feedback'].color = 'red'
+                    lists_controls['sourcing']['feedback'].visible = True
+                    page.update()
+                    return
+                insert_list_item(table, ['name','alias','email','register_date','registered_by'], (name, alias, email, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
+                lists_controls['sourcing']['email'].value = ''
+            elif table == 'business_unit_table':
+                insert_list_item(table, ['bu','register_date','registered_by'], (name, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
+            elif table == 'categories_table':
+                insert_list_item(table, ['category','register_date','registered_by'], (name, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
+            
+            input_field.value = ''
+            if alias_field:
+                alias_field.value = ''
+            refresh_list_ui(table.replace('_table',''))
+            update_all_comboboxes()
+            try:
+                search_suppliers_config()
+            except Exception:
+                pass
+            # feedback inline
+            key = table.replace('_table','')
+            if key in lists_controls:
+                lists_controls[key]['feedback'].value = f"Item adicionado em {key}"
+                lists_controls[key]['feedback'].color = 'green'
+                lists_controls[key]['feedback'].visible = True
+                page.snack_bar = ft.SnackBar(ft.Text(f"✅ Item adicionado com sucesso em {key}"))
+                page.snack_bar.open = True
+                page.update()
+        except Exception as ex:
+            import sqlite3 as _sqlite
+            if isinstance(ex, _sqlite.IntegrityError):
+                key = table.replace('_table','')
+                if key in lists_controls:
+                    lists_controls[key]['feedback'].value = f"Item já existe"
+                    lists_controls[key]['feedback'].color = 'red'
+                    lists_controls[key]['feedback'].visible = True
+                    page.update()
+            else:
+                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao inserir item: {ex}"))
+                page.snack_bar.open = True
+                page.update()
+            print(f"Erro ao inserir item em {table}: {ex}")
+            page.update()
+        except Exception as ex:
+            import sqlite3 as _sqlite
+            if isinstance(ex, _sqlite.IntegrityError):
+                key = table.replace('_table','')
+                if key in lists_controls:
+                    lists_controls[key]['feedback'].value = f"Item já existe em {key}"
+                    lists_controls[key]['feedback'].color = 'red'
+                    lists_controls[key]['feedback'].visible = True
+                    page.update()
+            else:
+                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao inserir em {table}: {ex}"))
+                page.snack_bar.open = True
+                page.update()
+            print(f"Erro ao inserir em {table}: {ex}")
+        except Exception as ex:
+            print(f"Erro ao inserir em {table}: {ex}")
+
+    # Criar layout vertical simples ao invés de GridView
+        ft.Container(
+            content=ft.Column([
+                # Header
+                ft.Row([
+                    ft.Icon(ft.Icons.ASSIGNMENT, size=20, color="primary"),
+                    ft.Text('SQIE Classification', weight='bold', size=16)
+                ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                
+                # Inputs
+                ft.Row([
+                    lists_controls['sqie']['input'], 
+                    lists_controls['sqie']['alias']
+                ], spacing=8),
+                
+                # Feedback
+                lists_controls['sqie']['feedback'],
+                
+                # Buttons
+                ft.Row([
+                    ft.ElevatedButton(
+                        'Adicionar', 
+                        on_click=add_alias_handler_sqie,
+                        icon=ft.Icons.ADD
+                    ),
+                    ft.OutlinedButton(
+                        'Excluir', 
+                        on_click=lambda e: delete_alias_handler('sqie_table','alias', lists_controls['sqie']['alias'].value.strip().upper() if lists_controls['sqie']['alias'].value else lists_controls['sqie']['input'].value.strip()),
+                        icon=ft.Icons.DELETE
+                    )
+                ], spacing=8),
+                
+                # Divider
+                ft.Divider(height=1),
+                
+                # Lista de itens com scroll
+                ft.Container(
+                    content=lists_controls['sqie']['list'], 
+                    expand=True,
+                    padding=ft.padding.all(6),
+                    border=ft.border.all(1, "outline_variant"),
+                    border_radius=4,
+                    bgcolor="surface"
+                )
+            ], spacing=10),
+            padding=12,
+            border=ft.border.all(1, 'outline'),
+            border_radius=8,
+            bgcolor='surface_variant'
+        )
+
+    # Popular listas iniciais
+        ft.Container(
+            content=ft.Column([
+                # Header
+                ft.Row([
+                    ft.Icon(ft.Icons.TIMELINE, size=20, color="primary"),
+                    ft.Text('Continuity Level', weight='bold', size=16)
+                ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                
+                # Inputs
+                ft.Row([
+                    lists_controls['continuity']['input'], 
+                    lists_controls['continuity']['alias']
+                ], spacing=8),
+                
+                # Feedback
+                lists_controls['continuity']['feedback'],
+                
+                # Buttons
+                ft.Row([
+                    ft.ElevatedButton(
+                        'Adicionar', 
+                        on_click=lambda e: add_alias_handler_generic('continuity_table', lists_controls['continuity']['input'], lists_controls['continuity']['alias']),
+                        icon=ft.Icons.ADD
+                    ),
+                    ft.OutlinedButton(
+                        'Excluir', 
+                        on_click=lambda e: delete_alias_handler('continuity_table','alias', lists_controls['continuity']['alias'].value.strip().upper() if lists_controls['continuity']['alias'].value else lists_controls['continuity']['input'].value.strip()),
+                        icon=ft.Icons.DELETE
+                    )
+                ], spacing=8),
+                
+                # Divider
+                ft.Divider(height=1),
+                
+                # Lista de itens com scroll
+                ft.Container(
+                    content=lists_controls['continuity']['list'], 
+                    expand=True,
+                    padding=ft.padding.all(6),
+                    border=ft.border.all(1, "outline_variant"),
+                    border_radius=4,
+                    bgcolor="surface"
+                )
+            ], spacing=10),
+            padding=12,
+            border=ft.border.all(1, 'outline'),
+            border_radius=8,
+            bgcolor='surface_variant'
+        )
+
+    # Popular listas iniciais
+
+    # Criar layout vertical simples ao invés de GridView - adicionar diretamente à column principal
+    lists_main_column.controls.extend([
+        # SQIE
+        ft.ExpansionTile(
+            title=ft.Row([
+                ft.Icon(ft.Icons.ASSIGNMENT, size=20),
+                ft.Text('SQIE', weight='bold', size=16)
+            ], spacing=8),
+            controls=[
+                ft.Container(
+                    content=ft.Column([
+                            ft.Container(
+                                content=ft.Row([lists_controls['sqie']['input'], lists_controls['sqie']['alias']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                                width=700,
+                                alignment=ft.alignment.center
+                            ),
+                            ft.Container(height=8),  # Espaçamento entre linhas
+                            ft.Container(
+                                content=ft.Row([lists_controls['sqie']['email']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                                width=700,  # Mesma largura do Nome
+                                alignment=ft.alignment.center
+                            ),
+                            lists_controls['sqie']['feedback'],
+                            ft.Row([
+                                ft.ElevatedButton('Adicionar', on_click=add_alias_handler_sqie, icon=ft.Icons.ADD),
+                                ft.OutlinedButton('Excluir', 
+                                    on_click=lambda e: delete_alias_handler('sqie_table','alias'), 
+                                    icon=ft.Icons.DELETE)
+                            ], spacing=10),
+                            ft.Text("Itens:", size=12, weight="bold"),
+                            ft.Container(
+                                            content=lists_controls['sqie']['list'], 
+                                            expand=True,
+                                            border=ft.border.all(1, "outline_variant"),
+                                            border_radius=4,
+                                            padding=8
+                                        )
+                        ], spacing=8),
+                        padding=15
+                    )
+                ],
+                initially_expanded=True
+            ),
+            
+            # Continuity
+            ft.ExpansionTile(
+                title=ft.Row([
+                    ft.Icon(ft.Icons.TIMELINE, size=20),
+                    ft.Text('Continuity', weight='bold', size=16)
+                ], spacing=8),
+                controls=[
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Container(
+                                content=ft.Row([lists_controls['continuity']['input'], lists_controls['continuity']['alias']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                                width=700,
+                                alignment=ft.alignment.center
+                            ),
+                            ft.Container(height=8),  # Espaçamento entre linhas
+                            ft.Container(
+                                content=ft.Row([lists_controls['continuity']['email']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                                width=700,  # Mesma largura do Nome
+                                alignment=ft.alignment.center
+                            ),
+                            lists_controls['continuity']['feedback'],
+                            ft.Row([
+                                ft.ElevatedButton('Adicionar', 
+                                    on_click=lambda e: add_alias_handler_generic('continuity_table', lists_controls['continuity']['input'], lists_controls['continuity']['alias']), 
+                                    icon=ft.Icons.ADD),
+                                ft.OutlinedButton('Excluir', 
+                                    on_click=lambda e: delete_alias_handler('continuity_table','alias'), 
+                                    icon=ft.Icons.DELETE)
+                            ], spacing=10),
+                            ft.Text("Itens:", size=12, weight="bold"),
+                            ft.Container(
+                                content=lists_controls['continuity']['list'], 
+                                expand=True,
+                                border=ft.border.all(1, "outline_variant"),
+                                border_radius=4,
+                                padding=8
+                            )
+                        ], spacing=8),
+                        padding=15
+                    )
+                ]
+            ),
+            
+            # Planner
+            ft.ExpansionTile(
+                title=ft.Row([
+                    ft.Icon(ft.Icons.PERSON, size=20),
+                    ft.Text('Planner', weight='bold', size=16)
+                ], spacing=8),
+                controls=[
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Container(
+                                content=ft.Row([lists_controls['planner']['input'], lists_controls['planner']['alias']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                                width=700,
+                                alignment=ft.alignment.center
+                            ),
+                            ft.Container(height=8),  # Espaçamento entre linhas
+                            ft.Container(
+                                content=ft.Row([lists_controls['planner']['email']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                                width=700,  # Mesma largura do Nome
+                                alignment=ft.alignment.center
+                            ),
+                            lists_controls['planner']['feedback'],
+                            ft.Row([
+                                ft.ElevatedButton('Adicionar', 
+                                    on_click=lambda e: add_alias_handler_generic('planner_table', lists_controls['planner']['input'], lists_controls['planner']['alias']), 
+                                    icon=ft.Icons.ADD),
+                                ft.OutlinedButton('Excluir', 
+                                    on_click=lambda e: delete_alias_handler('planner_table','alias'), 
+                                    icon=ft.Icons.DELETE)
+                            ], spacing=10),
+                            ft.Text("Itens:", size=12, weight="bold"),
+                            ft.Container(
+                                content=lists_controls['planner']['list'], 
+                                expand=True,
+                                border=ft.border.all(1, "outline_variant"),
+                                border_radius=4,
+                                padding=8
+                            )
+                        ], spacing=8),
+                        padding=15
+                    )
+                ]
+            ),
+            
+            # Sourcing
+            ft.ExpansionTile(
+                title=ft.Row([
+                    ft.Icon(ft.Icons.PUBLIC, size=20),
+                    ft.Text('Sourcing', weight='bold', size=16)
+                ], spacing=8),
+                controls=[
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Container(
+                                content=ft.Row([lists_controls['sourcing']['input'], lists_controls['sourcing']['alias']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                                width=700,
+                                alignment=ft.alignment.center
+                            ),
+                            ft.Container(height=8),  # Espaçamento entre linhas
+                            ft.Container(
+                                content=ft.Row([lists_controls['sourcing']['email']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
+                                width=700,  # Mesma largura do Nome
+                                alignment=ft.alignment.center
+                            ),
+                            lists_controls['sourcing']['feedback'],
+                            ft.Row([
+                                ft.ElevatedButton('Adicionar', 
+                                    on_click=lambda e: add_alias_handler_generic('sourcing_table', lists_controls['sourcing']['input'], lists_controls['sourcing']['alias']), 
+                                    icon=ft.Icons.ADD),
+                                ft.OutlinedButton('Excluir', 
+                                    on_click=lambda e: delete_alias_handler('sourcing_table','alias'), 
+                                    icon=ft.Icons.DELETE)
+                            ], spacing=10),
+                            ft.Text("Itens:", size=12, weight="bold"),
+                            ft.Container(
+                                content=lists_controls['sourcing']['list'], 
+                                expand=True,
+                                border=ft.border.all(1, "outline_variant"),
+                                border_radius=4,
+                                padding=8
+                            )
+                        ], spacing=8),
+                        padding=15
+                    )
+                ]
+            ),
+            
+            # Business Unit
+            ft.ExpansionTile(
+                title=ft.Row([
+                    ft.Icon(ft.Icons.BUSINESS, size=20),
+                    ft.Text('Business Unit', weight='bold', size=16)
+                ], spacing=8),
+                controls=[
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Container(
+                                content=lists_controls['bu']['input'],
+                                width=600,
+                                alignment=ft.alignment.center
+                            ),
+                            lists_controls['bu']['feedback'],
+                            ft.Row([
+                                ft.ElevatedButton('Adicionar', 
+                                    on_click=lambda e: add_alias_handler_generic('business_unit_table', lists_controls['bu']['input']), 
+                                    icon=ft.Icons.ADD),
+                                ft.OutlinedButton('Excluir', 
+                                    on_click=lambda e: delete_alias_handler('business_unit_table','bu'), 
+                                    icon=ft.Icons.DELETE)
+                            ], spacing=10),
+                            ft.Text("Itens:", size=12, weight="bold"),
+                            ft.Container(
+                                content=lists_controls['bu']['list'], 
+                                expand=True,
+                                border=ft.border.all(1, "outline_variant"),
+                                border_radius=4,
+                                padding=8
+                            )
+                        ], spacing=8),
+                        padding=15
+                    )
+                ]
+            ),
+            
+            # Category
+            ft.ExpansionTile(
+                title=ft.Row([
+                    ft.Icon(ft.Icons.CATEGORY, size=20),
+                    ft.Text('Category', weight='bold', size=16)
+                ], spacing=8),
+                controls=[
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Container(
+                                content=lists_controls['category']['input'],
+                                width=600,
+                                alignment=ft.alignment.center
+                            ),
+                            lists_controls['category']['feedback'],
+                            ft.Row([
+                                ft.ElevatedButton('Adicionar', 
+                                    on_click=lambda e: add_alias_handler_generic('categories_table', lists_controls['category']['input']), 
+                                    icon=ft.Icons.ADD),
+                                ft.OutlinedButton('Excluir', 
+                                    on_click=lambda e: delete_alias_handler('categories_table','category'), 
+                                    icon=ft.Icons.DELETE)
+                            ], spacing=10),
+                            ft.Text("Itens:", size=12, weight="bold"),
+                            ft.Container(
+                                content=lists_controls['category']['list'], 
+                                expand=True,
+                                border=ft.border.all(1, "outline_variant"),
+                                border_radius=4,
+                                padding=8
+                            )
+                        ], spacing=8),
+                        padding=15
+                    )
+                ]
+            )
+    ])
+    
+    # lists_main_column é um ListView com expand=True — ele já fornece scroll adaptativo
+    
+    # Popular listas iniciais
+    for k in lists_controls.keys():
+        try:
+            refresh_list_ui(k)
+        except Exception as ex:
+            print(f"Erro ao popular lista {k}: {ex}")
+
+    # Lógica para gerenciamento de suppliers
+    suppliers_search_field_ref = ft.Ref()
+    suppliers_results_list = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO)
+
+    def create_supplier_card(record, page):
+        """Cria um card editável para um supplier."""
+        supplier_id = record[0] if len(record) > 0 else ""
+        vendor_name = record[1] if len(record) > 1 else ""
+        supplier_category = record[2] if len(record) > 2 else ""
+        bu = record[3] if len(record) > 3 else ""
+        supplier_name = record[4] if len(record) > 4 else ""
+        supplier_email = record[5] if len(record) > 5 else ""
+        supplier_number = record[6] if len(record) > 6 else ""
+        supplier_status = record[7] if len(record) > 7 else ""
+        planner = record[8] if len(record) > 8 else ""
+        continuity = record[9] if len(record) > 9 else ""
+        sourcing = record[10] if len(record) > 10 else ""
+        sqie = record[11] if len(record) > 11 else ""
+
+        print(f"Criando card de supplier para: {vendor_name} (ID: {supplier_id})")
+
+        # Campos editáveis
+        fields = {
+            "vendor_name": ft.TextField(label="Vendor Name", value=vendor_name, expand=True),
+            "supplier_category": ft.TextField(label="Category", value=supplier_category, expand=True),
+            "bu": ft.Dropdown(
+                label="BU (Business Unit)",
+                value=bu,
+                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('business_unit_table','bu'))],
+                expand=True
+            ),
+            "supplier_name": ft.TextField(label="Supplier Name", value=supplier_name, expand=True),
+            "supplier_email": ft.TextField(label="Email", value=supplier_email, expand=True),
+            "supplier_number": ft.TextField(label="Number", value=supplier_number, expand=True),
+            "supplier_status": ft.Dropdown(
+                label="Status",
+                value=supplier_status,
+                options=[ft.dropdown.Option(v) for v in ["Active","Inactive"]],
+                expand=True
+            ),
+            "planner": ft.Dropdown(
+                label="Planner",
+                value=planner,
+                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('planner_table','name'))],
+                expand=True
+            ),
+            "continuity": ft.Dropdown(
+                label="Continuity",
+                value=continuity,
+                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('continuity_table','name'))],
+                expand=True
+            ),
+            "sourcing": ft.Dropdown(
+                label="Sourcing",
+                value=sourcing,
+                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('sourcing_table','name'))],
+                expand=True
+            ),
+            "sqie": ft.Dropdown(
+                label="SQIE",
+                value=sqie,
+                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('sqie_table','name'))],
+                expand=True
+            ),
+        }
+
+        def show_snackbar(message):
+            """Exibe mensagem de feedback para o usuário."""
+            page.snack_bar = ft.SnackBar(ft.Text(message))
+            page.snack_bar.open = True
+            page.update()
+
+        def save_supplier(e):
+            """Salva ou atualiza dados do supplier no banco de dados."""
+            print(f"🔧 DEBUG: save_supplier chamada para supplier ID: {supplier_id}")
+            
+            if not db_conn:
+                show_snackbar("❌ Erro: Banco de dados não conectado.")
+                return
+
+            # Função auxiliar para tratar valores
+            def safe_strip(value):
+                if value is None:
+                    return ""
+                return str(value).strip()
+
+            # Validações básicas
+            if not safe_strip(fields["vendor_name"].value):
+                show_snackbar("❌ Campo Vendor Name é obrigatório!")
+                return
+            
+            if not safe_strip(fields["supplier_name"].value):
+                show_snackbar("❌ Campo Supplier Name é obrigatório!")
+                return
+
+            try:
+                print(f"🔧 DEBUG: Iniciando salvamento...")
+                e.control.disabled = True
+                e.control.text = "Salvando..."
+                page.update()
+
+                cursor = db_conn.cursor()
+                print(f"🔧 DEBUG: Cursor criado")
+                
+                # Verificar se o supplier existe
+                check_query = "SELECT COUNT(*) FROM supplier_database_table WHERE supplier_id = ?"
+                cursor.execute(check_query, (supplier_id,))
+                exists = cursor.fetchone()[0] > 0
+                print(f"🔧 DEBUG: Supplier exists: {exists}")
+                
+                if exists:
+                    # Atualizar registro existente
+                    update_query = """
+                        UPDATE supplier_database_table 
+                        SET vendor_name = ?, supplier_category = ?, bu = ?, supplier_name = ?,
+                            supplier_email = ?, supplier_number = ?, supplier_status = ?,
+                            planner = ?, continuity = ?, sourcing = ?, sqie = ?
+                        WHERE supplier_id = ?
+                    """
+                    cursor.execute(update_query, (
+                        safe_strip(fields["vendor_name"].value),
+                        safe_strip(fields["supplier_category"].value),
+                        safe_strip(fields["bu"].value),
+                        safe_strip(fields["supplier_name"].value),
+                        safe_strip(fields["supplier_email"].value),
+                        safe_strip(fields["supplier_number"].value),
+                        safe_strip(fields["supplier_status"].value),
+                        safe_strip(fields["planner"].value),
+                        safe_strip(fields["continuity"].value),
+                        safe_strip(fields["sourcing"].value),
+                        safe_strip(fields["sqie"].value),
+                        supplier_id
+                    ))
+                    action = "atualizado"
+                else:
+                    # Inserir novo registro
+                    insert_query = """
+                        INSERT INTO supplier_database_table 
+                        (supplier_id, vendor_name, supplier_category, bu, supplier_name,
+                         supplier_email, supplier_number, supplier_status, planner, 
+                         continuity, sourcing, sqie)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """
+                    cursor.execute(insert_query, (
+                        supplier_id,
+                        safe_strip(fields["vendor_name"].value),
+                        safe_strip(fields["supplier_category"].value),
+                        safe_strip(fields["bu"].value),
+                        safe_strip(fields["supplier_name"].value),
+                        safe_strip(fields["supplier_email"].value),
+                        safe_strip(fields["supplier_number"].value),
+                        safe_strip(fields["supplier_status"].value),
+                        safe_strip(fields["planner"].value),
+                        safe_strip(fields["continuity"].value),
+                        safe_strip(fields["sourcing"].value),
+                        safe_strip(fields["sqie"].value)
+                    ))
+                    action = "criado"
+                
+                db_conn.commit()
+                print(f"🔧 DEBUG: Dados commitados no banco")
+                show_snackbar(f"✅ Supplier {safe_strip(fields['vendor_name'].value)} {action} com sucesso!")
+                print(f"Supplier {supplier_id} {action}")
+
+            except Exception as ex:
+                show_toast(f"❌ Erro ao salvar: {str(ex)}", "red")
+                print(f"Erro ao salvar supplier: {ex}")
+            finally:
+                e.control.disabled = False
+                e.control.text = "Salvar"
+                page.update()
+
+        def delete_supplier(e):
+            """Deleta supplier após confirmação com código de 5 letras."""
+            print(f"🗑️ DEBUG: delete_supplier chamada para supplier ID: {supplier_id}")
+            
+            def handle_confirm(e):
+                """Callback para confirmar a exclusão"""
+                try:
+                    if not db_conn:
+                        show_snackbar("❌ Erro: Banco de dados não conectado.")
+                        return
+                    cursor = db_conn.cursor()
+                    cursor.execute("DELETE FROM supplier_score_records_table WHERE supplier_id = ?", (supplier_id,))
+                    cursor.execute("DELETE FROM favorites_table WHERE supplier_id = ?", (supplier_id,))
+                    cursor.execute("DELETE FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
+                    db_conn.commit()
+                    if card in suppliers_results_list.controls:
+                        suppliers_results_list.controls.remove(card)
+                    show_snackbar(f"✅ Supplier {vendor_name} deletado com sucesso!")
+                    print(f"Supplier {supplier_id} deletado com sucesso")
+                except Exception as ex:
+                    show_snackbar(f"❌ Erro ao deletar: {str(ex)}")
+                    print(f"Erro ao deletar supplier: {ex}")
+                page.close(delete_dialog)
+            
+            def handle_cancel(e):
+                """Callback para cancelar a exclusão"""
+                page.close(delete_dialog)
+            
+            # Criar o diálogo personalizado
+            delete_dialog = DeleteSupplierConfirmationDialog(
+                supplier_name=vendor_name,
+                supplier_id=supplier_id,
+                on_confirm=handle_confirm,
+                on_cancel=handle_cancel
+            )
+            
+            print(f"🗑️ DEBUG: Abrindo dialog de confirmação...")
+            page.open(delete_dialog)
+            print(f"🗑️ DEBUG: Dialog de confirmação aberto!")
+
+
+        # Criar botões APÓS definir as funções
+        actions_row = ft.Row([
+            ft.ElevatedButton("Salvar", on_click=save_supplier, icon=ft.Icons.SAVE),
+            ft.ElevatedButton("Excluir", on_click=delete_supplier, icon=ft.Icons.DELETE, color="red"),
+        ], alignment=ft.MainAxisAlignment.END, spacing=10)
+
+        # Layout do card
+        left_column = ft.Column([
+            ft.Text(f"ID: {supplier_id}", size=12, weight="bold", color="primary"),
+            ft.Row([fields["vendor_name"], fields["supplier_category"]], spacing=10),
+            ft.Row([fields["bu"], fields["supplier_name"]], spacing=10),
+            ft.Row([fields["supplier_email"], fields["supplier_number"]], spacing=10),
+        ], spacing=10, expand=True)
+
+        right_column = ft.Column([
+            fields["supplier_status"],
+            ft.Row([fields["planner"], fields["continuity"]], spacing=10),
+            ft.Row([fields["sourcing"], fields["sqie"]], spacing=10),
+        ], spacing=10, expand=True)
+
+        card = ft.Card(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([left_column, ft.VerticalDivider(), right_column], expand=True),
+                    ft.Divider(),
+                    actions_row
+                ], spacing=15),
+                padding=20
+            ),
+            elevation=2,
+            margin=ft.margin.symmetric(vertical=5),
+            color=get_current_theme_colors(page).get('card_background', 'surface_variant')
+        )
+
+        return card
+
+    def add_new_supplier(e):
+        """Abre dialog para adicionar um novo supplier."""
+        print("➕ DEBUG: add_new_supplier chamada")
+        
+        def show_snackbar(message):
+            """Exibe mensagem de feedback para o usuário."""
+            page.snack_bar = ft.SnackBar(ft.Text(message))
+            page.snack_bar.open = True
+            page.update()
+        
+        def handle_confirm(e):
+            """Callback para confirmar a criação do supplier"""
+            print("🔍 DEBUG: handle_confirm chamado")
+            
+            # Função auxiliar para tratar valores (TextField e Dropdown)
+            def safe_strip(value):
+                if value is None:
+                    return ""
+                return str(value).strip()
+                
+            def get_field_value(field):
+                """Obtém valor tanto de TextField quanto de Dropdown"""
+                if hasattr(field, 'value'):
+                    return safe_strip(field.value)
+                return ""
+            
+            if not db_conn:
+                print("🔍 DEBUG: Banco de dados não conectado")
+                show_snackbar("❌ Erro: Banco de dados não conectado.")
+                return
+            
+            print("🔍 DEBUG: Preparando para inserir no banco")
+            try:
+                cursor = db_conn.cursor()
+                
+                # Pegar valores dos campos
+                vendor_name = get_field_value(add_dialog.fields["vendor_name"])
+                print(f"🔍 DEBUG: Dados a inserir - vendor_name: '{vendor_name}'")
+                
+                # Inserir novo supplier (supplier_id será gerado automaticamente pelo banco)
+                insert_query = """
+                    INSERT INTO supplier_database_table 
+                    (vendor_name, supplier_category, bu, supplier_name,
+                     supplier_email, supplier_number, supplier_status, planner, 
+                     continuity, sourcing, sqie)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                
+                cursor.execute(insert_query, (
+                    get_field_value(add_dialog.fields["vendor_name"]),
+                    get_field_value(add_dialog.fields["supplier_category"]),
+                    get_field_value(add_dialog.fields["bu"]),
+                    get_field_value(add_dialog.fields["supplier_name"]),
+                    get_field_value(add_dialog.fields["supplier_email"]),
+                    get_field_value(add_dialog.fields["supplier_number"]),
+                    get_field_value(add_dialog.fields["supplier_status"]),
+                    get_field_value(add_dialog.fields["planner"]),
+                    get_field_value(add_dialog.fields["continuity"]),
+                    get_field_value(add_dialog.fields["sourcing"]),
+                    get_field_value(add_dialog.fields["sqie"])
+                ))
+                
+                db_conn.commit()
+                print("🔍 DEBUG: Dados inseridos com sucesso")
+                
+                # Atualizar lista de suppliers
+                search_suppliers_config()
+                
+                show_snackbar(f"✅ Supplier {vendor_name} criado com sucesso!")
+                page.close(add_dialog)
+                
+            except Exception as ex:
+                print(f"🔍 DEBUG: Erro ao inserir: {ex}")
+                show_snackbar(f"❌ Erro ao criar supplier: {str(ex)}")
+                print(f"Erro ao criar supplier: {ex}")
+        
+        def handle_cancel(e):
+            """Callback para cancelar a criação"""
+            page.close(add_dialog)
+        
+        # Preparar opções dinâmicas para os Dropdowns do diálogo
+        list_opts = {
+            'bu': load_list_options('business_unit_table','bu'),
+            'planner': load_list_options('planner_table','name'),
+            'continuity': load_list_options('continuity_table','name'),
+            'sourcing': load_list_options('sourcing_table','name'),
+            'sqie': load_list_options('sqie_table','name'),
+            'category': load_list_options('categories_table','category'),
+        }
+        
+        # Debug: verificar se as listas foram carregadas
+        print("📋 DEBUG: Opções carregadas para o diálogo:")
+        for key, options in list_opts.items():
+            print(f"  {key}: {options[:5]}{'...' if len(options) > 5 else ''} (total: {len(options)})")
+        
+
+        # Criar o diálogo personalizado
+        add_dialog = AddSupplierDialog(
+            on_confirm=handle_confirm,
+            on_cancel=handle_cancel,
+            list_options=list_opts
+        )
+        
+        # Aplicar cores do tema aos campos
+        current_colors = get_current_theme_colors(page)
+        field_bgcolor = current_colors.get('field_background')
+        for field_name, field in add_dialog.fields.items():
+            if hasattr(field, 'bgcolor'):
+                field.bgcolor = field_bgcolor
+        
+        print("➕ DEBUG: Abrindo dialog para adicionar supplier...")
+        page.open(add_dialog)
+        print("➕ DEBUG: Dialog para adicionar supplier aberto!")
+
+    def search_suppliers_config():
+        """Busca suppliers para edição na aba de configurações."""
+        if not suppliers_search_field_ref.current:
+            return
+            
+        search_term = suppliers_search_field_ref.current.value.strip()
+        
+        print(f"Buscando suppliers para edição: '{search_term}'")
+
+        suppliers_results_list.controls.clear()
+        page.update()
+
+        # Se o campo de pesquisa estiver vazio, limpar todos os cards e retornar
+        if not search_term:
+            print("Campo de pesquisa vazio, limpando todos os cards")
+            page.update()
+            return
+
+        if not db_conn:
+            suppliers_results_list.controls.append(
+                ft.Container(
+                    ft.Text("Erro: Não foi possível conectar ao banco de dados.", color="red"),
+                    padding=20
+                )
+            )
+            page.update()
+            return
+
+        try:
+            cursor = db_conn.cursor()
+
+            query = """
+                SELECT supplier_id, vendor_name, supplier_category, bu, supplier_name,
+                       supplier_email, supplier_number, supplier_status, planner, 
+                       continuity, sourcing, sqie
+                FROM supplier_database_table
+                WHERE (vendor_name LIKE ? OR supplier_id LIKE ? OR supplier_name LIKE ?)
+                ORDER BY vendor_name LIMIT 10
+            """
+            params = [f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"]
+
+            print(f"Executando query: {query}")
+            print(f"Params: {params}")
+            cursor.execute(query, params)
+            records = cursor.fetchall()
+            
+            print(f"Encontrados {len(records)} suppliers")
+            
+            if not records:
+                suppliers_results_list.controls.append(
+                    ft.Container(
+                        ft.Text("Nenhum supplier encontrado.", italic=True, size=16),
+                        alignment=ft.alignment.center,
+                        padding=40
+                    )
+                )
+            else:
+                for i, record in enumerate(records):
+                    print(f"Criando card {i+1}/{len(records)}: {record[1]}")
+                    try:
+                        card = create_supplier_card(record, page)
+                        suppliers_results_list.controls.append(card)
+                    except Exception as card_error:
+                        print(f"Erro ao criar card para {record[1]}: {card_error}")
+                        continue
+            
+        except sqlite3.Error as db_error:
+            error_msg = f"Erro no banco de dados: {db_error}"
+            print(error_msg)
+            suppliers_results_list.controls.append(
+                ft.Container(
+                    ft.Text(error_msg, color="red"),
+                    padding=20
+                )
+            )
+
+        page.update()
+
+    # Conteúdo da sub-aba Suppliers
+    suppliers_content = ft.Container(
+        content=ft.Column([
+            ft.Text("Gerenciamento de Fornecedores", size=20, weight="bold"),
+            ft.Divider(),
+            ft.Row([
+                ft.TextField(
+                    label="Buscar Supplier (Nome, ID ou Supplier Name)",
+                    hint_text="Digite para buscar...",
+                    prefix_icon=ft.Icons.SEARCH,
+                    expand=True,
+                    ref=suppliers_search_field_ref,
+                    on_change=lambda e: search_suppliers_config()
+                ),
+                ft.ElevatedButton("Novo Supplier", icon=ft.Icons.ADD_BUSINESS, on_click=add_new_supplier),
+            ], spacing=10),
+            ft.Container(height=10),
+            ft.Container(
+                content=suppliers_results_list,
+                height=500,
+                padding=20,
+            ),
+        ], spacing=15),
+        padding=20,
+        visible=False
+    )
+
+    # Controle para mostrar a soma total dos pesos
+    weight_sum_text = ft.Text("Soma dos pesos: 0.80", size=14, weight="bold", color="primary")
+    
+    # Função para atualizar o texto de um critério e a soma total
+    def update_criteria_text(criteria_name, slider_value, text_control):
+        text_control.value = f"{slider_value:.2f}"
+        text_control.update()
+        update_weight_sum()
+    
+    def update_weight_sum():
+        """Atualiza a exibição da soma total dos pesos em tempo real."""
+        total = nil_slider.value + otif_slider.value + pickup_slider.value + package_slider.value
+        weight_sum_text.value = f"Soma dos pesos: {total:.2f}"
+        
+        # Mudar cor baseado na soma
+        if abs(total - 1.0) <= 0.01:  # Muito próximo de 1.0
+            weight_sum_text.color = "green"
+        elif abs(total - 1.0) <= 0.05:  # Tolerável
+            weight_sum_text.color = "orange" 
+        else:  # Muito longe de 1.0
+            weight_sum_text.color = "red"
+        
+        weight_sum_text.update()
+
+    def auto_adjust_weights():
+        """Auto-ajusta os pesos para somarem exatamente 1.00, mantendo as proporções."""
+        current_total = nil_slider.value + otif_slider.value + pickup_slider.value + package_slider.value
+        
+        if current_total == 0:
+            # Se tudo for zero, distribuir igualmente
+            nil_slider.value = 0.25
+            otif_slider.value = 0.25
+            pickup_slider.value = 0.25
+            package_slider.value = 0.25
+        else:
+            # Manter proporções e ajustar para somar exatamente 1.00
+            factor = 1.0 / current_total
+            values = [
+                nil_slider.value * factor,
+                otif_slider.value * factor, 
+                pickup_slider.value * factor,
+                package_slider.value * factor
+            ]
+            
+            # Arredondar para 2 casas decimais
+            rounded_values = [round(v, 2) for v in values]
+            
+            # Ajustar pequenos erros de arredondamento
+            current_sum = sum(rounded_values)
+            if current_sum != 1.0:
+                diff = 1.0 - current_sum
+                # Adicionar/subtrair a diferença do maior valor
+                max_index = rounded_values.index(max(rounded_values))
+                rounded_values[max_index] = round(rounded_values[max_index] + diff, 2)
+            
+            # Aplicar valores ajustados
+            nil_slider.value = rounded_values[0]
+            otif_slider.value = rounded_values[1] 
+            pickup_slider.value = rounded_values[2]
+            package_slider.value = rounded_values[3]
+        
+        # Atualizar textos
+        nil_text.value = f"{nil_slider.value:.2f}"
+        otif_text.value = f"{otif_slider.value:.2f}"
+        pickup_text.value = f"{pickup_slider.value:.2f}"
+        package_text.value = f"{package_slider.value:.2f}"
+        
+        # Atualizar soma
+        update_weight_sum()
+        
+        # Atualizar UI
+        page.update()
+        
+        # Toast de sucesso
+        page.overlay.append(
+            ft.Container(
+                content=ft.Text("✅ Pesos auto-ajustados para somar 1.00!", 
+                               color="white", weight="bold"),
+                bgcolor="blue",
+                padding=10,
+                border_radius=5,
+                top=50,
+                right=20,
+                animate_opacity=300,
+            )
+        )
+        page.update()
+        
+        # Remover toast após 3 segundos
+        import threading
+        def remove_auto_toast():
+            import time
+            time.sleep(3)
+            if page.overlay:
+                page.overlay.pop()
+                page.update()
+        
+        threading.Thread(target=remove_auto_toast, daemon=True).start()
+
+    # Sliders dos critérios com nomes corretos (100 divisões para precisão de 0.01)
+    nil_text = ft.Text("0.20", size=12, width=60)
+    nil_slider = ft.Slider(
+        min=0, max=1, divisions=100, value=0.2,
+        on_change=lambda e: update_criteria_text("NIL", e.control.value, nil_text)
+    )
+    
+    otif_text = ft.Text("0.20", size=12, width=60)
+    otif_slider = ft.Slider(
+        min=0, max=1, divisions=100, value=0.2,
+        on_change=lambda e: update_criteria_text("OTIF", e.control.value, otif_text)
+    )
+    
+    pickup_text = ft.Text("0.20", size=12, width=60)
+    pickup_slider = ft.Slider(
+        min=0, max=1, divisions=100, value=0.2,
+        on_change=lambda e: update_criteria_text("Quality of Pick Up", e.control.value, pickup_text)
+    )
+    
+    package_text = ft.Text("0.20", size=12, width=60)
+    package_slider = ft.Slider(
+        min=0, max=1, divisions=100, value=0.2,
+        on_change=lambda e: update_criteria_text("Quality-Supplier Package", e.control.value, package_text)
+    )
+    
+    target_text = ft.Text("5.00", size=12, width=60)
+    target_slider = ft.Slider(
+        min=0, max=10, divisions=100, value=5.0,
+        on_change=lambda e: update_criteria_text("Target", e.control.value, target_text)
+    )
+
+    def update_criteria_settings():
+        """Atualiza os critérios na tabela criteria_table."""
+        print("🔄 Botão Update Criteria pressionado!")
+        
+        if not db_conn:
+            print("❌ Erro: Conexão com banco não disponível")
+            page.snack_bar = ft.SnackBar(ft.Text("❌ Erro: Conexão com banco não disponível"))
+            page.snack_bar.open = True
+            page.update()
+            return
+        
+        criteria_values = {
+            'NIL': nil_slider.value,
+            'OTIF': otif_slider.value,
+            'Quality of Pick Up': pickup_slider.value,
+            'Quality-Supplier Package': package_slider.value,
+            'Target': target_slider.value  # Target mantém escala 0-10
+        }
+        
+        print(f"📊 Valores coletados dos sliders:")
+        for name, value in criteria_values.items():
+            print(f"  {name}: {value}")
+        
+        # Validar soma apenas dos critérios de peso (excluindo Target que é escala diferente)
+        weight_criteria = ['NIL', 'OTIF', 'Quality of Pick Up', 'Quality-Supplier Package']
+        total_weight = sum(criteria_values[key] for key in weight_criteria)
+        
+        print(f"🧮 Soma dos pesos (sem Target): {total_weight}")
+        
+        if round(total_weight, 2) != 1.0:  # Deve ser exatamente 1.00
+            print(f"⚠️ Validação falhou: soma {total_weight:.2f} não é exatamente 1.00")
+            show_toast(f"❌ ERRO: A soma dos 4 pesos é {total_weight:.2f} - DEVE ser exatamente 1.00!", "red")
+            return
+        
+        try:
+            cur = db_conn.cursor()
+            print("🔄 Iniciando atualização no banco de dados...")
+            
+            # Atualizar cada critério na tabela criteria_table com 2 casas decimais
+            for criteria_name, value in criteria_values.items():
+                # Arredondar para 2 casas decimais antes de salvar
+                rounded_value = round(value, 2)
+                cur.execute("UPDATE criteria_table SET value = ? WHERE criteria_category = ?", 
+                          (str(rounded_value), criteria_name))
+                print(f"  ✅ Critério atualizado: {criteria_name} = {rounded_value}")
+            
+            db_conn.commit()
+            print("✅ Commit realizado com sucesso!")
+            
+            show_toast("✅ Critérios atualizados com sucesso!", "green")
+            
+        except Exception as ex:
+            print(f"❌ Erro ao atualizar critérios: {ex}")
+            page.snack_bar = ft.SnackBar(ft.Text("❌ Erro ao atualizar critérios!"))
+            page.snack_bar.open = True
+            page.update()
+
+    # Criar títulos fixos para Criteria (fora do scroll)
+    criteria_header = ft.Column([
+        ft.Text("Configuração de Critérios", size=20, weight="bold"),
+        ft.Text("Configure os pesos dos critérios de avaliação", size=14, color="on_surface_variant"),
+        ft.Divider(height=2),
+    ], spacing=8)
+    
+    # Criar conteúdo scrollável para Criteria
+    criteria_scrollable_content = ft.ListView([
+        ft.Container(
+            content=ft.Column([
+                ft.Text("⚠️ IMPORTANTE: Os 4 pesos (NIL+OTIF+Pickup+Package) DEVEM somar exatamente 1.00", 
+                       size=12, weight="bold", color="error"),
+                ft.Text("Target usa escala independente de 0-10", size=12, italic=True, color="outline"),
+                ft.Container(height=10),
+                weight_sum_text,
+                ft.Container(height=15),
+                
+                # Sliders para cada critério com nomes corretos
+                ft.Row([
+                    ft.Text("NIL:", size=14, weight="bold", width=220),
+                    ft.Container(content=nil_slider, expand=True),
+                    nil_text
+                ], alignment=ft.MainAxisAlignment.START),
+                ft.Row([
+                    ft.Text("OTIF:", size=14, weight="bold", width=220),
+                    ft.Container(content=otif_slider, expand=True),
+                    otif_text
+                ], alignment=ft.MainAxisAlignment.START),
+                ft.Row([
+                    ft.Text("Quality of Pick Up:", size=14, weight="bold", width=220),
+                    ft.Container(content=pickup_slider, expand=True),
+                    pickup_text
+                ], alignment=ft.MainAxisAlignment.START),
+                ft.Row([
+                    ft.Text("Quality-Supplier Package:", size=14, weight="bold", width=220),
+                    ft.Container(content=package_slider, expand=True),
+                    package_text
+                ], alignment=ft.MainAxisAlignment.START),
+                ft.Row([
+                    ft.Text("Target:", size=14, weight="bold", width=220),
+                    ft.Container(content=target_slider, expand=True),
+                    target_text
+                ], alignment=ft.MainAxisAlignment.START),
+                ft.Container(height=20),
+                ft.Row([
+                    ft.ElevatedButton("Update Criteria", icon=ft.Icons.UPDATE, on_click=lambda e: update_criteria_settings()),
+                    ft.OutlinedButton("Auto-ajustar para 1.00", icon=ft.Icons.AUTO_FIX_HIGH, on_click=lambda e: auto_adjust_weights())
+                ], spacing=10),
+                ft.Container(height=20)  # Espaço extra no final
+            ], spacing=10),
+            padding=ft.padding.all(10)
+        )
+    ], spacing=8, expand=True)
+
+    # Conteúdo da sub-aba Criteria com scroll
+    criteria_content = ft.Container(
+        content=ft.Column([
+            criteria_header,
+            ft.Container(
+                content=criteria_scrollable_content,
+                expand=True
+            )
+        ], spacing=10),
+        padding=ft.padding.all(20),
+        visible=False,
+        expand=True
+    )
+
+    # Conteúdo da sub-aba Users
+    users_content = ft.Container(
+        content=ft.Column([
+            # Título fixo (fora do scroll)
+            ft.Text("Gerenciamento de Usuários", size=20, weight="bold"),
+            ft.Divider(),
+            
+            # Conteúdo com scroll
+            ft.Container(
+                content=ft.ListView([
+                    # Header com informações
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Text("Configure usuários e suas permissões de avaliação", 
+                                   size=14, color="outline"),
+                        ]),
+                        padding=ft.padding.only(bottom=10)
+                    ),
+                    
+                    # Formulário de usuário
+                    ft.Container(
+                        content=ft.Column([
+                            # Linha 1: WWID e Nome
+                            ft.Row([
+                                ft.Container(
+                                    content=ft.TextField(
+                                        label="WWID",
+                                        hint_text="Digite o WWID do usuário",
+                                        prefix_icon=ft.Icons.BADGE,
+                                        expand=True,
+                                        ref=ft.Ref(),
+                                        on_change=on_wwid_change,
+                                    ),
+                                    width=350,
+                                    alignment=ft.alignment.center
+                                ),
+                                ft.Container(
+                                    content=ft.TextField(
+                                        label="Nome Completo",
+                                        hint_text="Digite o nome do usuário",
+                                        prefix_icon=ft.Icons.PERSON,
+                                        expand=True,
+                                        ref=ft.Ref(),
+                                    ),
+                                    width=350,
+                                    alignment=ft.alignment.center
+                                ),
+                            ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
+                            
+                            ft.Container(height=8),
+                            
+                            # Linha 2: Senha e Privilégio
+                            ft.Row([
+                                ft.Container(
+                                    content=ft.TextField(
+                                        label="Senha",
+                                        hint_text="Digite a senha do usuário",
+                                        prefix_icon=ft.Icons.LOCK,
+                                        password=True,
+                                        can_reveal_password=True,
+                                        expand=True,
+                                        ref=ft.Ref(),
+                                    ),
+                                    width=350,
+                                    alignment=ft.alignment.center
+                                ),
+                                ft.Container(
+                                    content=ft.Dropdown(
+                                        label="Nível de Privilégio",
+                                        hint_text="Selecione o nível",
+                                        options=[
+                                            ft.dropdown.Option("User", "User"),
+                                            ft.dropdown.Option("Admin", "Admin"),
+                                            ft.dropdown.Option("Super Admin", "Super Admin"),
+                                        ],
+                                        expand=True,
+                                        ref=ft.Ref(),
+                                    ),
+                                    width=350,
+                                    alignment=ft.alignment.center
+                                ),
+                            ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
+                            
+                            ft.Container(height=8),
+                            
+                            # Linha 3: Permissões de notas (checkboxes)
+                            ft.Column([
+                                ft.Text("Permissões de Avaliação:", size=16, weight="bold"),
+                                ft.Row([
+                                    ft.Checkbox(label="OTIF", value=False, ref=ft.Ref()),
+                                    ft.Checkbox(label="NIL", value=False, ref=ft.Ref()),
+                                    ft.Checkbox(label="Pickup", value=False, ref=ft.Ref()),
+                                    ft.Checkbox(label="Package", value=False, ref=ft.Ref()),
+                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=30),
+                            ], spacing=8),
+                            
+                            ft.Container(height=15),
+                            
+                            # Botões de ação
+                            ft.Row([
+                                ft.ElevatedButton(
+                                    "Add User", 
+                                    icon=ft.Icons.PERSON_ADD,
+                                    ref=ft.Ref(),
+                                ),
+                                ft.ElevatedButton(
+                                    "Excluir Usuário", 
+                                    icon=ft.Icons.PERSON_REMOVE, 
+                                    color="red",
+                                    ref=ft.Ref(),
+                                ),
+                                ft.ElevatedButton(
+                                    "Limpar Campos", 
+                                    icon=ft.Icons.CLEAR,
+                                    ref=ft.Ref(),
+                                ),
+                            ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
+                        ], spacing=15),
+                        padding=ft.padding.symmetric(vertical=10)
+                    ),
+                    
+                    ft.Container(height=10),
+                    ft.Divider(),
+                    
+                    # Lista de usuários
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("Usuários Cadastrados", size=16, weight="bold"),
+                            ft.Container(
+                                content=ft.ListView(
+                                    spacing=8,
+                                    expand=True,
+                                    ref=ft.Ref(),
+                                ),
+                                height=300,
+                                border=ft.border.all(1, "outline"),
+                                border_radius=8,
+                                padding=8,
+                            ),
+                        ], spacing=10),
+                        padding=ft.padding.symmetric(vertical=10)
+                    ),
+                    
+                ], expand=True, spacing=8),
+                expand=True
+            )
+            
+        ], spacing=0),
+        padding=20,
+        visible=False
+    )
+
+    # Referências dos controles de usuários
+    def extract_users_refs():
+        """Extrai as referências dos controles do users_content"""
+        users_refs = {}
+        
+        # Navegar pela nova estrutura com scroll
+        scroll_container = users_content.content.controls[2].content  # ListView dentro do Container
+        form_container = scroll_container.controls[1].content  # Container do formulário
+        
+        # Linha 1: WWID e Nome
+        row1 = form_container.controls[0]
+        users_refs['wwid'] = row1.controls[0].content
+        users_refs['name'] = row1.controls[1].content
+        
+        # Linha 2: Senha e Privilégio  
+        row2 = form_container.controls[2]
+        users_refs['password'] = row2.controls[0].content
+        users_refs['privilege'] = row2.controls[1].content
+        
+        # Checkboxes
+        permissions_column = form_container.controls[4]
+        checkboxes_row = permissions_column.controls[1]
+        users_refs['otif_check'] = checkboxes_row.controls[0]
+        users_refs['nil_check'] = checkboxes_row.controls[1]
+        users_refs['pickup_check'] = checkboxes_row.controls[2]
+        users_refs['package_check'] = checkboxes_row.controls[3]
+        
+        # Botões
+        buttons_row = form_container.controls[6]
+        users_refs['action_btn'] = buttons_row.controls[0]  # Botão único para Add/Update
+        users_refs['delete_btn'] = buttons_row.controls[1]
+        users_refs['clear_btn'] = buttons_row.controls[2]
+        
+        # Lista de usuários (após o divider)
+        users_list_container = scroll_container.controls[4].content  # Container da lista (após Divider)
+        users_refs['users_list'] = users_list_container.controls[1].content
+        
+        return users_refs
+
+    # Funções para gerenciamento de usuários
+    def load_users_full():
+        """Carrega todos os usuários da tabela."""
+        if not db_conn:
+            return []
+        try:
+            print("📋 Lista sendo atualizada...")
+            cur = db_conn.cursor()
+            cur.execute("""
+                SELECT user_wwid, user_name, user_password, user_privilege, 
+                       otif, nil, pickup, package 
+                FROM users_table 
+                ORDER BY user_wwid
+            """)
+            rows = cur.fetchall()
+            users = []
+            for row in rows:
+                wwid, name, password, privilege, otif, nil, pickup, package = row
+                
+                # Criar texto de exibição em duas linhas
+                name_display = name if name else "Nome não informado"
+                permissions = []
+                
+                # Converter para int e verificar se é 1
+                if int(otif) == 1: permissions.append("OTIF")
+                if int(nil) == 1: permissions.append("NIL")
+                if int(pickup) == 1: permissions.append("Pickup")
+                if int(package) == 1: permissions.append("Package")
+                
+                permissions_str = ", ".join(permissions) if permissions else "Nenhuma permissão"
+                
+                # Linha 1: Dados do usuário
+                line1 = f"WWID: {wwid} | Nome: {name_display} | Privilégio: {privilege}"
+                # Linha 2: Permissões
+                line2 = f"Permissões: {permissions_str}"
+                
+                # Criar texto de exibição com quebra de linha
+                display_text = f"{line1}\n{line2}"
+                
+                users.append({
+                    "line1": line1,
+                    "line2": line2,
+                    "display": display_text,
+                    "wwid": wwid,
+                    "name": name or "",
+                    "password": password,
+                    "privilege": privilege,
+                    "otif": bool(otif),
+                    "nil": bool(nil),
+                    "pickup": bool(pickup),
+                    "package": bool(package)
+                })
+            return users
+        except Exception as ex:
+            print(f"Erro ao carregar usuários: {ex}")
+            return []
+
+    def refresh_users_list():
+        """Atualiza a lista de usuários na interface."""
+        try:
+            if 'users_list' not in users_controls:
+                return
+                
+            users = load_users_full()
+            users_list = users_controls['users_list']
+            users_list.controls.clear()
+            
+            if not users:
+                users_list.controls.append(
+                    ft.Container(
+                        content=ft.Text(
+                            "Nenhum usuário cadastrado",
+                            color="outline",
+                            italic=True,
+                            text_align=ft.TextAlign.CENTER
+                        ),
+                        alignment=ft.alignment.center,
+                        padding=10
+                    )
+                )
+            else:
+                for user in users:
+                    line1 = user["line1"]
+                    line2 = user["line2"]
+                    user_wwid = user["wwid"]
+                    is_selected = selected_user == user_wwid
+                    
+                    # Usar cores do tema atual
+                    colors = get_current_theme_colors(page)
+                    
+                    users_list.controls.append(
+                        ft.ListTile(
+                            title=ft.Text(line1, size=14, weight="bold"),
+                            subtitle=ft.Text(line2, size=12, color="outline"),
+                            content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                            dense=True,
+                            on_click=lambda e, w=user_wwid: select_user(w),
+                            selected=is_selected,
+                            selected_tile_color=colors.get('primary_container'),
+                            selected_color=colors.get('selected_text', colors['on_surface'])
+                        )
+                    )
+            
+            users_list.update()
+        except Exception as ex:
+            print(f"Erro ao atualizar lista de usuários: {ex}")
+
+    def select_user(wwid):
+        """Seleciona um usuário e carrega seus dados nos campos."""
+        global selected_user
+        try:
+
+            selected_user = wwid
+            
+            # Buscar dados do usuário
+            cur = db_conn.cursor()
+            cur.execute("""
+                SELECT user_wwid, user_name, user_password, user_privilege,
+                       otif, nil, pickup, package
+                FROM users_table 
+                WHERE user_wwid = ?
+            """, (wwid,))
+            
+            row = cur.fetchone()
+            if row:
+                wwid_val, name, password, privilege, otif, nil, pickup, package = row
+                
+                print(f"Dados carregados do banco: WWID={wwid_val}, OTIF={otif} (tipo: {type(otif)}), NIL={nil} (tipo: {type(nil)}), Pickup={pickup} (tipo: {type(pickup)}), Package={package} (tipo: {type(package)})")
+                
+                # Preencher campos de texto
+                users_controls['wwid'].value = str(wwid_val) if wwid_val else ""
+                users_controls['name'].value = str(name) if name else ""
+                users_controls['password'].value = str(password) if password else ""
+                users_controls['privilege'].value = str(privilege) if privilege else None
+                
+                # Definir valores dos checkboxes - convertendo explicitamente para int primeiro
+                users_controls['otif_check'].value = int(otif) == 1
+                users_controls['nil_check'].value = int(nil) == 1
+                users_controls['pickup_check'].value = int(pickup) == 1
+                users_controls['package_check'].value = int(package) == 1
+                
+                print(f"Checkboxes definidos: OTIF={users_controls['otif_check'].value}, NIL={users_controls['nil_check'].value}, Pickup={users_controls['pickup_check'].value}, Package={users_controls['package_check'].value}")
+                
+                # Atualizar todos os controles
+                for control in users_controls.values():
+                    if hasattr(control, 'update'):
+                        control.update()
+                
+                # Atualizar botão de ação
+                update_action_button()
+
+                page.update()
+            
+            # Atualizar lista visual
+            refresh_users_list()
+            
+        except Exception as ex:
+            print(f"Erro ao selecionar usuário: {ex}")
+            page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao carregar usuário: {ex}"))
+            page.snack_bar.open = True
+            page.update()
+
+    def clear_users_fields():
+        """Limpa todos os campos do formulário de usuários."""
+        try:
+            print("Limpando todos os campos...")
+            
+            # Limpar campos de texto
+            users_controls['wwid'].value = ""
+            users_controls['name'].value = ""
+            users_controls['password'].value = ""
+            users_controls['privilege'].value = None
+            
+            # Limpar checkboxes - definir diretamente como False
+            users_controls['otif_check'].value = False
+            users_controls['nil_check'].value = False
+            users_controls['pickup_check'].value = False
+            users_controls['package_check'].value = False
+            
+            # Limpar seleção global
+            global selected_user
+            selected_user = None
+            
+            # Atualizar todos os controles individualmente
+            for key, control in users_controls.items():
+                if hasattr(control, 'update'):
+                    control.update()
+            
+            # Forçar atualização da página
+            page.update()
+            
+            # Atualizar botão de ação
+            update_action_button()
+            
+            # Atualizar lista visual (remover destaque)
+            refresh_users_list()
+            
+            print("Campos limpos com sucesso!")
+            
+        except Exception as ex:
+            print(f"Erro ao limpar campos: {ex}")
+
+    def add_or_update_user():
+        """Adiciona ou atualiza um usuário baseado na função original."""
+        print("🔥 FUNÇÃO add_or_update_user CHAMADA!")
+        try:
+            wwid = users_controls['wwid'].value.strip().upper() if users_controls['wwid'].value else ""
+            name = users_controls['name'].value.strip() if users_controls['name'].value else ""
+            password = users_controls['password'].value.strip() if users_controls['password'].value else ""
+            privilege = users_controls['privilege'].value if users_controls['privilege'].value else ""
+            
+            otif = 1 if users_controls['otif_check'].value else 0
+            nil = 1 if users_controls['nil_check'].value else 0
+            pickup = 1 if users_controls['pickup_check'].value else 0
+            package = 1 if users_controls['package_check'].value else 0
+            
+            print(f"Salvando usuário: {wwid}")
+            print(f"Valores dos checkboxes: OTIF={users_controls['otif_check'].value}, NIL={users_controls['nil_check'].value}, Pickup={users_controls['pickup_check'].value}, Package={users_controls['package_check'].value}")
+            print(f"Valores para o banco: otif={otif}, nil={nil}, pickup={pickup}, package={package}")
+            
+            if not wwid or not password or not privilege:
+                page.snack_bar = ft.SnackBar(ft.Text("❌ Preencha WWID, Senha e Privilégio"))
+                page.snack_bar.open = True
+                page.update()
+                return
+            
+            cur = db_conn.cursor()
+            
+            # Verifica se já existe o usuário
+            cur.execute("SELECT 1 FROM users_table WHERE UPPER(user_wwid) = ?", (wwid,))
+            resultado = cur.fetchone()
+            
+            if resultado:
+                # Atualiza usuário existente
+                print(f"🔄 Atualizando usuário EXISTENTE {wwid}...")
+                cur.execute("""
+                    UPDATE users_table
+                    SET user_name = ?, user_password = ?, user_privilege = ?, 
+                        otif = ?, nil = ?, pickup = ?, package = ?
+                    WHERE UPPER(user_wwid) = ?
+                """, (name, password, privilege, otif, nil, pickup, package, wwid))
+                
+                print(f"✅ Usuário {wwid} atualizado com sucesso!")
+                page.snack_bar = ft.SnackBar(ft.Text(f"✅ Usuário '{wwid}' atualizado com sucesso"))
+            else:
+                # Cria novo usuário
+                print(f"💾 Inserindo NOVO usuário {wwid} no banco de dados...")
+                cur.execute("""
+                    INSERT INTO users_table (user_wwid, user_name, user_password, user_privilege, 
+                                           otif, nil, pickup, package) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (wwid, name, password, privilege, otif, nil, pickup, package))
+                
+                print(f"✅ Usuário {wwid} inserido com sucesso!")
+                page.snack_bar = ft.SnackBar(ft.Text(f"✅ Usuário '{wwid}' criado com sucesso"))
+            
+            db_conn.commit()
+            page.snack_bar.open = True
+            page.update()
+            
+            print(f"Lista atualizada com {len(load_users_full())} usuários!")
+            # Atualizar lista
+            refresh_users_list()
+            
+        except Exception as ex:
+            show_toast(f"❌ Erro ao salvar usuário: {ex}", "red")
+            page.snack_bar.open = True
+            page.update()
+            print(f"Erro ao adicionar/atualizar usuário: {ex}")
+
+    def delete_user():
+        """Exclui o usuário baseado no WWID do campo de texto."""
+        try:
+            # Pegar WWID do campo de texto
+            wwid = users_controls['wwid'].value.strip() if users_controls['wwid'].value else ''
+
+            
+            if not wwid:
+                page.snack_bar = ft.SnackBar(ft.Text("❌ Digite um WWID para excluir"))
+                page.snack_bar.open = True
+                page.update()
+                return
+            
+            # Verificar se o usuário existe no banco
+            if not check_user_exists(wwid):
+                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Usuário '{wwid}' não encontrado"))
+                page.snack_bar.open = True
+                page.update()
+                return
+            
+            # Função para confirmar e executar a exclusão
+            def confirm_delete_user(e):
+                try:
+                    cur = db_conn.cursor()
+                    cur.execute("DELETE FROM users_table WHERE UPPER(user_wwid) = ?", (wwid.upper(),))
+                    db_conn.commit()
+                    
+                    # Fechar dialog
+                    page.close(dialog)
+                    
+                    # Limpar campos e seleção
+                    clear_users_fields()
+                    
+                    # Atualizar lista
+                    refresh_users_list()
+                    
+                    page.snack_bar = ft.SnackBar(ft.Text(f"✅ Usuário '{wwid}' removido com sucesso"))
+                    page.snack_bar.open = True
+                    page.update()
+                    
+                except Exception as ex:
+                    # Fechar dialog mesmo se der erro
+                    page.close(dialog)
+                    
+                    page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao excluir usuário: {ex}"))
+                    page.snack_bar.open = True
+                    page.update()
+                    print(f"Erro ao deletar usuário {wwid}: {ex}")
+            
+            # Função para cancelar
+            def cancel_delete_user(e):
+                page.close(dialog)
+                page.update()
+            
+            # Criar e mostrar dialog de confirmação
+            dialog = DeleteListItemConfirmationDialog(
+                item_name=wwid,
+                item_type="Usuário",
+                on_confirm=confirm_delete_user,
+                on_cancel=cancel_delete_user,
+                scale_func=lambda x: x
+            )
+            
+            page.open(dialog)
+            page.update()
+            
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao tentar excluir usuário: {ex}"))
+            page.snack_bar.open = True
+            page.update()
+            print(f"Erro geral no delete_user: {ex}")
+
+    # Conteúdo da sub-aba Log
+    log_content = ft.Container(
+        content=ft.Column([
+            ft.Text("Log de Atividades", size=20, weight="bold"),
+            ft.Divider(),
+            ft.Row([
+                ft.TextField(label="Filtrar por usuário", expand=True),
+                ft.TextField(label="Data inicial", expand=True),
+                ft.TextField(label="Data final", expand=True),
+                ft.ElevatedButton("Filtrar", icon=ft.Icons.FILTER_LIST),
+            ], spacing=10),
+            ft.Container(height=20),
+            ft.Container(
+                content=ft.Text("Log de atividades aparecerá aqui...", italic=True),
+                height=300,
+                border=ft.border.all(1, "outline"),
+                border_radius=8,
+                padding=20,
+            )
+        ], spacing=15),
+        padding=20,
+        visible=False
+    )
+
+    # Row para as abas de configuração
+    config_tabs_row = ft.Row(
+        alignment=ft.MainAxisAlignment.START,
+        spacing=10
+    )
+
+    # Container principal da aba configs
+    configs_view_content = ft.Column([
+        config_tabs_row,
+        ft.Divider(),
+        ft.Container(
+            content=ft.Stack([
+                themes_content,
+                suppliers_content,
+                criteria_content,
+                users_content,
+                lists_content,
+                log_content
+            ]),
+            expand=True
+        )
+    ], expand=True)
+
+    # --- Fim: Lógica e Controles da Aba Configs ---
+
+    score_view = ft.Column(
+        [
+            ft.Container(
+                content=score_view_content, 
+                alignment=ft.alignment.top_center, 
+                padding=ft.padding.only(top=20, left=20, right=20, bottom=10)
+            ),
+            ft.Divider(),
+            results_list,
+        ],
+        visible=True,
+        expand=True,
+    )
+    timeline_view = ft.Container(
+        content=ft.Text("Timeline View"), 
+        alignment=ft.alignment.center, 
+        expand=True, 
+        visible=False
+    )
+    risks_view = ft.Container(
+        content=ft.Column([
+            ft.Text("Gestão de Riscos", size=24, weight="bold"),
+            ft.Divider(),
+            ft.Text("Aqui você pode gerenciar os riscos dos fornecedores.", size=16),
+            ft.Container(height=20),
+            ft.ElevatedButton("Adicionar Novo Risco", icon=ft.Icons.ADD_CIRCLE_OUTLINE),
+        ]), 
+        alignment=ft.alignment.top_center, 
+        expand=True, 
+        visible=False,
+        padding=20
+    )
+    email_view = ft.Container(
+        content=ft.Column([
+            ft.Text("Central de E-mails", size=24, weight="bold"),
+            ft.Divider(),
+            ft.Text("Gerencie e envie e-mails para fornecedores.", size=16),
+            ft.Container(height=20),
+            ft.Row([
+                ft.ElevatedButton("Novo E-mail", icon=ft.Icons.EMAIL),
+                ft.ElevatedButton("Templates", icon=ft.Icons.ARTICLE),
+                ft.ElevatedButton("Histórico", icon=ft.Icons.HISTORY),
+            ], alignment=ft.MainAxisAlignment.START, spacing=10),
+        ]), 
+        alignment=ft.alignment.top_center, 
+        expand=True, 
+        visible=False,
+        padding=20
+    )
+    configs_view = ft.Container(
+        content=configs_view_content, 
+        alignment=ft.alignment.top_center, 
+        padding=20, 
+        visible=False,
+        expand=True
+    )
+
+    menu_column = ft.Column([],
+        alignment=ft.MainAxisAlignment.CENTER,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        spacing=15,
+        ref=menu_column_ref
+    )
+
+    rail_container = ft.Container(
+        content=ft.Column(
+            [
+                ft.IconButton(icon="menu", on_click=toggle_menu),
+                menu_column,
+            ],
+            alignment=ft.MainAxisAlignment.START,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+            spacing=12,
+        ),
+        padding=ft.padding.only(left=16, right=16)
+    )
+
+    page.add(
+        ft.Container(
+            content=ft.Row(
+                [
+                    rail_container,
+                    ft.VerticalDivider(width=1, color="blue_grey_200"),
+                    ft.Container( # Container principal para o conteúdo das abas
+                        content=ft.Column([score_view, timeline_view, risks_view, email_view, configs_view], expand=True),
+                        expand=True,
+                    ),
+                ],
+                expand=True,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+            ),
+            padding=ft.padding.only(right=20),
+            expand=True
+        )
+    )
+
+    update_menu()
+    update_config_tabs()  # Inicializar as abas de configuração
+    
+    # Inicializar controles de usuário
+    print("Extraindo referências dos controles de usuário...")
+    try:
+        users_controls.update(extract_users_refs())
+        print(f"Controles extraídos: {list(users_controls.keys())}")
+    except Exception as ex:
+        print(f"Erro ao extrair controles: {ex}")
+    
+    # Configurar eventos dos botões de usuário
+    try:
+        print("Configurando eventos dos botões...")
+        users_controls['action_btn'].on_click = lambda e: add_or_update_user()
+        users_controls['delete_btn'].on_click = lambda e: delete_user()
+        users_controls['clear_btn'].on_click = lambda e: clear_users_fields()
+        print("Eventos configurados com sucesso!")
+    except Exception as ex:
+        print(f"Erro ao configurar eventos: {ex}")
+    
+    load_all_lists_data()  # Carregar dados existentes das tabelas
+    
+    # Carregar usuários na inicialização
+    refresh_users_list()
+    
+    # Tema já foi carregado no início da função main
+    # Apenas atualizar o valor do radio group se necessário
+    saved_theme_for_radio = load_user_theme(current_user_wwid) if current_user_wwid else None
+    if saved_theme_for_radio and 'theme_radio_group' in locals():
+        theme_radio_group.value = saved_theme_for_radio
+    
+    # Carregar critérios salvos na inicialização
+    saved_criteria = load_user_criteria(current_user_wwid)
+    if saved_criteria:
+        # Mapear nomes dos critérios da tabela para os sliders
+        if 'NIL' in saved_criteria:
+            nil_slider.value = saved_criteria['NIL']
+            nil_text.value = f"{saved_criteria['NIL']:.2f}"
+        
+        if 'OTIF' in saved_criteria:
+            otif_slider.value = saved_criteria['OTIF']
+            otif_text.value = f"{saved_criteria['OTIF']:.2f}"
+        
+        if 'Quality of Pick Up' in saved_criteria:
+            pickup_slider.value = saved_criteria['Quality of Pick Up']
+            pickup_text.value = f"{saved_criteria['Quality of Pick Up']:.2f}"
+        
+        if 'Quality-Supplier Package' in saved_criteria:
+            package_slider.value = saved_criteria['Quality-Supplier Package']
+            package_text.value = f"{saved_criteria['Quality-Supplier Package']:.2f}"
+        
+        if 'Target' in saved_criteria:
+            target_slider.value = saved_criteria['Target']
+            target_text.value = f"{saved_criteria['Target']:.2f}"
+        
+        # Atualizar a soma dos pesos após carregar
+        update_weight_sum()
+        page.update()
+        print(f"Critérios carregados: {saved_criteria}")
+    else:
+        # Mesmo com valores padrão, atualizar a soma
+        update_weight_sum()
+        print("Nenhum critério salvo encontrado, usando valores padrão")
+
+# ===== FUNÇÃO PRINCIPAL =====
+def main():
+    """Função principal que inicia com tela de login"""
+    ft.app(target=login_screen)
+
+if __name__ == "__main__":
+    main()
