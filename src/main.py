@@ -4,6 +4,215 @@ import sqlite3
 import random
 import string
 
+# ===== CLASSE DE GERENCIAMENTO RESPONSIVO =====
+class ResponsiveAppManager:
+    """Classe para gerenciar o comportamento responsivo da aplicação"""
+    
+    def __init__(self, page: ft.Page):
+        self.page = page
+        self.results_container = None
+        self.is_maximized = False
+        self.current_layout = "single"  # "single" ou "double"
+        
+        # Configurar listener de redimensionamento
+        self.page.on_resized = self.on_window_resize
+        self.page.on_window_event = self.on_window_event
+    
+    def initialize_containers(self, results_container):
+        """Inicializa as referências dos containers que serão gerenciados"""
+        self.results_container = results_container
+        # Layout será aplicado quando houver cards para mostrar
+    
+    def clear_results(self):
+        """Limpa todos os resultados e reseta o estado"""
+        if self.results_container:
+            self.results_container.controls.clear()
+            self.results_container.update()
+            # Não resetar o layout - manter o estado atual baseado na janela
+            # self.current_layout permanece como estava (single ou double)
+    
+    def check_initial_window_state(self):
+        """Verifica o estado inicial da janela e aplica o layout apropriado"""
+        window_width = self.page.window.width or 1200
+        is_maximized = self.page.window.maximized or False
+        
+        # Se maximizada, sempre usar layout double (prioridade ao estado maximized)
+        if is_maximized:
+            should_use_double_layout = True
+        else:
+            should_use_double_layout = window_width > 1400
+        
+        self.current_layout = "double" if should_use_double_layout else "single"
+        self.is_maximized = is_maximized
+        
+        print(f"🚀 Estado inicial da janela: largura={window_width}px, maximizada={is_maximized}")
+        print(f"🚀 Decisão: should_use_double_layout={should_use_double_layout}")
+        print(f"🚀 Layout inicial definido como: {self.current_layout}")
+        
+        # Não precisa aplicar o layout aqui, será aplicado quando o primeiro card for adicionado
+    
+    def on_window_event(self, e):
+        """Callback para eventos da janela (maximizar, restaurar, etc)"""
+        if hasattr(e, 'event_type'):
+            if e.event_type == "maximize":
+                self.is_maximized = True 
+                print("🔍 Janela maximizada - aplicando layout de duas colunas")
+                self.apply_responsive_layout()
+            elif e.event_type == "restore":
+                self.is_maximized = False
+                print("🔍 Janela restaurada - aplicando layout de uma coluna")
+                self.apply_responsive_layout()
+    
+    def on_window_resize(self, e):
+        """Callback chamado quando a janela é redimensionada"""
+        window_width = self.page.window.width or 1200
+        
+        # Determinar se deve usar layout de duas colunas baseado na largura
+        should_use_double_layout = window_width > 1400 or self.page.window.maximized
+        
+        new_layout = "double" if should_use_double_layout else "single"
+        
+        if new_layout != self.current_layout:
+            self.current_layout = new_layout
+            print(f"🔄 Mudando layout para: {new_layout} (largura: {window_width}px)")
+            self.apply_responsive_layout()
+    
+    def apply_responsive_layout(self):
+        """Aplica o layout responsivo baseado no estado atual"""
+        if not self.results_container:
+            return
+            
+        try:
+            print(f"🔄 apply_responsive_layout: self.current_layout = '{self.current_layout}'")
+            if self.current_layout == "double":
+                self._apply_double_column_layout()
+            else:
+                self._apply_single_column_layout()
+                
+            # Atualizar a interface
+            if hasattr(self.results_container, 'update'):
+                self.results_container.update()
+            self.page.update()
+            
+        except Exception as e:
+            print(f"❌ Erro ao aplicar layout responsivo: {e}")
+    
+    def _apply_double_column_layout(self):
+        """Aplica layout de duas colunas para a aba Score"""
+        print("📱 Aplicando layout de DUAS colunas")
+        
+        if not hasattr(self.results_container, 'controls'):
+            return
+            
+        # Pegar todos os cards existentes
+        cards = list(self.results_container.controls)
+        print(f"📱 Cards existentes no container: {len(cards)}")
+        
+        # Limpar container atual
+        self.results_container.controls.clear()
+        
+        # Criar duas colunas
+        left_column = ft.Column([], spacing=10, expand=True)
+        right_column = ft.Column([], spacing=10, expand=True)
+        
+        # Distribuir cards alternadamente entre as colunas
+        for i, card in enumerate(cards):
+            if i % 2 == 0:
+                left_column.controls.append(card)
+            else:
+                right_column.controls.append(card)
+        
+        # Criar linha com as duas colunas
+        double_column_row = ft.Row([
+            left_column,
+            right_column
+        ], spacing=20, expand=True)
+        
+        # Adicionar ao container principal
+        self.results_container.controls.append(double_column_row)
+    
+    def _apply_single_column_layout(self):
+        """Aplica layout de uma coluna para a aba Score"""
+        print("📱 Aplicando layout de UMA coluna")
+        
+        if not hasattr(self.results_container, 'controls'):
+            return
+            
+        # Se já está em layout de uma coluna, não fazer nada
+        if len(self.results_container.controls) > 0:
+            first_control = self.results_container.controls[0]
+            if not isinstance(first_control, ft.Row):
+                return  # Já está em layout single
+        
+        # Coletar todos os cards das colunas
+        all_cards = []
+        for control in self.results_container.controls:
+            if isinstance(control, ft.Row):
+                # É um layout de duas colunas, extrair cards
+                for column in control.controls:
+                    if isinstance(column, ft.Column):
+                        all_cards.extend(column.controls)
+            else:
+                # São cards individuais
+                all_cards.append(control)
+        
+        # Limpar container e readicionar cards em coluna única
+        self.results_container.controls.clear()
+        for card in all_cards:
+            self.results_container.controls.append(card)
+    
+    def add_card_to_layout(self, card):
+        """Adiciona um novo card respeitando o layout atual"""
+        if not self.results_container:
+            print("❌ Container não disponível para adicionar card")
+            return
+            
+        print(f"🔧 Adicionando card, layout atual: {self.current_layout}, containers existentes: {len(self.results_container.controls)}")
+            
+        # Se é o primeiro card, aplicar o layout adequado
+        if len(self.results_container.controls) == 0:
+            print("🔧 Primeiro card - aplicando layout responsivo")
+            self.apply_responsive_layout()
+            
+        if self.current_layout == "double":
+            # Encontrar a linha com duas colunas
+            for control in self.results_container.controls:
+                if isinstance(control, ft.Row) and len(control.controls) == 2:
+                    left_column, right_column = control.controls
+                    # Adicionar na coluna com menos cards
+                    if len(left_column.controls) <= len(right_column.controls):
+                        left_column.controls.append(card)
+                        left_column.update()
+                        print(f"🔧 Card adicionado à coluna esquerda (total: {len(left_column.controls)})")
+                    else:
+                        right_column.controls.append(card)
+                        right_column.update()
+                        print(f"🔧 Card adicionado à coluna direita (total: {len(right_column.controls)})")
+                    # Atualizar o container principal também
+                    self.results_container.update()
+                    return
+            
+            # Se não encontrou a estrutura de duas colunas, aplicar o layout primeiro
+            print("🔧 Estrutura de duas colunas não encontrada, reaplicando layout")
+            self.apply_responsive_layout()
+            # Tentar novamente
+            if self.results_container.controls:
+                control = self.results_container.controls[0]
+                if isinstance(control, ft.Row) and len(control.controls) == 2:
+                    left_column, right_column = control.controls
+                    left_column.controls.append(card)
+                    left_column.update()
+                    self.results_container.update()
+                    print("🔧 Card adicionado após recriar estrutura de duas colunas")
+        else:
+            # Layout single - adicionar diretamente
+            self.results_container.controls.append(card)
+            self.results_container.update()
+            print(f"🔧 Card adicionado em layout single (total: {len(self.results_container.controls)})")
+
+# Instância global do gerenciador responsivo
+responsive_app_manager = None
+
 # ===== VARIÁVEIS GLOBAIS =====
 current_user_wwid = None
 current_user_name = None
@@ -151,49 +360,120 @@ def login_screen(page: ft.Page):
     
     # Configurações da janela de login
     page.title = "Score App - Login"
-    page.window.width = 480
-    page.window.height = 600
+    page.window.width = 500
+    page.window.height = 650
     page.window.resizable = False
     page.window.center()
-    page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme_mode = ft.ThemeMode.SYSTEM  # Usar tema do sistema Windows
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    page.bgcolor = None  # Deixar que o sistema defina a cor de fundo
     
-    # Obter cores do tema padrão
-    colors = THEME_DEFINITIONS["white"]["colors"]
+    # Cores do sistema Windows (adaptável ao tema claro/escuro)
+    colors = {
+        'primary': "#1976D2",  # Azul sistema Windows
+        'on_primary': "#FFFFFF",
+        'surface': None,  # Usar cor padrão do sistema
+        'on_surface': None,  # Usar cor padrão do sistema
+        'on_surface_variant': "#757575",
+        'field_background': None,  # Usar cor padrão do sistema
+        'outline': "#BDBDBD",
+        'error': "#D32F2F"
+    }
     
-    # Campos de entrada com tema aplicado
+    # Funções para Remember Me
+    def get_app_data_path():
+        """Retorna o caminho da pasta AppData para o ScoreApp"""
+        import os
+        app_data = os.getenv('APPDATA')  # Pasta AppData/Roaming do usuário
+        app_folder = os.path.join(app_data, 'ScoreApp')
+        
+        # Criar pasta se não existir
+        if not os.path.exists(app_folder):
+            os.makedirs(app_folder)
+        
+        return os.path.join(app_folder, 'remember_me.txt')
+    
+    def load_saved_credentials():
+        """Carrega credenciais salvas do AppData"""
+        try:
+            credentials_file = get_app_data_path()
+            with open(credentials_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                if len(lines) >= 2:
+                    saved_wwid = lines[0].strip()
+                    saved_password = lines[1].strip()
+                    print(f"📂 Credenciais carregadas de: {credentials_file}")
+                    return saved_wwid, saved_password
+        except FileNotFoundError:
+            print("📂 Nenhuma credencial salva encontrada")
+        except Exception as e:
+            print(f"❌ Erro ao carregar credenciais: {e}")
+        return "", ""
+    
+    def save_credentials(wwid, password):
+        """Salva credenciais na pasta AppData"""
+        try:
+            credentials_file = get_app_data_path()
+            with open(credentials_file, 'w', encoding='utf-8') as f:
+                f.write(f"{wwid}\n{password}\n")
+            print(f"📂 Credenciais salvas em: {credentials_file}")
+        except Exception as e:
+            print(f"❌ Erro ao salvar credenciais: {e}")
+    
+    def clear_saved_credentials():
+        """Remove credenciais salvas da pasta AppData"""
+        try:
+            import os
+            credentials_file = get_app_data_path()
+            if os.path.exists(credentials_file):
+                os.remove(credentials_file)
+                print(f"📂 Credenciais removidas de: {credentials_file}")
+        except Exception as e:
+            print(f"❌ Erro ao limpar credenciais: {e}")
+    
+    # Carregar credenciais salvas
+    saved_wwid, saved_password = load_saved_credentials()
+    
+    # Campos de entrada com tema do sistema
     wwid_field = ft.TextField(
         label="WWID",
-        width=300,
+        width=320,
         autofocus=True,
         border_radius=8,
-        bgcolor=colors['field_background'],
         border_color=colors['outline'],
-        prefix_icon=ft.Icons.PERSON
+        prefix_icon=ft.Icons.PERSON,
+        value=saved_wwid  # Preencher com valor salvo
     )
     
     password_field = ft.TextField(
         label="Password", 
         password=True,
         can_reveal_password=True,
-        width=300,
+        width=320,
         border_radius=8,
-        bgcolor=colors['field_background'],
         border_color=colors['outline'],
-        prefix_icon=ft.Icons.LOCK
+        prefix_icon=ft.Icons.LOCK,
+        value=saved_password  # Preencher com valor salvo
+    )
+    
+    # Checkbox Remember Me
+    remember_me_checkbox = ft.Checkbox(
+        label="Lembrar de mim",
+        value=bool(saved_wwid and saved_password),  # Marcar se há credenciais salvas
+        check_color=colors['primary']
     )
     
     error_text = ft.Text(
         "",
-        color="#D32F2F",
+        color=colors['error'],
         text_align=ft.TextAlign.CENTER,
         size=12
     )
     
     login_button = ft.ElevatedButton(
         "Entrar",
-        width=300,
+        width=320,
         height=45,
         style=ft.ButtonStyle(
             bgcolor=colors['primary'],
@@ -268,6 +548,14 @@ def login_screen(page: ft.Page):
         user_data = authenticate_user(wwid, password)
 
         if user_data:
+            # Gerenciar Remember Me
+            if remember_me_checkbox.value:
+                save_credentials(wwid, password)
+                print("📝 Credenciais salvas para próximo login")
+            else:
+                clear_saved_credentials()
+                print("🗑️ Credenciais removidas")
+            
             # Definir variáveis globais
             global current_user_wwid, current_user_name, current_user_privilege, current_user_permissions
             current_user_wwid = user_data['wwid']
@@ -316,17 +604,17 @@ def login_screen(page: ft.Page):
     wwid_field.on_submit = on_login_click
     password_field.on_submit = on_login_click
     
-    # Layout da tela de login
+    # Layout da tela de login com responsividade
     login_container = ft.Container(
         content=ft.Column(
             [
-                ft.Container(height=20),
+                ft.Container(height=15),
                 ft.Icon(
                     ft.Icons.ANALYTICS,
                     size=48,
                     color=colors['primary']
                 ),
-                ft.Container(height=15),
+                ft.Container(height=12),
                 ft.Text(
                     "Score App",
                     size=28,
@@ -340,15 +628,22 @@ def login_screen(page: ft.Page):
                     text_align=ft.TextAlign.CENTER,
                     color=colors['on_surface_variant']
                 ),
-                ft.Container(height=20),
+                ft.Container(height=25),
                 wwid_field,
                 ft.Container(height=12),
                 password_field,
+                ft.Container(height=15),
+                # Container para centralizar o checkbox
+                ft.Container(
+                    content=remember_me_checkbox,
+                    alignment=ft.alignment.center_left,
+                    width=320,
+                ),
                 ft.Container(height=8),
                 error_text,
-                ft.Container(height=15),
+                ft.Container(height=20),
                 login_button,
-                ft.Container(height=20)
+                ft.Container(height=15)
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -356,20 +651,28 @@ def login_screen(page: ft.Page):
         ),
         bgcolor=colors['surface'],
         border_radius=12,
-        padding=ft.padding.all(25),
+        padding=ft.padding.all(30),
         shadow=ft.BoxShadow(
-            spread_radius=1,
-            blur_radius=8,
-            color="#DDDDDD",
-            offset=ft.Offset(0, 4)
+            spread_radius=0,
+            blur_radius=10,
+            color="#26000000",  # Preto com 15% de opacidade
+            offset=ft.Offset(0, 2)
         ),
         alignment=ft.alignment.center,
-        width=400,
-        height=550,
-        animate_opacity=300  # Habilitar animação de opacity
+        width=420,
+        height=None,  # Altura automática para evitar overflow
+        margin=ft.margin.all(20),  # Margem para garantir que fique dentro da tela
+        animate_opacity=300
     )
     
-    page.add(login_container)
+    # Usar Container com scroll para garantir que caiba na tela
+    main_container = ft.Container(
+        content=login_container,
+        alignment=ft.alignment.center,
+        expand=True
+    )
+    
+    page.add(main_container)
 # ===== FIM DO SISTEMA DE LOGIN =====
 
 class DeleteSupplierConfirmationDialog(ft.AlertDialog):
@@ -1790,6 +2093,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         cur.execute(q, (alias,))
         db_conn.commit()
     
+    def get_all_cards():
+        """Retorna todos os cards, navegando pela estrutura responsiva se necessário"""
+        all_cards = []
+        
+        if not responsive_app_manager or not responsive_app_manager.results_container:
+            # Fallback para results_list tradicional
+            for control in results_list.controls:
+                if isinstance(control, ft.Card):
+                    all_cards.append(control)
+            return all_cards
+        
+        # Navegar pela estrutura responsiva
+        for control in responsive_app_manager.results_container.controls:
+            if isinstance(control, ft.Card):
+                # Card direto (layout single)
+                all_cards.append(control)
+            elif isinstance(control, ft.Row):
+                # Layout double - verificar colunas
+                for column in control.controls:
+                    if isinstance(column, ft.Column):
+                        for card in column.controls:
+                            if isinstance(card, ft.Card):
+                                all_cards.append(card)
+        
+        return all_cards
+
     def load_scores():
         """Para os cards de resultado visíveis, carrega as notas do banco de dados
         com base no mês e ano selecionados.
@@ -1803,11 +2132,34 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         # A função só executa se ambos, mês e ano, estiverem selecionados.
         if not month_val or not year_val:
             # Limpar as notas se a data for desmarcada
-            for card in results_list.controls:
-                if isinstance(card, ft.Card) and hasattr(card, 'data') and card.data and "spinbox_refs" in card.data:
-                    for ref in card.data["spinbox_refs"].values():
-                        ref.value = "0.0"
-                        ref.update()
+            all_cards = get_all_cards()
+            for card in all_cards:
+                if hasattr(card, 'data') and card.data:
+                    # Suporte para estrutura antiga (spinbox_refs)
+                    if "spinbox_refs" in card.data:
+                        for ref in card.data["spinbox_refs"].values():
+                            try:
+                                ref.value = "0.0"
+                                if hasattr(ref, 'page') and ref.page is not None:
+                                    ref.update()
+                            except Exception as e:
+                                print(f"Erro ao limpar spinbox: {e}")
+                    
+                    # Suporte para estrutura nova (score_sliders/score_texts)
+                    if "score_sliders" in card.data and "score_texts" in card.data:
+                        score_sliders = card.data["score_sliders"]
+                        score_texts = card.data["score_texts"]
+                        for ui_name in ["OTIF", "Pickup", "Package", "NIL"]:
+                            if ui_name in score_sliders and ui_name in score_texts:
+                                try:
+                                    score_sliders[ui_name].value = 0.0
+                                    score_texts[ui_name].value = "0.0"
+                                    if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
+                                        score_sliders[ui_name].update()
+                                    if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
+                                        score_texts[ui_name].update()
+                                except Exception as e:
+                                    print(f"Erro ao limpar slider {ui_name}: {e}")
             page.update()
             return
 
@@ -1817,7 +2169,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         print(f"Carregando scores para mês: {month_val}, ano: {year_val}")
 
-        for card in results_list.controls:
+        # Usar a função auxiliar para obter todos os cards
+        all_cards = get_all_cards()
+        
+        for card in all_cards:
             if not isinstance(card, ft.Card) or not hasattr(card, 'data') or not card.data:
                 continue
 
@@ -1851,31 +2206,55 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Atualizar valores dos sliders e textos
                     for ui_name, score_value in scores.items():
                         if ui_name in score_sliders:
-                            val = float(score_value)
-                            score_sliders[ui_name].value = val
-                            score_texts[ui_name].value = f"{val:.1f}"
-                            score_sliders[ui_name].update()
-                            score_texts[ui_name].update()
+                            try:
+                                val = float(score_value)
+                                score_sliders[ui_name].value = val
+                                score_texts[ui_name].value = f"{val:.1f}"
+                                
+                                # Verificar se o slider está na página antes de atualizar
+                                if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
+                                    score_sliders[ui_name].update()
+                                if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
+                                    score_texts[ui_name].update()
+                            except Exception as e:
+                                print(f"Erro ao atualizar slider {ui_name}: {e}")
+                                continue
                     
                     # Atualizar comentário se houver referência para ele no card
-                    if "comment_field" in card.data:
-                        card.data["comment_field"].value = comment_value
-                        card.data["comment_field"].update()
-                        print(f"Atualizando comentário: {comment_value}")
+                    if "comment_field" in card.data and card.data["comment_field"]:
+                        try:
+                            card.data["comment_field"].value = comment_value
+                            if hasattr(card.data["comment_field"], 'page') and card.data["comment_field"].page is not None:
+                                card.data["comment_field"].update()
+                            print(f"Atualizando comentário: {comment_value}")
+                        except Exception as e:
+                            print(f"Erro ao atualizar comentário: {e}")
                         
                 else:
                     # Não encontrou registro, zerar valores
                     for ui_name in ["OTIF", "Pickup", "Package", "NIL"]:
                         if ui_name in score_sliders:
-                            score_sliders[ui_name].value = 0.0
-                            score_texts[ui_name].value = "0.0"
-                            score_sliders[ui_name].update()
-                            score_texts[ui_name].update()
+                            try:
+                                score_sliders[ui_name].value = 0.0
+                                score_texts[ui_name].value = "0.0"
+                                
+                                # Verificar se o slider está na página antes de atualizar
+                                if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
+                                    score_sliders[ui_name].update()
+                                if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
+                                    score_texts[ui_name].update()
+                            except Exception as e:
+                                print(f"Erro ao zerar slider {ui_name}: {e}")
+                                continue
                     
                     # Limpar comentário
-                    if "comment_field" in card.data:
-                        card.data["comment_field"].value = ""
-                        card.data["comment_field"].update()
+                    if "comment_field" in card.data and card.data["comment_field"]:
+                        try:
+                            card.data["comment_field"].value = ""
+                            if hasattr(card.data["comment_field"], 'page') and card.data["comment_field"].page is not None:
+                                card.data["comment_field"].update()
+                        except Exception as e:
+                            print(f"Erro ao limpar comentário: {e}")
                 
             except sqlite3.Error as e:
                 print(f"Erro ao carregar notas para o supplier_id {supplier_id}: {e}")
@@ -1884,15 +2263,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def create_result_widget(record):
         """Cria um card de resultado para um registro do banco.
-        Tuple esperada: (supplier_id, supplier_name, BU, supplier_status, supplier_number)
+        Tuple esperada: (supplier_id, vendor_name, BU, supplier_status, supplier_number)
         """
         supplier_id = record[0] if len(record) > 0 else "?"
-        supplier_name = record[1] if len(record) > 1 else "?"
+        vendor_name = record[1] if len(record) > 1 else "?"
         bu = record[2] if len(record) > 2 else "?"
         status = record[3] if len(record) > 3 else "?"
         supplier_number = record[4] if len(record) > 4 else "?"
 
-        print(f"Criando card para: {supplier_name} (ID: {supplier_id})")
+        print(f"Criando card para: {vendor_name} (ID: {supplier_id})")
         print(f"🔍 DEBUG PERMISSÕES NO CARD:")
         print(f"  current_user_permissions = {current_user_permissions}")
 
@@ -1961,6 +2340,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 page.update()
                 return
 
+            # Validação de data futura baseada na lógica legacy
+            from datetime import datetime
+            current_date = datetime.now()
+            ano_atual = current_date.year
+            mes_atual = current_date.month
+            register_date = current_date.strftime("%Y-%m-%d %H:%M:%S")  # Data atual para registro
+            
+            try:
+                mes_int = int(month_val)
+                ano_int = int(year_val)
+            except ValueError:
+                page.snack_bar = ft.SnackBar(ft.Text("Valores de mês e ano inválidos."), open=True)
+                page.update()
+                return
+                
+            # Prevenir salvamento de scores para meses futuros
+            if (ano_int > ano_atual) or (ano_int == ano_atual and mes_int > mes_atual):
+                page.snack_bar = ft.SnackBar(ft.Text("Não é possível salvar scores para meses futuros."), open=True)
+                page.update()
+                return
+
             try:
                 cursor = db_conn.cursor()
                 
@@ -1975,37 +2375,50 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 print(f"🎯 Critérios carregados para cálculo (spinbox): {criteria_values}")
                 
-                # Preparar os dados para salvar - nota * critério (apenas campos com permissão)
+                # Preparar os dados para salvar - valores originais dos spinboxes
                 values_to_save = {}
+                total_score_calculation = 0.0
                 
-                # Verificar permissões e calcular valores finais (nota * critério)
+                # Verificar permissões e salvar valores originais, calcular total_score separadamente
                 if current_user_permissions.get('otif', False) and "OTIF" in spinbox_refs:
                     raw_score = float(spinbox_refs["OTIF"].value or 0)
-                    criteria_weight = criteria_values.get('OTIF', 0.22)  # Default 0.22 se não encontrar
-                    final_value = round(raw_score * criteria_weight, 1)
-                    values_to_save['otif'] = final_value
-                    print(f"  OTIF: {raw_score} × {criteria_weight} = {final_value}")
+                    values_to_save['otif'] = raw_score  # Salvar valor original
+                    
+                    # Calcular para total_score
+                    criteria_weight = criteria_values.get('OTIF', 0.22)
+                    weighted_value = round(raw_score * criteria_weight, 1)
+                    total_score_calculation += weighted_value
+                    print(f"  OTIF: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
                 if current_user_permissions.get('pickup', False) and "Pickup" in spinbox_refs:
                     raw_score = float(spinbox_refs["Pickup"].value or 0)
-                    criteria_weight = criteria_values.get('Quality of Pick Up', 0.28)  # Default 0.28
-                    final_value = round(raw_score * criteria_weight, 1)
-                    values_to_save['quality_pickup'] = final_value
-                    print(f"  Pickup: {raw_score} × {criteria_weight} = {final_value}")
+                    values_to_save['quality_pickup'] = raw_score  # Salvar valor original
+                    
+                    # Calcular para total_score
+                    criteria_weight = criteria_values.get('Quality of Pick Up', 0.28)
+                    weighted_value = round(raw_score * criteria_weight, 1)
+                    total_score_calculation += weighted_value
+                    print(f"  Pickup: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
                 if current_user_permissions.get('package', False) and "Package" in spinbox_refs:
                     raw_score = float(spinbox_refs["Package"].value or 0)
-                    criteria_weight = criteria_values.get('Quality-Supplier Package', 0.28)  # Default 0.28
-                    final_value = round(raw_score * criteria_weight, 1)
-                    values_to_save['quality_package'] = final_value
-                    print(f"  Package: {raw_score} × {criteria_weight} = {final_value}")
+                    values_to_save['quality_package'] = raw_score  # Salvar valor original
+                    
+                    # Calcular para total_score
+                    criteria_weight = criteria_values.get('Quality-Supplier Package', 0.28)
+                    weighted_value = round(raw_score * criteria_weight, 1)
+                    total_score_calculation += weighted_value
+                    print(f"  Package: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
                 if current_user_permissions.get('nil', False) and "NIL" in spinbox_refs:
                     raw_score = float(spinbox_refs["NIL"].value or 0)
-                    criteria_weight = criteria_values.get('NIL', 0.22)  # Default 0.22
-                    final_value = round(raw_score * criteria_weight, 1)
-                    values_to_save['nil'] = final_value
-                    print(f"  NIL: {raw_score} × {criteria_weight} = {final_value}")
+                    values_to_save['nil'] = raw_score  # Salvar valor original
+                    
+                    # Calcular para total_score
+                    criteria_weight = criteria_values.get('NIL', 0.22)
+                    weighted_value = round(raw_score * criteria_weight, 1)
+                    total_score_calculation += weighted_value
+                    print(f"  NIL: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                 
                 if not values_to_save:
                     page.snack_bar = ft.SnackBar(ft.Text("Você não tem permissão para salvar nenhum campo."), open=True)
@@ -2014,13 +2427,33 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 comment_val = comment_field.value or ""
                 
-                # Verificar se já existe um registro
+                # O total_score é a soma dos valores ponderados, não dos valores originais
+                total_score = round(total_score_calculation, 1)
+                print(f"📊 Total Score calculado: {total_score}")
+                
+                # Verificar se já existe um registro e buscar registered_by atual
                 check_query = """
-                    SELECT COUNT(*) FROM supplier_score_records_table 
+                    SELECT COUNT(*), registered_by FROM supplier_score_records_table 
                     WHERE supplier_id = ? AND month = ? AND year = ?
                 """
                 cursor.execute(check_query, (supplier_id, int(month_val), int(year_val)))
-                exists = cursor.fetchone()[0] > 0
+                result = cursor.fetchone()
+                exists = result[0] > 0
+                current_registered_by = result[1] if exists and result[1] else ""
+                
+                # Construir registered_by acumulativo - FUNÇÃO SPINBOX
+                saved_field_names = []
+                field_mapping = {"NIL": "nil", "OTIF": "otif", "PICKUP": "quality_pickup", "PACKAGE": "quality_package"}
+                for field, db_field in field_mapping.items():
+                    if db_field in values_to_save.keys():  # Se o campo foi salvo, adicionar
+                        saved_field_names.append(field)
+                
+                # Combinar com os campos já registrados anteriormente
+                existing_fields = set(current_registered_by.split(',')) if current_registered_by else set()
+                all_fields = existing_fields.union(set(saved_field_names))
+                new_registered_by = ','.join(sorted([f for f in all_fields if f]))  # Remove strings vazias e ordena
+                
+                print(f"📝 Registered_by (SPINBOX): '{current_registered_by}' -> '{new_registered_by}'")
                 
                 # Construir query dinamicamente baseado nas permissões
                 if exists:
@@ -2030,6 +2463,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     for field, value in values_to_save.items():
                         set_clauses.append(f"{field} = ?")
                         values.append(value)
+                    
+                    # Sempre atualizar total_score, registered_by, register_date, changed_by, supplier_name e comment
+                    set_clauses.extend(["total_score = ?", "registered_by = ?", "register_date = ?", "changed_by = ?", "supplier_name = ?", "comment = ?"])
+                    values.extend([total_score, new_registered_by, register_date, current_user_name, vendor_name, comment_val])
                     
                     if set_clauses:
                         update_query = f"""
@@ -2043,8 +2480,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Inserir novo registro com campos zerados para campos sem permissão
                     insert_query = """
                         INSERT INTO supplier_score_records_table 
-                        (supplier_id, month, year, otif, quality_pickup, quality_package, nil)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (supplier_id, month, year, otif, quality_pickup, quality_package, nil, total_score, registered_by, register_date, changed_by, supplier_name, comment)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
                     cursor.execute(insert_query, (
                         supplier_id, 
@@ -2053,10 +2490,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         values_to_save.get('otif', 0),
                         values_to_save.get('quality_pickup', 0), 
                         values_to_save.get('quality_package', 0), 
-                        values_to_save.get('nil', 0)
+                        values_to_save.get('nil', 0),
+                        total_score,
+                        new_registered_by,
+                        register_date,
+                        current_user_name,
+                        vendor_name,
+                        comment_val
                     ))
                 
                 db_conn.commit()
+                
+                # Debug: mostrar informações detalhadas do salvamento
+                print(f"✅ Score salvo com sucesso!")
+                print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
+                print(f"   Período: {month_val}/{year_val}")
+                print(f"   Total Score: {total_score}")
+                print(f"   Registrado por: {current_user_wwid}")
+                print(f"   Campos salvos: {list(values_to_save.keys())}")
                 
                 # Mostrar apenas os campos que foram realmente salvos
                 saved_fields = []
@@ -2065,14 +2516,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         saved_fields.append(field)
                 
                 page.snack_bar = ft.SnackBar(
-                    ft.Text(f"Campos salvos para {supplier_name}: {', '.join(saved_fields)}"), 
+                    ft.Text(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}"), 
                     open=True
                 )
-                print(f"Dados salvos para {supplier_name} - Permissões: {saved_fields}")
                 
             except Exception as ex:
-                page.snack_bar = ft.SnackBar(ft.Text(f"Erro ao salvar: {str(ex)}"), open=True)
-                print(f"Erro ao salvar dados: {ex}")
+                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao salvar: {str(ex)}"), open=True)
+                print(f"❌ Erro detalhado ao salvar dados:")
+                print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
+                print(f"   Período: {month_val}/{year_val}")
+                print(f"   Erro: {ex}")
+                import traceback
+                traceback.print_exc()
             
             page.update()
 
@@ -2084,7 +2539,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         notas_col = ft.Column(spinboxes_rows, spacing=8)
 
         info_col = ft.Column([
-            ft.Text(supplier_name, weight="bold", size=16),
+            ft.Text(vendor_name, weight="bold", size=16),
             ft.Text(f"BU: {bu}"),
             ft.Text(f"PO: {supplier_number}"),
             ft.Text(f"ID: {supplier_id}"),
@@ -2129,7 +2584,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         # Anexar dados ao card
         card.data = {
             "supplier_id": supplier_id, 
-            "spinbox_refs": spinbox_refs
+            "spinbox_refs": spinbox_refs,
+            "comment_field": comment_field
         }
         
         return card
@@ -2174,12 +2630,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def create_result_widget(record):
         """Cria um card de resultado otimizado para um registro do banco."""
         supplier_id = record[0] if len(record) > 0 else "?"
-        supplier_name = record[1] if len(record) > 1 else "?"
+        vendor_name = record[1] if len(record) > 1 else "?"
         bu = record[2] if len(record) > 2 else "?"
         status = record[3] if len(record) > 3 else "?"
         supplier_number = record[4] if len(record) > 4 else "?"
 
-        print(f"Criando card para: {supplier_name} (ID: {supplier_id})")
+        print(f"Criando card para: {vendor_name} (ID: {supplier_id})")
         print(f"🔍 DEBUG PERMISSÕES NO CARD (SLIDER VERSION):")
         print(f"  current_user_permissions = {current_user_permissions}")
 
@@ -2274,6 +2730,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 show_snackbar("Selecione mês e ano antes de salvar.")
                 return
 
+            # Validação de data futura baseada na lógica legacy
+            from datetime import datetime
+            current_date = datetime.now()
+            ano_atual = current_date.year
+            mes_atual = current_date.month
+            register_date = current_date.strftime("%Y-%m-%d %H:%M:%S")  # Data atual para registro
+            
+            try:
+                mes_int = int(month_val)
+                ano_int = int(year_val)
+            except ValueError:
+                show_snackbar("Valores de mês e ano inválidos.")
+                return
+                
+            # Prevenir salvamento de scores para meses futuros
+            if (ano_int > ano_atual) or (ano_int == ano_atual and mes_int > mes_atual):
+                show_snackbar("Não é possível salvar scores para meses futuros.")
+                return
+
             try:
                 # Desabilitar botão temporariamente
                 e.control.disabled = True
@@ -2293,37 +2768,50 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 print(f"🎯 Critérios carregados para cálculo: {criteria_values}")
                 
-                # Preparar os dados para salvar - nota * critério (apenas campos com permissão)
+                # Preparar os dados para salvar - valores originais dos sliders
                 values_to_save = {}
+                total_score_calculation = 0.0
                 
-                # Verificar permissões e calcular valores finais (nota * critério)
+                # Verificar permissões e salvar valores originais, calcular total_score separadamente
                 if current_user_permissions.get('otif', False) and "OTIF" in score_sliders:
                     raw_score = float(score_sliders["OTIF"].value or 0)
-                    criteria_weight = criteria_values.get('OTIF', 0.22)  # Default 0.22 se não encontrar
-                    final_value = round(raw_score * criteria_weight, 1)
-                    values_to_save['otif'] = final_value
-                    print(f"  OTIF: {raw_score} × {criteria_weight} = {final_value}")
+                    values_to_save['otif'] = raw_score  # Salvar valor original
+                    
+                    # Calcular para total_score
+                    criteria_weight = criteria_values.get('OTIF', 0.22)
+                    weighted_value = round(raw_score * criteria_weight, 1)
+                    total_score_calculation += weighted_value
+                    print(f"  OTIF: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
                 if current_user_permissions.get('pickup', False) and "Pickup" in score_sliders:
                     raw_score = float(score_sliders["Pickup"].value or 0)
-                    criteria_weight = criteria_values.get('Quality of Pick Up', 0.28)  # Default 0.28
-                    final_value = round(raw_score * criteria_weight, 1)
-                    values_to_save['quality_pickup'] = final_value
-                    print(f"  Pickup: {raw_score} × {criteria_weight} = {final_value}")
+                    values_to_save['quality_pickup'] = raw_score  # Salvar valor original
+                    
+                    # Calcular para total_score
+                    criteria_weight = criteria_values.get('Quality of Pick Up', 0.28)
+                    weighted_value = round(raw_score * criteria_weight, 1)
+                    total_score_calculation += weighted_value
+                    print(f"  Pickup: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
                 if current_user_permissions.get('package', False) and "Package" in score_sliders:
                     raw_score = float(score_sliders["Package"].value or 0)
-                    criteria_weight = criteria_values.get('Quality-Supplier Package', 0.28)  # Default 0.28
-                    final_value = round(raw_score * criteria_weight, 1)
-                    values_to_save['quality_package'] = final_value
-                    print(f"  Package: {raw_score} × {criteria_weight} = {final_value}")
+                    values_to_save['quality_package'] = raw_score  # Salvar valor original
+                    
+                    # Calcular para total_score
+                    criteria_weight = criteria_values.get('Quality-Supplier Package', 0.28)
+                    weighted_value = round(raw_score * criteria_weight, 1)
+                    total_score_calculation += weighted_value
+                    print(f"  Package: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
                 if current_user_permissions.get('nil', False) and "NIL" in score_sliders:
                     raw_score = float(score_sliders["NIL"].value or 0)
-                    criteria_weight = criteria_values.get('NIL', 0.22)  # Default 0.22
-                    final_value = round(raw_score * criteria_weight, 1)
-                    values_to_save['nil'] = final_value
-                    print(f"  NIL: {raw_score} × {criteria_weight} = {final_value}")
+                    values_to_save['nil'] = raw_score  # Salvar valor original
+                    
+                    # Calcular para total_score
+                    criteria_weight = criteria_values.get('NIL', 0.22)
+                    weighted_value = round(raw_score * criteria_weight, 1)
+                    total_score_calculation += weighted_value
+                    print(f"  NIL: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                 
                 if not values_to_save:
                     show_snackbar("Você não tem permissão para salvar nenhum campo.")
@@ -2331,13 +2819,33 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 comment_val = comment_field.value or ""
                 
-                # Verificar se já existe um registro
+                # O total_score é a soma dos valores ponderados, não dos valores originais
+                total_score = round(total_score_calculation, 1)
+                print(f"📊 Total Score calculado: {total_score}")
+                
+                # Verificar se já existe um registro e buscar registered_by atual
                 check_query = """
-                    SELECT COUNT(*) FROM supplier_score_records_table 
+                    SELECT COUNT(*), registered_by FROM supplier_score_records_table 
                     WHERE supplier_id = ? AND month = ? AND year = ?
                 """
                 cursor.execute(check_query, (supplier_id, int(month_val), int(year_val)))
-                exists = cursor.fetchone()[0] > 0
+                result = cursor.fetchone()
+                exists = result[0] > 0
+                current_registered_by = result[1] if exists and result[1] else ""
+                
+                # Construir registered_by acumulativo - FUNÇÃO SLIDER
+                saved_field_names = []
+                field_mapping = {"NIL": "nil", "OTIF": "otif", "PICKUP": "quality_pickup", "PACKAGE": "quality_package"}
+                for field, db_field in field_mapping.items():
+                    if db_field in values_to_save.keys():  # Se o campo foi salvo, adicionar
+                        saved_field_names.append(field)
+                
+                # Combinar com os campos já registrados anteriormente
+                existing_fields = set(current_registered_by.split(',')) if current_registered_by else set()
+                all_fields = existing_fields.union(set(saved_field_names))
+                new_registered_by = ','.join(sorted([f for f in all_fields if f]))  # Remove strings vazias e ordena
+                
+                print(f"📝 Registered_by (SLIDER): '{current_registered_by}' -> '{new_registered_by}'")
                 
                 # Construir query dinamicamente baseado nas permissões
                 if exists:
@@ -2345,9 +2853,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     set_clauses = [f"{field} = ?" for field in values_to_save.keys()]
                     update_values = list(values_to_save.values())
                     
-                    # Sempre atualizar o comentário
-                    set_clauses.append("comment = ?")
-                    update_values.append(comment_val)
+                    # Sempre atualizar o comentário, total_score, registered_by, register_date, changed_by e supplier_name
+                    set_clauses.extend(["comment = ?", "total_score = ?", "registered_by = ?", "register_date = ?", "changed_by = ?", "supplier_name = ?"])
+                    update_values.extend([comment_val, total_score, new_registered_by, register_date, current_user_name, vendor_name])
 
                     if set_clauses:
                         update_query = f"UPDATE supplier_score_records_table SET {', '.join(set_clauses)} WHERE supplier_id = ? AND month = ? AND year = ?"
@@ -2357,8 +2865,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Inserir novo registro com campos zerados para campos sem permissão
                     insert_query = """
                         INSERT INTO supplier_score_records_table 
-                        (supplier_id, month, year, otif, quality_pickup, quality_package, nil, comment)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        (supplier_id, month, year, otif, quality_pickup, quality_package, nil, comment, total_score, registered_by, register_date, changed_by, supplier_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
                     cursor.execute(insert_query, (
                         supplier_id, 
@@ -2368,17 +2876,35 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         values_to_save.get('quality_pickup', 0), 
                         values_to_save.get('quality_package', 0), 
                         values_to_save.get('nil', 0),
-                        comment_val
+                        comment_val,
+                        total_score,
+                        new_registered_by,
+                        register_date,
+                        current_user_name,
+                        vendor_name
                     ))
                 
                 db_conn.commit()
                 
+                # Debug: mostrar informações detalhadas do salvamento
+                print(f"✅ Score salvo com sucesso!")
+                print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
+                print(f"   Período: {month_val}/{year_val}")
+                print(f"   Total Score: {total_score}")
+                print(f"   Registrado por: {current_user_wwid}")
+                print(f"   Campos salvos: {list(values_to_save.keys())}")
+                
                 saved_fields = [k.replace('quality_', '').replace('_', ' ').title() for k in values_to_save.keys()]
-                show_snackbar(f"Campos salvos para {supplier_name}: {', '.join(saved_fields)}")
+                show_snackbar(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}")
                 
             except Exception as ex:
-                show_snackbar(f"Erro ao salvar: {str(ex)}")
-                print(f"Erro ao salvar dados: {ex}")
+                show_snackbar(f"❌ Erro ao salvar: {str(ex)}")
+                print(f"❌ Erro detalhado ao salvar dados:")
+                print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
+                print(f"   Período: {month_val}/{year_val}")
+                print(f"   Erro: {ex}")
+                import traceback
+                traceback.print_exc()
             finally:
                 # Reabilitar botão
                 e.control.disabled = False
@@ -2408,16 +2934,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     cursor.execute(delete_query, (user_wwid, supplier_id))
                     is_favorite.current = False
                     e.control.selected = False
-                    show_snackbar(f"{supplier_name} removido dos favoritos")
-                    print(f"Favorito removido: {supplier_name} (ID: {supplier_id})")
+                    show_snackbar(f"{vendor_name} removido dos favoritos")
+                    print(f"Favorito removido: {vendor_name} (ID: {supplier_id})")
                 else:
                     # Adicionar aos favoritos
                     insert_query = "INSERT INTO favorites_table (user_wwid, supplier_id) VALUES (?, ?)"
                     cursor.execute(insert_query, (user_wwid, supplier_id))
                     is_favorite.current = True
                     e.control.selected = True
-                    show_snackbar(f"{supplier_name} adicionado aos favoritos")
-                    print(f"Favorito adicionado: {supplier_name} (ID: {supplier_id})")
+                    show_snackbar(f"{vendor_name} adicionado aos favoritos")
+                    print(f"Favorito adicionado: {vendor_name} (ID: {supplier_id})")
                 
                 db_conn.commit()
                 e.control.update()
@@ -2437,7 +2963,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         # Montagem do layout do card
         info_col = ft.Column([
             ft.Text(
-                supplier_name, 
+                vendor_name, 
                 weight="bold", 
                 size=16, 
                 width=200,  # Define largura para permitir quebra de linha
@@ -2549,8 +3075,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         print(f"Pesquisando por: '{search_term}', BU: {bu_val}")
 
         # Limpar resultados anteriores
-        results_list.controls.clear()
-        results_list.update()
+        if responsive_app_manager:
+            responsive_app_manager.clear_results()
+        else:
+            results_list.controls.clear()
+            results_list.update()
 
         if not search_term and (not bu_val or not bu_val.strip()):
             return
@@ -2606,7 +3135,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     print(f"Criando card {i+1}/{len(records)}: {record[1]}")
                     try:
                         card = create_result_widget(record)
-                        results_list.controls.append(card)
+                        if responsive_app_manager:
+                            responsive_app_manager.add_card_to_layout(card)
+                        else:
+                            results_list.controls.append(card)
                     except Exception as card_error:
                         print(f"Erro ao criar card para {record[1]}: {card_error}")
                         continue
@@ -5032,6 +5564,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             expand=True
         )
     )
+
+    # Inicializar gerenciador responsivo
+    global responsive_app_manager
+    responsive_app_manager = ResponsiveAppManager(page)
+    responsive_app_manager.initialize_containers(results_list)
+    responsive_app_manager.check_initial_window_state()  # Verificar estado inicial da janela
+    print("📱 Gerenciador responsivo inicializado e estado inicial verificado")
 
     update_menu()
     update_config_tabs()  # Inicializar as abas de configuração
