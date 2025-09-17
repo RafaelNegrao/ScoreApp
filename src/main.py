@@ -111,9 +111,21 @@ class ResponsiveAppManager:
         # Limpar container atual
         self.results_container.controls.clear()
         
-        # Criar duas colunas
-        left_column = ft.Column([], spacing=10, expand=True)
-        right_column = ft.Column([], spacing=10, expand=True)
+        # Criar duas colunas com alinhamento consistente
+        left_column = ft.Column(
+            [], 
+            spacing=10, 
+            expand=True,
+            alignment=ft.MainAxisAlignment.START,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+        )
+        right_column = ft.Column(
+            [], 
+            spacing=10, 
+            expand=True,
+            alignment=ft.MainAxisAlignment.START,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+        )
         
         # Distribuir cards alternadamente entre as colunas
         for i, card in enumerate(cards):
@@ -122,11 +134,16 @@ class ResponsiveAppManager:
             else:
                 right_column.controls.append(card)
         
-        # Criar linha com as duas colunas
+        # Criar linha com as duas colunas com alinhamento estável
         double_column_row = ft.Row([
             left_column,
             right_column
-        ], spacing=20, expand=True)
+        ], 
+        spacing=20, 
+        expand=True,
+        alignment=ft.MainAxisAlignment.START,
+        vertical_alignment=ft.CrossAxisAlignment.START
+        )
         
         # Adicionar ao container principal
         self.results_container.controls.append(double_column_row)
@@ -169,41 +186,70 @@ class ResponsiveAppManager:
             
         print(f"🔧 Adicionando card, layout atual: {self.current_layout}, containers existentes: {len(self.results_container.controls)}")
             
-        # Se é o primeiro card, aplicar o layout adequado
-        if len(self.results_container.controls) == 0:
-            print("🔧 Primeiro card - aplicando layout responsivo")
-            self.apply_responsive_layout()
-            
         if self.current_layout == "double":
-            # Encontrar a linha com duas colunas
+            # Buscar estrutura de duas colunas existente
+            double_column_row = None
             for control in self.results_container.controls:
                 if isinstance(control, ft.Row) and len(control.controls) == 2:
-                    left_column, right_column = control.controls
-                    # Adicionar na coluna com menos cards
-                    if len(left_column.controls) <= len(right_column.controls):
-                        left_column.controls.append(card)
-                        left_column.update()
-                        print(f"🔧 Card adicionado à coluna esquerda (total: {len(left_column.controls)})")
-                    else:
-                        right_column.controls.append(card)
-                        right_column.update()
-                        print(f"🔧 Card adicionado à coluna direita (total: {len(right_column.controls)})")
-                    # Atualizar o container principal também
-                    self.results_container.update()
-                    return
+                    double_column_row = control
+                    break
             
-            # Se não encontrou a estrutura de duas colunas, aplicar o layout primeiro
-            print("🔧 Estrutura de duas colunas não encontrada, reaplicando layout")
-            self.apply_responsive_layout()
-            # Tentar novamente
-            if self.results_container.controls:
-                control = self.results_container.controls[0]
-                if isinstance(control, ft.Row) and len(control.controls) == 2:
-                    left_column, right_column = control.controls
-                    left_column.controls.append(card)
-                    left_column.update()
-                    self.results_container.update()
-                    print("🔧 Card adicionado após recriar estrutura de duas colunas")
+            # Se não existe estrutura, criar uma nova
+            if double_column_row is None:
+                print("🔧 Criando nova estrutura de duas colunas")
+                # Coletar cards existentes antes de limpar
+                existing_cards = list(self.results_container.controls)
+                self.results_container.controls.clear()
+                
+                # Criar colunas com alinhamento consistente
+                left_column = ft.Column(
+                    [], 
+                    spacing=10, 
+                    expand=True,
+                    alignment=ft.MainAxisAlignment.START,
+                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+                )
+                right_column = ft.Column(
+                    [], 
+                    spacing=10, 
+                    expand=True,
+                    alignment=ft.MainAxisAlignment.START,
+                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+                )
+                
+                # Redistribuir cards existentes
+                for i, existing_card in enumerate(existing_cards):
+                    if not isinstance(existing_card, ft.Row):  # Evitar nested rows
+                        if i % 2 == 0:
+                            left_column.controls.append(existing_card)
+                        else:
+                            right_column.controls.append(existing_card)
+                
+                # Criar nova row com as colunas
+                double_column_row = ft.Row([
+                    left_column,
+                    right_column
+                ], 
+                spacing=20, 
+                expand=True,
+                alignment=ft.MainAxisAlignment.START,
+                vertical_alignment=ft.CrossAxisAlignment.START
+                )
+                
+                self.results_container.controls.append(double_column_row)
+            
+            # Agora adicionar o novo card à coluna apropriada
+            left_column, right_column = double_column_row.controls
+            if len(left_column.controls) <= len(right_column.controls):
+                left_column.controls.append(card)
+                print(f"🔧 Card adicionado à coluna esquerda (total: {len(left_column.controls)})")
+            else:
+                right_column.controls.append(card)
+                print(f"🔧 Card adicionado à coluna direita (total: {len(right_column.controls)})")
+            
+            # Uma única atualização no final
+            self.results_container.update()
+            
         else:
             # Layout single - adicionar diretamente
             self.results_container.controls.append(card)
