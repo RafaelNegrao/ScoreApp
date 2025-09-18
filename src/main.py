@@ -2861,22 +2861,66 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         )
 
         def save_score(e):
+            # Animação do botão - iniciar loading
+            save_button = e.control
+            
+            # Verificar se já está processando para evitar cliques múltiplos
+            if hasattr(save_button, '_is_processing') and save_button._is_processing:
+                print("🚫 Clique ignorado - operação já em andamento (spinbox)")
+                return
+                
+            # Marcar como processando
+            save_button._is_processing = True
+            
+            original_text = save_button.content.value if hasattr(save_button.content, 'value') else save_button.text
+            original_icon = save_button.icon
+            
+            def reset_button_state():
+                """Função para resetar o estado do botão"""
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button._is_processing = False
+                if hasattr(save_button, '_restore_thread'):
+                    save_button._restore_thread = None
+                if hasattr(save_button, '_restore_thread_cancelled'):
+                    save_button._restore_thread_cancelled = False
+                save_button.update()
+            
+            # Aplicar efeito visual de loading
+            save_button.text = "Salvando..."
+            save_button.icon = ft.Icons.HOURGLASS_EMPTY
+            save_button.disabled = True
+            save_button.update()
+            
             if not db_conn:
-                page.snack_bar = ft.SnackBar(ft.Text("Erro: Banco de dados não conectado."), open=True)
-                page.update()
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Erro: Banco de dados não conectado.", "red")
                 return
                 
             if not selected_month.current or not selected_year.current:
-                page.snack_bar = ft.SnackBar(ft.Text("Selecione mês e ano antes de salvar."), open=True)
-                page.update()
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Selecione mês e ano antes de salvar.", "orange")
                 return
                 
             month_val = selected_month.current.value
             year_val = selected_year.current.value
             
             if not month_val or not year_val:
-                page.snack_bar = ft.SnackBar(ft.Text("Selecione mês e ano antes de salvar."), open=True)
-                page.update()
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Selecione mês e ano antes de salvar.", "orange")
                 return
 
             # Validação de data futura baseada na lógica legacy
@@ -2890,14 +2934,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 mes_int = int(month_val)
                 ano_int = int(year_val)
             except ValueError:
-                page.snack_bar = ft.SnackBar(ft.Text("Valores de mês e ano inválidos."), open=True)
-                page.update()
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Valores de mês e ano inválidos.", "red")
                 return
                 
             # Prevenir salvamento de scores para meses futuros
             if (ano_int > ano_atual) or (ano_int == ano_atual and mes_int > mes_atual):
-                page.snack_bar = ft.SnackBar(ft.Text("Não é possível salvar scores para meses futuros."), open=True)
-                page.update()
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Não é possível salvar scores para meses futuros.", "orange")
                 return
 
             try:
@@ -2960,8 +3012,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     print(f"  NIL: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                 
                 if not values_to_save:
-                    page.snack_bar = ft.SnackBar(ft.Text("Você não tem permissão para salvar nenhum campo."), open=True)
-                    page.update()
+                    # Restaurar botão em caso de erro
+                    save_button.text = original_text
+                    save_button.icon = original_icon
+                    save_button.disabled = False
+                    save_button.update()
+                    show_toast("Você não tem permissão para salvar nenhum campo.", "red")
                     return
                 
                 comment_val = comment_field.value or ""
@@ -3054,21 +3110,59 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     if current_user_permissions.get(db_field, False) and field in spinbox_refs:
                         saved_fields.append(field)
                 
-                page.snack_bar = ft.SnackBar(
-                    ft.Text(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}"), 
-                    open=True
-                )
+                show_toast(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", "green")
+                
+                # Restaurar botão após sucesso com ícone de confirmação temporário
+                save_button.text = "Salvo!"
+                save_button.icon = ft.Icons.CHECK
+                save_button.disabled = False
+                save_button.update()
+                
+                # Cancelar thread anterior se existir
+                if hasattr(save_button, '_restore_thread') and save_button._restore_thread is not None:
+                    save_button._restore_thread_cancelled = True
+                
+                # Agendar restauração do botão original após 2 segundos
+                def restore_button():
+                    import time
+                    # Verificar cancelamento durante a espera
+                    for i in range(20):  # 20 x 0.1s = 2s
+                        if hasattr(save_button, '_restore_thread_cancelled') and save_button._restore_thread_cancelled:
+                            return  # Thread foi cancelada
+                        time.sleep(0.1)
+                    
+                    # Verificar novamente se foi cancelada antes de restaurar
+                    if hasattr(save_button, '_restore_thread_cancelled') and save_button._restore_thread_cancelled:
+                        return
+                        
+                    if hasattr(save_button, 'update'):  # Verificar se ainda existe
+                        save_button.text = original_text
+                        save_button.icon = original_icon
+                        save_button._restore_thread = None
+                        save_button._restore_thread_cancelled = False
+                        save_button._is_processing = False  # CRÍTICO: resetar flag de processamento
+                        save_button.update()
+                
+                import threading
+                save_button._restore_thread_cancelled = False
+                save_button._restore_thread = threading.Thread(target=restore_button, daemon=True)
+                save_button._restore_thread.start()
                 
             except Exception as ex:
-                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao salvar: {str(ex)}"), open=True)
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button._is_processing = False  # Adicionar reset do flag
+                save_button.update()
+                
+                show_toast(f"❌ Erro ao salvar: {str(ex)}", "red")
                 print(f"❌ Erro detalhado ao salvar dados:")
                 print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
                 print(f"   Período: {month_val}/{year_val}")
                 print(f"   Erro: {ex}")
                 import traceback
                 traceback.print_exc()
-            
-            page.update()
 
         def toggle_favorite(e):
             e.control.selected = not e.control.selected
@@ -3098,6 +3192,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             comment_field,
         ], expand=True, alignment=ft.MainAxisAlignment.START)
 
+        # Criar referência para o botão de salvar para permitir animações
+        save_button = ft.ElevatedButton(
+            "Salvar", 
+            on_click=save_score, 
+            icon=ft.Icons.SAVE,
+            animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT)
+        )
+
         card = ft.Card(
             content=ft.Container(
                 padding=15,
@@ -3121,7 +3223,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 on_click=toggle_favorite, 
                                 tooltip="Favoritar"
                             ),
-                            ft.ElevatedButton("Salvar", on_click=save_score, icon=ft.Icons.SAVE),
+                            save_button,
                         ], alignment=ft.MainAxisAlignment.END, tight=True),
                         height=50,  # Altura fixa para os botões
                         alignment=ft.alignment.bottom_right
@@ -3300,19 +3402,66 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         is_favorite.current = check_favorite_status()
 
         def save_score(e):
+            # Animação do botão - iniciar loading
+            save_button = e.control
+            
+            # Verificar se já está processando para evitar cliques múltiplos
+            if hasattr(save_button, '_is_processing') and save_button._is_processing:
+                print("🚫 Clique ignorado - operação já em andamento (slider)")
+                return
+                
+            # Marcar como processando
+            save_button._is_processing = True
+            
+            original_text = save_button.content.value if hasattr(save_button.content, 'value') else save_button.text
+            original_icon = save_button.icon
+            
+            def reset_button_state():
+                """Função para resetar o estado do botão"""
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button._is_processing = False
+                if hasattr(save_button, '_restore_thread'):
+                    save_button._restore_thread = None
+                if hasattr(save_button, '_restore_thread_cancelled'):
+                    save_button._restore_thread_cancelled = False
+                save_button.update()
+            
+            # Aplicar efeito visual de loading
+            save_button.text = "Salvando..."
+            save_button.icon = ft.Icons.HOURGLASS_EMPTY
+            save_button.disabled = True
+            save_button.update()
+            
             if not db_conn:
-                show_snackbar("Erro: Banco de dados não conectado.")
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Erro: Banco de dados não conectado.", "red")
                 return
                 
             if not selected_month.current or not selected_year.current:
-                show_snackbar("Selecione mês e ano antes de salvar.")
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Selecione mês e ano antes de salvar.", "orange")
                 return
                 
             month_val = selected_month.current.value
             year_val = selected_year.current.value
             
             if not month_val or not year_val:
-                show_snackbar("Selecione mês e ano antes de salvar.")
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Selecione mês e ano antes de salvar.", "orange")
                 return
 
             # Validação de data futura baseada na lógica legacy
@@ -3326,20 +3475,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 mes_int = int(month_val)
                 ano_int = int(year_val)
             except ValueError:
-                show_snackbar("Valores de mês e ano inválidos.")
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Valores de mês e ano inválidos.", "red")
                 return
                 
             # Prevenir salvamento de scores para meses futuros
             if (ano_int > ano_atual) or (ano_int == ano_atual and mes_int > mes_atual):
-                show_snackbar("Não é possível salvar scores para meses futuros.")
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button.update()
+                show_toast("Não é possível salvar scores para meses futuros.", "orange")
                 return
 
             try:
-                # Desabilitar botão temporariamente
-                e.control.disabled = True
-                e.control.text = "Salvando..."
-                page.update()
-                
                 cursor = db_conn.cursor()
                 
                 # Buscar critérios atuais da tabela criteria_table
@@ -3399,7 +3553,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     print(f"  NIL: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                 
                 if not values_to_save:
-                    show_snackbar("Você não tem permissão para salvar nenhum campo.")
+                    # Restaurar botão em caso de erro
+                    save_button.text = original_text
+                    save_button.icon = original_icon
+                    save_button.disabled = False
+                    save_button.update()
+                    show_toast("Você não tem permissão para salvar nenhum campo.", "red")
                     return
                 
                 comment_val = comment_field.value or ""
@@ -3480,21 +3639,59 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 print(f"   Campos salvos: {list(values_to_save.keys())}")
                 
                 saved_fields = [k.replace('quality_', '').replace('_', ' ').title() for k in values_to_save.keys()]
-                show_snackbar(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}")
+                show_toast(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", "green")
+                
+                # Restaurar botão após sucesso com ícone de confirmação temporário
+                save_button.text = "Salvo!"
+                save_button.icon = ft.Icons.CHECK
+                save_button.disabled = False
+                save_button.update()
+                
+                # Cancelar thread anterior se existir
+                if hasattr(save_button, '_restore_thread') and save_button._restore_thread is not None:
+                    save_button._restore_thread_cancelled = True
+                
+                # Agendar restauração do botão original após 2 segundos
+                def restore_button():
+                    import time
+                    # Verificar cancelamento durante a espera
+                    for i in range(20):  # 20 x 0.1s = 2s
+                        if hasattr(save_button, '_restore_thread_cancelled') and save_button._restore_thread_cancelled:
+                            return  # Thread foi cancelada
+                        time.sleep(0.1)
+                    
+                    # Verificar novamente se foi cancelada antes de restaurar
+                    if hasattr(save_button, '_restore_thread_cancelled') and save_button._restore_thread_cancelled:
+                        return
+                        
+                    if hasattr(save_button, 'update'):  # Verificar se ainda existe
+                        save_button.text = original_text
+                        save_button.icon = original_icon
+                        save_button._restore_thread = None
+                        save_button._restore_thread_cancelled = False
+                        save_button._is_processing = False  # CRÍTICO: resetar flag de processamento
+                        save_button.update()
+                
+                import threading
+                save_button._restore_thread_cancelled = False
+                save_button._restore_thread = threading.Thread(target=restore_button, daemon=True)
+                save_button._restore_thread.start()
                 
             except Exception as ex:
-                show_snackbar(f"❌ Erro ao salvar: {str(ex)}")
+                # Restaurar botão em caso de erro
+                save_button.text = original_text
+                save_button.icon = original_icon
+                save_button.disabled = False
+                save_button._is_processing = False  # Adicionar reset do flag
+                save_button.update()
+                
+                show_toast(f"❌ Erro ao salvar: {str(ex)}", "red")
                 print(f"❌ Erro detalhado ao salvar dados:")
                 print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
                 print(f"   Período: {month_val}/{year_val}")
                 print(f"   Erro: {ex}")
                 import traceback
                 traceback.print_exc()
-            finally:
-                # Reabilitar botão
-                e.control.disabled = False
-                e.control.text = "Salvar"
-                page.update()
 
         def toggle_favorite(e):
             # Por enquanto, vou usar um usuário padrão. Em uma implementação real, 
@@ -3502,7 +3699,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             user_wwid = "default_user"  # TODO: Implementar sistema de usuários
             
             if not db_conn:
-                show_snackbar("Erro: Banco de dados não conectado.")
+                show_toast("Erro: Banco de dados não conectado.", "red")
                 return
                 
             try:
@@ -3519,7 +3716,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     cursor.execute(delete_query, (user_wwid, supplier_id))
                     is_favorite.current = False
                     e.control.selected = False
-                    show_snackbar(f"{vendor_name} removido dos favoritos")
+                    show_toast(f"{vendor_name} removido dos favoritos", "orange")
                     print(f"Favorito removido: {vendor_name} (ID: {supplier_id})")
                 else:
                     # Adicionar aos favoritos
@@ -3527,17 +3724,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     cursor.execute(insert_query, (user_wwid, supplier_id))
                     is_favorite.current = True
                     e.control.selected = True
-                    show_snackbar(f"{vendor_name} adicionado aos favoritos")
+                    show_toast(f"{vendor_name} adicionado aos favoritos", "green")
                     print(f"Favorito adicionado: {vendor_name} (ID: {supplier_id})")
                 
                 db_conn.commit()
                 e.control.update()
                 
             except sqlite3.Error as db_error:
-                show_snackbar(f"Erro ao salvar favorito: {db_error}")
+                show_toast(f"Erro ao salvar favorito: {db_error}", "red")
                 print(f"Erro no banco de dados: {db_error}")
             except Exception as ex:
-                show_snackbar(f"Erro inesperado: {ex}")
+                show_toast(f"Erro inesperado: {ex}", "red")
                 print(f"Erro ao toggle favorite: {ex}")
 
         def show_snackbar(message):
@@ -3597,6 +3794,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         spacing=15
         )
 
+        # Criar referência para o botão de salvar para permitir animações
+        save_button = ft.ElevatedButton(
+            "Salvar",
+            on_click=save_score,
+            icon=ft.Icons.SAVE,
+            style=ft.ButtonStyle(
+                shape=ft.RoundedRectangleBorder(radius=8)
+            ),
+            animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT)
+        )
+
         # Card principal usando Stack para posicionar botões absolutamente
         card_content = ft.Container(
             content=ft.Stack([
@@ -3613,14 +3821,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             selected=is_favorite.current,  # Usar o estado real do favorito
                             
                         ),
-                        ft.ElevatedButton(
-                            "Salvar",
-                            on_click=save_score,
-                            icon=ft.Icons.SAVE,
-                            style=ft.ButtonStyle(
-                                shape=ft.RoundedRectangleBorder(radius=8)
-                            )
-                        ),
+                        save_button,
                     ], 
                     alignment=ft.MainAxisAlignment.END,
                     tight=True
