@@ -79,6 +79,9 @@ class ResponsiveAppManager:
             
         # Atualizar layout dos cards de suppliers se necessário
         self.update_supplier_cards_layout(window_width)
+        
+        # Atualizar layout da aba Users se necessário
+        self.update_users_layout(window_width)
     
     def apply_responsive_layout(self):
         """Aplica o layout responsivo baseado no estado atual"""
@@ -354,6 +357,203 @@ class ResponsiveAppManager:
                         
         except Exception as e:
             print(f"❌ Erro no fallback: {e}")
+    
+    def update_users_layout(self, window_width):
+        """Atualiza o layout da aba Users baseado na largura da janela"""
+        try:
+            # Definir breakpoint para responsividade (menor que 1000px = layout vertical)
+            should_use_vertical_layout = window_width < 1000
+            
+            # Acessar a estrutura da aba Users através da página
+            # A estrutura é: page -> Container -> Row -> [rail, divider, content_container] -> content_container -> Column[views] -> configs_view -> Column -> Stack -> users_content
+            users_content_found = None
+            
+            try:
+                # Navegação mais robusta pela estrutura
+                page_container = self.page.controls[0]  # Container principal da página
+                main_row = page_container.content  # Row principal (rail + content)
+                content_container = main_row.controls[2]  # Container do conteúdo (terceiro elemento: rail, divider, content)
+                views_column = content_container.content  # Column com as views (score, timeline, risks, email, configs)
+                configs_view = views_column.controls[4]  # configs_view (índice 4)
+                configs_main_column = configs_view.content  # Column principal do configs
+                configs_stack_container = configs_main_column.controls[2]  # Container que contém o Stack
+                configs_stack = configs_stack_container.content  # Stack com as abas de configuração
+                users_content_found = configs_stack.controls[3]  # users_content (índice 3)
+                
+                print(f"🔍 Debug: Acessando users_content...")
+                
+            except (IndexError, AttributeError) as e:
+                print(f"❌ Navegação para users_content falhou: {e}")
+                # Vamos tentar uma abordagem alternativa usando busca recursiva
+                try:
+                    users_content_found = self._find_users_content_recursive(self.page.controls[0])
+                    if users_content_found:
+                        print("✅ users_content encontrado através de busca recursiva")
+                    else:
+                        print("❌ users_content não encontrado mesmo com busca recursiva")
+                        return
+                except Exception as e2:
+                    print(f"❌ Busca recursiva também falhou: {e2}")
+                    return
+            
+            if not users_content_found:
+                print("❌ users_content não encontrado")
+                return
+            
+            # Navegar pela estrutura interna do users_content
+            try:
+                main_column = users_content_found.content  # Column principal do users_content
+                scroll_container = main_column.controls[2]  # Container com scroll (terceiro elemento)
+                listview_container = scroll_container.content  # ListView
+                form_container_wrapper = listview_container.controls[1]  # Container do formulário (segundo elemento)
+                # Em algumas versões o container interno já é o Column do formulário
+                form_container = getattr(form_container_wrapper, 'content', form_container_wrapper)
+                
+                print(f"🔍 Debug: Estrutura interna acessada com sucesso")
+                
+            except (IndexError, AttributeError) as e:
+                print(f"❌ Erro ao acessar estrutura interna: {e}")
+                return
+            
+            # Verificar se os elementos existem
+            if not hasattr(form_container, 'controls') or len(form_container.controls) < 2:
+                print(f"❌ form_container não tem controls suficientes: {len(form_container.controls) if hasattr(form_container, 'controls') else 'sem controls'}")
+                return
+            
+            # Encontrar as duas primeiras linhas relevantes (Row/Column)
+            rows = [c for c in form_container.controls if isinstance(c, (ft.Row, ft.Column))]
+            if len(rows) < 2:
+                print(f"❌ Não foi possível detectar as duas linhas do formulário (encontradas: {len(rows)})")
+                return
+            
+            # Pegar as rows/columns existentes (Linha 1: WWID/Nome, Linha 2: Senha/Privilégio)
+            row1 = rows[0]
+            row2 = rows[1]
+            
+            # Verificar se são Rows/Columns e têm os controles esperados
+            if not isinstance(row1, (ft.Row, ft.Column)) or not isinstance(row2, (ft.Row, ft.Column)):
+                print(f"❌ Tipos incorretos: row1={type(row1)}, row2={type(row2)}")
+                return
+                
+            if len(row1.controls) < 2 or len(row2.controls) < 2:
+                print(f"❌ Controles insuficientes: row1={len(row1.controls)}, row2={len(row2.controls)}")
+                return
+            
+            # Pegar os containers dos campos
+            wwid_container = row1.controls[0]
+            name_container = row1.controls[1]
+            password_container = row2.controls[0] 
+            privilege_container = row2.controls[1]
+            
+            if should_use_vertical_layout:
+                # Layout vertical - reorganizar em Column (apenas se ainda não estiver)
+                if isinstance(row1, ft.Row):
+                    print("📱 Aplicando layout VERTICAL na aba Users")
+                    
+                    # Ajustar largura dos containers para centralização
+                    wwid_container.width = 400
+                    wwid_container.alignment = ft.alignment.center
+                    name_container.width = 400
+                    name_container.alignment = ft.alignment.center
+                    password_container.width = 400
+                    password_container.alignment = ft.alignment.center
+                    privilege_container.width = 400
+                    privilege_container.alignment = ft.alignment.center
+                    
+                    # Recriar as linhas como Column centralizada
+                    new_row1 = ft.Column([
+                        wwid_container,
+                        name_container
+                    ], 
+                    alignment=ft.MainAxisAlignment.CENTER, 
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=15)
+                    
+                    new_row2 = ft.Column([
+                        password_container,
+                        privilege_container
+                    ], 
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER, 
+                    spacing=15)
+                    
+                    # Substituir as rows existentes
+                    # Substituir mantendo a posição original das linhas
+                    idx1 = form_container.controls.index(row1)
+                    idx2 = form_container.controls.index(row2)
+                    form_container.controls[idx1] = new_row1
+                    form_container.controls[idx2] = new_row2
+                    
+                    # Atualizar a interface
+                    users_content_found.update()
+                    print("✅ Layout vertical centralizado aplicado com sucesso")
+                
+            else:
+                # Layout horizontal - manter como Row (apenas se ainda não estiver)
+                if isinstance(row1, ft.Column):
+                    print("📱 Aplicando layout HORIZONTAL na aba Users")
+                    
+                    # Restaurar largura original dos containers
+                    wwid_container.width = 350
+                    wwid_container.alignment = ft.alignment.center
+                    name_container.width = 350
+                    name_container.alignment = ft.alignment.center
+                    password_container.width = 350
+                    password_container.alignment = ft.alignment.center
+                    privilege_container.width = 350
+                    privilege_container.alignment = ft.alignment.center
+                    
+                    # Converter de volta para Rows
+                    new_row1 = ft.Row([
+                        wwid_container,
+                        name_container,
+                    ], alignment=ft.MainAxisAlignment.CENTER, spacing=20)
+                    
+                    new_row2 = ft.Row([
+                        password_container,
+                        privilege_container,
+                    ], alignment=ft.MainAxisAlignment.CENTER, spacing=20)
+                    
+                    idx1 = form_container.controls.index(row1)
+                    idx2 = form_container.controls.index(row2)
+                    form_container.controls[idx1] = new_row1
+                    form_container.controls[idx2] = new_row2
+                    
+                    # Atualizar a interface
+                    users_content_found.update()
+                    print("✅ Layout horizontal aplicado com sucesso")
+            
+            print(f"📱 Layout da aba Users atualizado: {'vertical' if should_use_vertical_layout else 'horizontal'}")
+            
+        except Exception as e:
+            print(f"❌ Erro ao atualizar layout da aba Users: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _find_users_content_recursive(self, control, depth=0):
+        """Busca recursiva para encontrar users_content"""
+        if depth > 10:  # Evitar recursão infinita
+            return None
+            
+        # Verificar se é o users_content (Container com padding 20 e visible False inicialmente)
+        if isinstance(control, ft.Container) and hasattr(control, 'padding') and control.padding == 20:
+            if hasattr(control, 'content') and isinstance(control.content, ft.Column):
+                column = control.content
+                if len(column.controls) >= 3:
+                    first_text = column.controls[0]
+                    if isinstance(first_text, ft.Text) and "Gerenciamento de Usuários" in str(first_text.value):
+                        return control
+        
+        # Buscar recursivamente nos filhos
+        if hasattr(control, 'controls'):
+            for child in control.controls:
+                result = self._find_users_content_recursive(child, depth + 1)
+                if result:
+                    return result
+        elif hasattr(control, 'content') and control.content:
+            return self._find_users_content_recursive(control.content, depth + 1)
+        
+        return None
 
 # Instância global do gerenciador responsivo
 responsive_app_manager = None
@@ -366,163 +566,49 @@ current_user_permissions = {}
 selected_user = None  # Para controlar a seleção de usuários na aba Users
 suppliers_results_list = None  # Lista global dos cards de suppliers
 
-# ===== DEFINIÇÕES CENTRALIZADAS DE TEMAS =====
-THEME_DEFINITIONS = {
-    "white": {
-        "name": "Tema Claro",
-        "mode": ft.ThemeMode.LIGHT,
-        "custom_theme": None,
-        "colors": {
-            # Cores primárias baseadas no tema White
-            "primary": "#0066CC",               # Links e botões primários
-            "primary_container": "#E6F0FF",     # Fundo azul muito claro
-            "on_primary": "#FFFFFF",            # Texto branco sobre primary
-            "on_primary_container": "#0066CC",  # Texto azul sobre primary_container
-            
-            # Cores de superfície
-            "surface": "#F7F7F7",               # Fundo secundário (cards, caixas)
-            "surface_variant": "#FAFAFA",       # Fundo linha alternada tabelas
-            "on_surface": "#1C1C1C",            # Texto primário (quase preto, leitura suave)
-            "on_surface_variant": "#555555",    # Texto secundário
-            
-            # Cores secundárias e terciárias
-            "secondary": "#EAEAEA",             # Botões secundários fundo
-            "secondary_container": "#F0F8FF",   # Item hover dropdown
-            "tertiary": "#005BB5",              # Hover de links/botões
-            "tertiary_container": "#D6D6D6",    # Botões secundários hover
-            
-            # Cores de contorno e divisores
-            "outline": "#CCCCCC",               # Borda normal dos inputs
-            "outline_variant": "#DDDDDD",       # Bordas finas, discretas
-            
-            # Cores específicas da aplicação
-            "card_background": "#F7F7F7",       # Fundo secundário (cards, caixas)
-            "field_background": "#FFFFFF",      # TextField fundo
-            "button_text": "#FFFFFF",           # Texto dos botões primários
-            "hover_color": "#F0F8FF",           # Hover linha tabela
-            "selected_text": "#0066CC",         # Links
-            "selected_background": "#E6F0FF",   # Item selecionado dropdown
-            "normal_text": "#1C1C1C",           # Texto primário
-            "rail_background": "#FFFFFF",       # Fundo principal
-            "placeholder_text": "#AAAAAA",      # Placeholder dos inputs
-            "button_secondary_text": "#333333", # Texto botões secundários
-            "table_header_text": "#333333",     # Texto cabeçalho tabelas
-            "scrollbar_track": "#F2F2F2",       # Trilha scrollbar
-            "scrollbar_thumb": "#CCCCCC",       # Polegar scrollbar
-            "scrollbar_thumb_hover": "#999999", # Hover polegar scrollbar
-            "focus_border": "#0066CC"           # Borda foco inputs
-        }
-    },
-    "dark": {
-        "name": "Tema Escuro",
-        "mode": ft.ThemeMode.DARK,
-        "custom_theme": None,
-        "colors": {
-            # Cores primárias baseadas no tema Dark
-            "primary": "#4EA1FF",               # Links e botões primários
-            "primary_container": "#3B3B3B",     # Item selecionado dropdown
-            "on_primary": "#121212",            # Texto preto sobre primary
-            "on_primary_container": "#E0E0E0",  # Texto claro sobre primary_container
-            
-            # Cores de superfície
-            "surface": "#1E1E1E",               # Fundo secundário
-            "surface_variant": "#181818",       # Fundo linha alternada tabelas
-            "on_surface": "#E0E0E0",            # Texto primário
-            "on_surface_variant": "#A0A0A0",    # Texto secundário
-            
-            # Cores secundárias e terciárias
-            "secondary": "#2C2C2C",             # Botões secundários fundo
-            "secondary_container": "#2C2C2C",   # Item hover dropdown
-            "tertiary": "#338FE0",              # Hover de links/botões
-            "tertiary_container": "#3A3A3A",    # Botões secundários hover
-            
-            # Cores de contorno e divisores
-            "outline": "#333333",               # Borda normal dos inputs
-            "outline_variant": "#2C2C2C",       # Bordas
-            
-            # Cores específicas da aplicação
-            "card_background": "#1E1E1E",       # Fundo secundário
-            "field_background": "#1E1E1E",      # TextField fundo
-            "button_text": "#121212",           # Texto dos botões primários
-            "hover_color": "#2C2C2C",           # Hover linha tabela
-            "selected_text": "#4EA1FF",         # Links
-            "selected_background": "#3B3B3B",   # Item selecionado dropdown
-            "normal_text": "#E0E0E0",           # Texto primário
-            "rail_background": "#121212",       # Fundo principal
-            "placeholder_text": "#777777",      # Placeholder dos inputs
-            "button_secondary_text": "#E0E0E0", # Texto botões secundários
-            "table_header_text": "#CCCCCC",     # Texto cabeçalho tabelas
-            "scrollbar_track": "#1A1A1A",       # Trilha scrollbar
-            "scrollbar_thumb": "#333333",       # Polegar scrollbar
-            "scrollbar_thumb_hover": "#555555", # Hover polegar scrollbar
-            "focus_border": "#4EA1FF"           # Borda foco inputs
-        }
-    },
-    "dracula": {
-        "name": "Tema Dracula",
-        "mode": ft.ThemeMode.DARK,
-        "custom_theme": True,
-        "colors": {
-            # Cores primárias baseadas no tema Dracula
-            "primary": "#BD93F9",               # Botões primários (roxo vibrante)
-            "primary_container": "#6272A4",     # Item selecionado dropdown
-            "on_primary": "#282A36",            # Texto escuro sobre primary
-            "on_primary_container": "#F8F8F2",  # Texto claro sobre primary_container
-            
-            # Cores de superfície
-            "surface": "#343746",               # Fundo secundário
-            "surface_variant": "#2E303E",       # Fundo linha alternada tabelas
-            "on_surface": "#F8F8F2",            # Texto primário (quase branco)
-            "on_surface_variant": "#6272A4",    # Texto secundário (azul acinzentado)
-            
-            # Cores secundárias e terciárias
-            "secondary": "#44475A",             # Botões secundários fundo
-            "secondary_container": "#44475A",   # Item hover dropdown
-            "tertiary": "#50FA7B",              # Hover de links/botões (verde neon)
-            "tertiary_container": "#5A5E72",    # Botões secundários hover
-            
-            # Cores de contorno e divisores
-            "outline": "#44475A",               # Borda normal dos inputs
-            "outline_variant": "#44475A",       # Bordas
-            
-            # Cores específicas da aplicação
-            "card_background": "#343746",       # Fundo secundário
-            "field_background": "#343746",      # TextField fundo
-            "button_text": "#282A36",           # Texto dos botões primários
-            "hover_color": "#44475A",           # Hover linha tabela
-            "selected_text": "#8BE9FD",         # Links (ciano claro)
-            "selected_background": "#6272A4",   # Item selecionado dropdown
-            "normal_text": "#F8F8F2",           # Texto primário
-            "rail_background": "#282A36",       # Fundo principal (cinza-azulado escuro)
-            "placeholder_text": "#6272A4",      # Placeholder dos inputs
-            "button_secondary_text": "#F8F8F2", # Texto botões secundários
-            "table_header_text": "#FF79C6",     # Texto cabeçalho tabelas (rosa choque)
-            "scrollbar_track": "#282A36",       # Trilha scrollbar
-            "scrollbar_thumb": "#44475A",       # Polegar scrollbar
-            "scrollbar_thumb_hover": "#BD93F9", # Hover polegar scrollbar
-            "focus_border": "#BD93F9",          # Borda foco inputs
-            
-            # Cores extras do Dracula (para referência)
-            "green": "#50FA7B",                 # Verde neon
-            "yellow": "#F1FA8C",                # Amarelo Dracula
-            "orange": "#FFB86C",                # Laranja Dracula
-            "red": "#FF5555",                   # Vermelho Dracula
-            "pink": "#FF79C6",                  # Rosa choque
-            "cyan": "#8BE9FD",                  # Ciano claro
-            "purple": "#BD93F9"                 # Roxo vibrante
-        }
-    }
-}
+# ===== DEFINIÇÕES SIMPLES DE TEMAS =====
 
-def get_current_theme_colors(page_ref):
-    """Retorna as cores do tema atual baseado no estado da aplicação"""
-    try:
-        # Acessa o nome do tema armazenado de forma confiável no objeto da página
-        theme_name = page_ref.data.get("theme_name", "white")
-        return THEME_DEFINITIONS.get(theme_name, THEME_DEFINITIONS["white"])["colors"]
-    except Exception:
-        # Fallback para tema claro se houver qualquer erro
-        return THEME_DEFINITIONS["white"]["colors"]
+def get_current_theme_colors(theme_name="white"):
+    """Retorna as cores básicas do tema especificado"""
+    if theme_name == "dark":
+        return {
+            "field_background": "#2C2C2C",
+            "on_surface": "#E0E0E0", 
+            "outline": "#555555",
+            "card_background": "#1E1E1E",
+            "primary": "#4EA1FF",
+            "primary_container": "#3B3B3B",
+            "surface_variant": "#181818",
+            "rail_background": "#121212"
+        }
+    elif theme_name == "dracula":
+        return {
+            "field_background": "#44475A",
+            "on_surface": "#F8F8F2",
+            "outline": "#6272A4",
+            "card_background": "#343746",
+            "primary": "#BD93F9",
+            "primary_container": "#6272A4",
+            "surface_variant": "#2E303E",
+            "rail_background": "#282A36"
+        }
+    else:  # white
+        return {
+            "field_background": "#FFFFFF",
+            "on_surface": "#1C1C1C",
+            "outline": "#CCCCCC",
+            "card_background": "#F7F7F7",
+            "primary": "#0066CC",
+            "primary_container": "#E6F0FF",
+            "surface_variant": "#FAFAFA",
+            "rail_background": "#FFFFFF"
+        }
+
+def get_theme_name_from_page(page_ref=None):
+    """Obtém o nome do tema atual da página"""
+    if page_ref and hasattr(page_ref, 'data') and page_ref.data:
+        return page_ref.data.get("theme_name", "white")
+    return "white"
 
 # ===== FIM DAS DEFINIÇÕES DE TEMAS =====
 
@@ -940,10 +1026,11 @@ class DeleteListItemConfirmationDialog(ft.AlertDialog):
 
 
 class AddSupplierDialog(ft.AlertDialog):
-    def __init__(self, on_confirm, on_cancel, scale_func=None, list_options=None):
+    def __init__(self, on_confirm, on_cancel, page, scale_func=None, list_options=None):
         super().__init__()
         self.on_confirm_callback = on_confirm
         self.on_cancel_callback = on_cancel
+        self.page = page
         self.scale_func = scale_func or (lambda x: x)
         self.list_options = list_options or {}
         
@@ -956,7 +1043,10 @@ class AddSupplierDialog(ft.AlertDialog):
                 e.control.color = "red"
             else:
                 e.control.color = get_current_theme_colors(self.page).get('on_surface') if hasattr(self, 'page') else "black"
-            e.page.update() if e.page else None
+            if e.page:
+                e.page.update()
+            elif hasattr(e.control, 'update'):
+                e.control.update()
         
         # Campos do formulário organizados por seção (sem supplier_id)
         self.fields = {
@@ -975,10 +1065,18 @@ class AddSupplierDialog(ft.AlertDialog):
                 color=get_current_theme_colors(self.page).get('on_surface'),
                 border_color=get_current_theme_colors(self.page).get('outline')
             ),
-            "supplier_category": ft.Dropdown(
-                label="Supplier Category",
-                width=250,
-                options=[ft.dropdown.Option(v) for v in (self.list_options.get('category') or ["", "Raw Materials", "Components", "Services", "Equipment"])]
+            "supplier_category": ft.Container(
+                content=ft.Dropdown(
+                    label="Supplier Category",
+                    width=250,
+                    color=get_current_theme_colors(self.page).get('on_surface'),
+                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    options=[
+                        ft.dropdown.Option(v)
+                        for v in (self.list_options.get('category') or ["", "Raw Materials", "Components", "Services", "Equipment"])
+                    ],
+                ),
+                bgcolor=get_current_theme_colors(self.page).get('field_background'),
             ),
             
             # Informações de Contato
@@ -998,44 +1096,78 @@ class AddSupplierDialog(ft.AlertDialog):
             ),
             
             # Configurações Organizacionais
-            "bu": ft.Dropdown(
-                label="BU (Business Unit)",
-                width=200,
-                options=[ft.dropdown.Option(v) for v in (self.list_options.get('bu') or ["", "Operations", "Manufacturing", "Procurement", "Quality", "Logistics"]) ]
+            "bu": ft.Container(
+                content=ft.Dropdown(
+                    label="BU (Business Unit)",
+                    width=200,
+                    color=get_current_theme_colors(self.page).get('on_surface'),
+                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    filled=False,
+                    options=[ft.dropdown.Option(v) for v in (self.list_options.get('bu') or ["", "Operations", "Manufacturing", "Procurement", "Quality", "Logistics"]) ]
+                ),
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
-            "supplier_status": ft.Dropdown(
-                label="Status",
-                width=200,
-                value="Active",  # Valor padrão
-                color="green",  # Cor padrão para Active
-                options=[
-                    ft.dropdown.Option("Active"),
-                    ft.dropdown.Option("Inactive"),
-                ],
-                on_change=update_status_color_dialog
+
+            "supplier_status": ft.Container(
+                content=ft.Dropdown(
+                    label="Status",
+                    width=200,
+                    value="Active",  # Valor padrão
+                    color="green",  # Cor inicial verde para "Active"
+                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    options=[
+                        ft.dropdown.Option("Active"),
+                        ft.dropdown.Option("Inactive"),
+                    ],
+                    on_change=update_status_color_dialog
+                ),
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
-            
-            # Configurações de Gestão
-            "planner": ft.Dropdown(
-                label="Planner",
-                width=200,
-                options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('planner') or []))]
+
+            "planner": ft.Container(
+                content=ft.Dropdown(
+                    label="Planner",
+                    width=200,
+                    color=get_current_theme_colors(self.page).get('on_surface'),
+                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('planner') or []))]
+                ),
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
-            "continuity": ft.Dropdown(
-                label="Continuity", 
-                width=200,
-                options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('continuity') or []))]
+
+            "continuity": ft.Container(
+                content=ft.Dropdown(
+                    label="Continuity", 
+                    width=200,
+                    color=get_current_theme_colors(self.page).get('on_surface'),
+                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('continuity') or []))]
+                ),
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
-            "sourcing": ft.Dropdown(
-                label="Sourcing",
-                width=200,
-                options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('sourcing') or []))]
+
+            "sourcing": ft.Container(
+                content=ft.Dropdown(
+                    label="Sourcing",
+                    width=200,
+                    color=get_current_theme_colors(self.page).get('on_surface'),
+                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('sourcing') or []))]
+                ),
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
-            "sqie": ft.Dropdown(
-                label="SQIE",
-                width=200,
-                options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('sqie') or []))]
+
+            "sqie": ft.Container(
+                content=ft.Dropdown(
+                    label="SQIE",
+                    width=200,
+                    color=get_current_theme_colors(self.page).get('on_surface'),
+                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('sqie') or []))]
+                ),
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
+
         }
         
         self.title = ft.Text("➕ Adicionar Novo Supplier", size=18, weight=ft.FontWeight.BOLD)
@@ -1106,7 +1238,7 @@ class AddSupplierDialog(ft.AlertDialog):
             ft.ElevatedButton("💾 Salvar", on_click=self.confirm, 
                             style=ft.ButtonStyle(
                                 bgcolor="primary",
-                                color="on_primary"
+                                color="white"  # Cor da fonte branca para melhor contraste
                             ))
         ]
         self.actions_alignment = ft.MainAxisAlignment.END
@@ -1203,11 +1335,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Carregar configurações do app
     app_settings = load_app_settings()
     
-    # Funções de tema antigas removidas - agora usando THEME_DEFINITIONS centralizado
+    # Tema simplificado - apenas 3 opções básicas
     
     def menu_item(icon, text, idx, show_text=True):
         is_selected = selected_index.current == idx
-        colors = get_current_theme_colors(page)
+        colors = get_current_theme_colors(get_theme_name_from_page(page))
         
         def on_hover(e):
             e.control.bgcolor = colors['surface_variant'] if e.data == "true" else (colors['primary_container'] if is_selected else None)
@@ -1278,7 +1410,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 action_btn_ctrl.icon = ft.Icons.PERSON_ADD
 
         if action_btn_ctrl and hasattr(action_btn_ctrl, 'update'):
-            action_btn_ctrl.update()
+            try:
+                action_btn_ctrl.update()
+            except Exception as e:
+                print(f"Erro ao atualizar botão de ação: {e}")
 
     def on_wwid_change(e):
         """Função chamada quando o WWID é alterado para verificar em tempo real."""
@@ -1300,24 +1435,114 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Campo WWID foi limpo - limpar seleção
             selected_user = None
 
+    def find_field_by_label(label_text):
+        """Busca um TextField ou Dropdown na estrutura users_content pelo label"""
+        try:
+            # Buscar users_content através da busca recursiva
+            users_content_found = responsive_app_manager._find_users_content_recursive(page.controls[0])
+            if not users_content_found:
+                return None
+                
+            return _find_control_recursive(users_content_found, label_text)
+        except Exception as e:
+            print(f"Erro ao buscar campo {label_text}: {e}")
+            return None
+    
+    def find_checkbox_by_label(label_text):
+        """Busca um Checkbox na estrutura users_content pelo label"""
+        try:
+            # Buscar users_content através da busca recursiva
+            users_content_found = responsive_app_manager._find_users_content_recursive(page.controls[0])
+            if not users_content_found:
+                return None
+                
+            return _find_checkbox_recursive(users_content_found, label_text)
+        except Exception as e:
+            print(f"Erro ao buscar checkbox {label_text}: {e}")
+            return None
+    
+    def _find_control_recursive(control, target_label, depth=0):
+        """Busca recursiva por TextField ou Dropdown com label específico"""
+        if depth > 15:  # Evitar recursão infinita
+            return None
+            
+        # Verificar se é TextField ou Dropdown com o label procurado
+        if isinstance(control, (ft.TextField, ft.Dropdown)):
+            if hasattr(control, 'label') and control.label == target_label:
+                return control
+        
+        # Buscar nos filhos
+        if hasattr(control, 'controls'):
+            for child in control.controls:
+                result = _find_control_recursive(child, target_label, depth + 1)
+                if result:
+                    return result
+        elif hasattr(control, 'content') and control.content:
+            return _find_control_recursive(control.content, target_label, depth + 1)
+        
+        return None
+    
+    def _find_checkbox_recursive(control, target_label, depth=0):
+        """Busca recursiva por Checkbox com label específico"""
+        if depth > 15:  # Evitar recursão infinita
+            return None
+            
+        # Verificar se é Checkbox com o label procurado
+        if isinstance(control, ft.Checkbox):
+            if hasattr(control, 'label') and control.label == target_label:
+                return control
+        
+        # Buscar nos filhos
+        if hasattr(control, 'controls'):
+            for child in control.controls:
+                result = _find_checkbox_recursive(child, target_label, depth + 1)
+                if result:
+                    return result
+        elif hasattr(control, 'content') and control.content:
+            return _find_checkbox_recursive(control.content, target_label, depth + 1)
+        
+        return None
+
     def clear_other_fields_except_wwid():
         """Limpa todos os campos exceto o WWID quando digitando um WWID novo."""
         try:
-            # Limpar campos de texto (exceto WWID)
-            for key, val in [('name', ''), ('password', ''), ('privilege', None)]:
-                ctrl = resolve_control(users_controls.get(key))
-                if ctrl is not None:
-                    ctrl.value = val
-                    if hasattr(ctrl, 'update'):
-                        ctrl.update()
-
-            # Limpar checkboxes
-            for key in ['otif_check', 'nil_check', 'pickup_check', 'package_check']:
-                ctrl = resolve_control(users_controls.get(key))
-                if ctrl is not None:
-                    ctrl.value = False
-                    if hasattr(ctrl, 'update'):
-                        ctrl.update()
+            # Usar uma abordagem mais direta que não depende das referências antigas
+            # após reorganização responsiva
+            
+            # Para campos de texto, buscar diretamente na estrutura
+            try:
+                # Buscar campo Name diretamente
+                name_field = find_field_by_label("Nome Completo")
+                if name_field:
+                    name_field.value = ""
+            except Exception as e:
+                print(f"Erro ao limpar Name via busca direta: {e}")
+                
+            try:
+                # Buscar campo Password diretamente  
+                password_field = find_field_by_label("Senha")
+                if password_field:
+                    password_field.value = ""
+            except Exception as e:
+                print(f"Erro ao limpar Password via busca direta: {e}")
+                
+            try:
+                # Buscar campo Privilege diretamente
+                privilege_field = find_field_by_label("Nível de Privilégio")
+                if privilege_field:
+                    privilege_field.value = None
+            except Exception as e:
+                print(f"Erro ao limpar Privilege via busca direta: {e}")
+            
+            # Para checkboxes, buscar diretamente
+            checkbox_labels = ["OTIF", "NIL", "Pickup", "Package"]
+            for label in checkbox_labels:
+                try:
+                    checkbox = find_checkbox_by_label(label)
+                    if checkbox:
+                        checkbox.value = False
+                except Exception as e:
+                    print(f"Erro ao limpar checkbox {label}: {e}")
             
             # Não limpar selected_user automaticamente para evitar problemas com exclusão
             # A limpeza será feita apenas manualmente através da função clear_users_fields()
@@ -1342,28 +1567,45 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 print(f"🔄 Preenchimento automático para WWID {wwid}")
                 
-                # Preencher campos de texto
-                name_ctrl = resolve_control(users_controls.get('name'))
-                pwd_ctrl = resolve_control(users_controls.get('password'))
-                priv_ctrl = resolve_control(users_controls.get('privilege'))
-                if name_ctrl is not None:
-                    name_ctrl.value = str(name) if name else ""
-                if pwd_ctrl is not None:
-                    pwd_ctrl.value = str(password) if password else ""
-                if priv_ctrl is not None:
-                    priv_ctrl.value = str(privilege) if privilege else None
+                # Preencher campos usando busca direta na estrutura
+                try:
+                    name_field = find_field_by_label("Nome Completo")
+                    if name_field:
+                        name_field.value = str(name) if name else ""
+                except Exception as e:
+                    print(f"Erro ao preencher Name: {e}")
+                    
+                try:
+                    password_field = find_field_by_label("Senha")
+                    if password_field:
+                        password_field.value = str(password) if password else ""
+                except Exception as e:
+                    print(f"Erro ao preencher Password: {e}")
+                    
+                try:
+                    privilege_field = find_field_by_label("Nível de Privilégio")
+                    if privilege_field:
+                        privilege_field.value = str(privilege) if privilege else None
+                except Exception as e:
+                    print(f"Erro ao preencher Privilege: {e}")
                 
-                # Definir valores dos checkboxes
-                for key, db_val in [('otif_check', otif), ('nil_check', nil), ('pickup_check', pickup), ('package_check', package)]:
-                    ctrl = resolve_control(users_controls.get(key))
-                    if ctrl is not None:
-                        ctrl.value = int(db_val) == 1
+                # Definir valores dos checkboxes usando busca direta
+                checkbox_data = [
+                    ("OTIF", otif), ("NIL", nil), ("Pickup", pickup), ("Package", package)
+                ]
+                for label, db_val in checkbox_data:
+                    try:
+                        checkbox = find_checkbox_by_label(label)
+                        if checkbox:
+                            checkbox.value = int(db_val) == 1
+                    except Exception as e:
+                        print(f"Erro ao preencher checkbox {label}: {e}")
                 
-                # Atualizar controles
-                for key in ['name', 'password', 'privilege', 'otif_check', 'nil_check', 'pickup_check', 'package_check']:
-                    ctrl = resolve_control(users_controls.get(key))
-                    if ctrl is not None and hasattr(ctrl, 'update'):
-                        ctrl.update()
+                # Atualizar página diretamente
+                try:
+                    page.update()
+                except Exception as e:
+                    print(f"Erro ao atualizar página: {e}")
                 
                 # Definir usuário selecionado globalmente
                 global selected_user
@@ -1442,94 +1684,91 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             return ctrl_or_ref
 
 
-    def apply_theme(theme_mode):
-        """Aplica o tema especificado à página."""
+    def apply_theme(theme_mode, is_initialization=False):
+        """Aplica o tema especificado à página - versão simplificada"""
+        # Configurar cores básicas para cada tema
         if theme_mode == "dracula":
-            colors = THEME_DEFINITIONS["dracula"]["colors"]
-            page.theme = ft.Theme(
-                color_scheme=ft.ColorScheme(
-                    primary=colors['primary'],
-                    primary_container=colors['primary_container'],
-                    secondary=colors['secondary'],
-                    tertiary=colors['tertiary'],
-
-                    # Backgrounds e superfícies
-                    background="#282A36",  # Background do Dracula
-                    surface="#282A36",
-                    surface_variant="#44475A",
-
-                    # Cores de texto
-                    on_surface="#F8F8F2",
-                    on_surface_variant="#F8F8F2",
-                    on_primary="#282A36",
-                    on_primary_container="#F8F8F2",
-                    on_secondary="#282A36",
-                    on_background="#F8F8F2",
-
-                    # Cores adicionais para elementos específicos
-                    outline="#6272A4",
-                    outline_variant="#44475A",
-                )
-            )
-            page.theme_mode = ft.ThemeMode.DARK
-            page.bgcolor = "#282A36"  # Dracula Background
-        elif theme_mode == "dark":
-            page.theme = None
-            page.theme_mode = ft.ThemeMode.DARK
-            page.bgcolor = "#121212"  # Material Design Dark Background
-        else:  # light
-            page.theme = None
-            page.theme_mode = ft.ThemeMode.LIGHT
-            page.bgcolor = "#FAFAFA"  # Material Design Light Background
-        page.update()
-        
-        # Atualizar listas para refletir as novas cores do tema
-        try:
-            refresh_users_list()
-            update_menu()
-            # Atualizar todas as listas da aba configs
-            for key in ['planner', 'continuity', 'sourcing', 'sqie']:
-                refresh_list_ui(key)
-        except Exception as e:
-            print(f"Erro ao atualizar listas após mudança de tema: {e}")
-
-    # ===== CARREGAMENTO INICIAL DO TEMA =====
-    # Carregar tema salvo ANTES de criar qualquer componente UI
-    # Versão simplificada que não depende de db_conn ou funções de refresh
-    def apply_theme_initial(theme_mode):
-        """Aplica tema inicial sem dependências externas"""
-        if theme_mode == "dracula":
-            colors = THEME_DEFINITIONS["dracula"]["colors"]
-            page.theme = ft.Theme(
-                color_scheme=ft.ColorScheme(
-                    primary=colors['primary'],
-                    primary_container=colors['primary_container'],
-                    secondary=colors['secondary'],
-                    tertiary=colors['tertiary'],
-                    background="#282A36",
-                    surface="#282A36",
-                    surface_variant="#44475A",
-                    on_surface="#F8F8F2",
-                    on_surface_variant="#F8F8F2",
-                    on_primary="#282A36",
-                    on_primary_container="#F8F8F2",
-                    on_secondary="#282A36",
-                    on_background="#F8F8F2",
-                    outline="#6272A4",
-                    outline_variant="#44475A",
-                )
-            )
             page.theme_mode = ft.ThemeMode.DARK
             page.bgcolor = "#282A36"
+            page.theme = ft.Theme(
+                color_scheme=ft.ColorScheme(
+                    primary="#BD93F9",
+                    background="#282A36",
+                    surface="#282A36", 
+                    on_surface="#F8F8F2",
+                    outline="#6272A4",
+                )
+            )
         elif theme_mode == "dark":
             page.theme = None
             page.theme_mode = ft.ThemeMode.DARK
             page.bgcolor = "#121212"
-        else:  # light
+        else:  # white
             page.theme = None
             page.theme_mode = ft.ThemeMode.LIGHT
-            page.bgcolor = "#FAFAFA"
-    
+            page.bgcolor = "#FFFFFF"
+
+        # Salvar tema atual
+        page.data["theme_name"] = theme_mode
+        page.update()
+
+        # Atualizar controles se não for inicialização
+        if not is_initialization:
+            try:
+                refresh_users_list()
+                update_menu()
+                for key in ['planner', 'continuity', 'sourcing', 'sqie']:
+                    refresh_list_ui(key)
+                update_control_colors(page, theme_mode)
+            except Exception as e:
+                print(f"Erro ao atualizar listas: {e}")
+
+    def update_control_colors(control, theme_name, depth=0):
+        """Atualiza cores de controles recursivamente"""
+        if depth > 20:
+            return
+        
+        # Obter cores do tema
+        colors = get_current_theme_colors(theme_name)
+            
+        # Atualizar TextField
+        if isinstance(control, ft.TextField):
+            control.bgcolor = colors.get('field_background')
+            control.color = colors.get('on_surface')
+            control.border_color = colors.get('outline')
+            
+        # Atualizar Dropdown  
+        elif isinstance(control, ft.Dropdown):
+            control.bgcolor = colors.get('field_background')
+            control.color = colors.get('on_surface')
+            control.border_color = colors.get('outline')
+        
+        # Atualizar Card
+        elif isinstance(control, ft.Card):
+            control.color = colors.get('card_background')
+        
+        # Atualizar Container
+        elif isinstance(control, ft.Container):
+            # Se tem bgcolor definido, atualizar conforme o contexto
+            if hasattr(control, 'bgcolor') and control.bgcolor:
+                # Para containers que provavelmente são fundos de campos
+                if control.bgcolor in ['#FFFFFF', '#2C2C2C', '#44475A', 'surface_variant', 'field_background']:
+                    control.bgcolor = colors.get('field_background')
+        
+        # Atualizar Text (para casos especiais)
+        elif isinstance(control, ft.Text):
+            # Preservar cores especiais como primary, mas atualizar cores básicas
+            if hasattr(control, 'color') and control.color in ['on_surface', 'black', 'white']:
+                control.color = colors.get('on_surface')
+        
+        # Recursão nos filhos
+        if hasattr(control, 'controls'):
+            for child in control.controls:
+                update_control_colors(child, theme_name, depth + 1)
+        elif hasattr(control, 'content') and control.content:
+            update_control_colors(control.content, theme_name, depth + 1)
+
+    # ===== CARREGAMENTO INICIAL DO TEMA =====
     # Aplicar tema padrão ou salvo se disponível
     saved_theme = None
     try:
@@ -1571,15 +1810,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Aplicar tema carregado ou usar padrão
         if user_theme and user_theme in ["white", "dark", "dracula"]:
-            apply_theme_initial(user_theme)
+            apply_theme(user_theme, is_initialization=True)
             print(f"Tema aplicado na inicialização: {user_theme}")
         else:
-            apply_theme_initial("white")  # tema padrão
+            apply_theme("white", is_initialization=True)  # tema padrão
             print("Aplicando tema padrão (white) na inicialização")
             
     except Exception as e:
         print(f"Erro durante carregamento de tema: {e}")
-        apply_theme_initial("white")  # fallback para tema padrão
+        apply_theme("white", is_initialization=True)  # fallback para tema padrão
     # ===== FIM DO CARREGAMENTO INICIAL DO TEMA =====
 
     def show_toast(message, color="green"):
@@ -1706,38 +1945,39 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         global current_user_wwid
         theme_mode = e.control.value
 
-        # Atualizar o nome do tema armazenado na página para que get_current_theme_colors funcione
-        page.data["theme_name"] = theme_mode
-        
         # Aplicar tema
         apply_theme(theme_mode)
-        
+
         # Salvar tema no banco
         save_user_theme(theme_mode, current_user_wwid)
-        
+
         # Atualizar os menus para refletir as novas cores
         update_menu()
         update_config_tabs()
-        
+
         # Atualizar as listas para refletir as novas cores
         load_all_lists_data()
         load_users_full()
-        
+
         # Atualizar cor do container dos campos de busca da aba score
-        theme_colors = get_current_theme_colors(page)
+        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
         score_form_container.bgcolor = theme_colors.get('field_background')
         score_form_container.update()
-        
+
+        # Atualizar cor do container do formulário de usuário
+        users_form_container.bgcolor = theme_colors.get('field_background')
+        users_form_container.border = ft.border.all(1, theme_colors.get('outline'))
+        users_form_container.update()
+
         # Atualizar cor do menu lateral (rail_container)
         rail_container.bgcolor = theme_colors.get('rail_background')
         rail_container.update()
-        
+
         # Atualizar cores dos dropdowns da aba score
         month_dropdown.bgcolor = theme_colors.get('field_background')
         month_dropdown.color = theme_colors.get('on_surface')
         month_dropdown.border_color = theme_colors.get('outline')
         month_dropdown.update()
-        
         year_dropdown.bgcolor = theme_colors.get('field_background')
         year_dropdown.color = theme_colors.get('on_surface')
         year_dropdown.border_color = theme_colors.get('outline')
@@ -1789,51 +2029,35 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             print(f"Erro ao atualizar cores dos campos de configuração: {e}")
         
-        # Atualizar cores dos campos da aba Users (suporta tanto Ref quanto controle direto)
+        # Atualizar cores dos campos da aba Users 
         try:
-            print(f"Debug: Tentando acessar users_controls. Existe na globals: {'users_controls' in globals()}")
-            if 'users_controls' in globals() and users_controls:
-                print(f"Debug: Atualizando cores dos controles de usuário. Controles disponíveis: {list(users_controls.keys())}")
+            # Atualizar campos usando as refs específicas (manter transparentes)
+            if wwid_field_ref.current:
+                wwid_field_ref.current.filled = False  # Fundo transparente
+                wwid_field_ref.current.color = theme_colors.get('on_surface')
+                wwid_field_ref.current.border_color = theme_colors.get('outline')
+                wwid_field_ref.current.update()
                 
-                # TextFields: WWID, Nome, Senha
-                for field_name in ['wwid', 'name', 'password']:
-                    if field_name in users_controls and users_controls[field_name]:
-                        control = resolve_control(users_controls[field_name])
-                        if control is not None:
-                            print(f"Debug: Atualizando campo {field_name}")
-                            control.bgcolor = theme_colors.get('field_background')
-                            control.color = theme_colors.get('on_surface')
-                            control.border_color = theme_colors.get('outline')
-                            if hasattr(control, 'update'):
-                                control.update()
-                            print(f"Debug: Campo {field_name} atualizado com cores: bg={theme_colors.get('field_background')}, color={theme_colors.get('on_surface')}")
+            if name_field_ref.current:
+                name_field_ref.current.filled = False  # Fundo transparente
+                name_field_ref.current.color = theme_colors.get('on_surface')
+                name_field_ref.current.border_color = theme_colors.get('outline')
+                name_field_ref.current.update()
                 
-                # Dropdown: Privilégio
-                if 'privilege' in users_controls and users_controls['privilege']:
-                    control = resolve_control(users_controls['privilege'])
-                    if control is not None:
-                        print(f"Debug: Atualizando dropdown privilege. Tipo: {type(control)}")
-                        control.bgcolor = theme_colors.get('field_background')
-                        control.color = theme_colors.get('on_surface')
-                        control.border_color = theme_colors.get('outline')
-                        # Propriedades específicas de Dropdown (se suportadas)
-                        if hasattr(control, 'filled'):
-                            control.filled = True
-                        if hasattr(control, 'content_padding'):
-                            control.content_padding = ft.padding.symmetric(horizontal=12, vertical=16)
-                        if hasattr(control, 'focused_border_color'):
-                            control.focused_border_color = theme_colors.get('focus_border')
-                        if hasattr(control, 'update'):
-                            control.update()
-                        print("Debug: Dropdown privilege atualizado com sucesso")
-                else:
-                    print("Debug: Campo privilege não encontrado ou está vazio")
-            else:
-                print("Debug: users_controls não encontrado ou está vazio")
+            if password_field_ref.current:
+                password_field_ref.current.filled = False  # Fundo transparente
+                password_field_ref.current.color = theme_colors.get('on_surface')
+                password_field_ref.current.border_color = theme_colors.get('outline')
+                password_field_ref.current.update()
+                
+            if privilege_dropdown_ref.current:
+                privilege_dropdown_ref.current.bgcolor = None  # Fundo transparente
+                privilege_dropdown_ref.current.color = theme_colors.get('on_surface')
+                privilege_dropdown_ref.current.border_color = theme_colors.get('outline')
+                privilege_dropdown_ref.current.update()
+                
         except Exception as e:
             print(f"Erro ao atualizar cores dos campos de usuário: {e}")
-            import traceback
-            traceback.print_exc()
 
         # Atualizar cores dos campos da aba Log (suporta tanto Ref quanto controle direto)
         try:
@@ -1859,6 +2083,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 suppliers_search_field_ref.current.update()
         except Exception as e:
             print(f"Erro ao atualizar campo de pesquisa de suppliers: {e}")
+        
+        # Atualizar cores dos cards de Score existentes
+        try:
+            if responsive_app_manager and responsive_app_manager.results_container:
+                print("🎨 Atualizando cores dos cards de Score...")
+                update_control_colors(responsive_app_manager.results_container, theme_mode, 0)
+                responsive_app_manager.results_container.update()
+        except Exception as e:
+            print(f"Erro ao atualizar cores dos cards de Score: {e}")
+        
+        # Atualizar cores dos cards de Suppliers existentes
+        try:
+            if 'suppliers_results_list' in globals() and suppliers_results_list and suppliers_results_list.controls:
+                print("🎨 Atualizando cores dos cards de Suppliers...")
+                for card in suppliers_results_list.controls:
+                    update_control_colors(card, theme_mode, 0)
+                suppliers_results_list.update()
+        except Exception as e:
+            print(f"Erro ao atualizar cores dos cards de Suppliers: {e}")
         
         # Mostrar confirmação
         page.snack_bar = ft.SnackBar(ft.Text(f"✅ Tema '{theme_mode}' aplicado e salvo!"))
@@ -2063,7 +2306,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def create_spinbox():
         """Cria um widget de spinbox customizado para notas."""
-        score_field = ft.TextField(value="0.0", text_align=ft.TextAlign.CENTER, width=70, border_radius=8)
+        score_field = ft.TextField(
+            value="0.0", 
+            text_align=ft.TextAlign.CENTER, 
+            width=70, 
+            border_radius=8,
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+        )
 
         def adjust_score(e):
             try:
@@ -2126,7 +2377,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     for row in rows:
                         name, alias, email = row
                         is_selected = lists_controls[key]['selected_item'] == alias
-                        colors = get_current_theme_colors(page)
+                        colors = get_current_theme_colors(get_theme_name_from_page(page))
                         col.controls.append(
                             ft.Container(
                                 content=ft.ListTile(
@@ -2165,7 +2416,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             else:
                 for row in bu_rows:
                     is_selected = lists_controls['bu']['selected_item'] == row[0]
-                    colors = get_current_theme_colors(page)
+                    colors = get_current_theme_colors(get_theme_name_from_page(page))
                     bu_col.controls.append(
                         ft.Container(
                             content=ft.ListTile(
@@ -2203,7 +2454,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             else:
                 for row in category_rows:
                     is_selected = lists_controls['category']['selected_item'] == row[0]
-                    colors = get_current_theme_colors(page)
+                    colors = get_current_theme_colors(get_theme_name_from_page(page))
                     category_col.controls.append(
                         ft.Container(
                             content=ft.ListTile(
@@ -2244,7 +2495,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         try:
             cursor = db_conn.cursor()
-            colors = get_current_theme_colors(page)
+            colors = get_current_theme_colors(get_theme_name_from_page(page))
             
             if key in ['sqie', 'continuity', 'planner', 'sourcing']:
                 # Tabelas com name, alias, email
@@ -2677,7 +2928,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             border_radius=8, 
             multiline=True, 
             min_lines=4, 
-            max_lines=6
+            max_lines=6,
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
         )
 
         def save_score(e):
@@ -2937,7 +3191,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     right_section
                 ], vertical_alignment=ft.CrossAxisAlignment.STRETCH, expand=True)
             ),
-            color=get_current_theme_colors(page).get('card_background')
+            color=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background')
         )
         
         # Anexar dados ao card
@@ -3050,7 +3304,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             min_lines=2,
             max_lines=4,
             dense=True,
-            border_radius=8
+            border_radius=8,
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
         )
 
         # Estado do favorito
@@ -3410,7 +3667,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             content=card_content,
             elevation=2,
             margin=ft.margin.symmetric(vertical=5, horizontal=0),
-            color=get_current_theme_colors(page).get('card_background')
+            color=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background')
         )
         
         # Anexar dados necessários ao card
@@ -3545,9 +3802,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         ref=selected_month, 
         width=120, 
         on_change=on_month_year_change,
-        bgcolor=get_current_theme_colors(page).get('field_background'),
-        color=get_current_theme_colors(page).get('on_surface'),
-        border_color=get_current_theme_colors(page).get('outline')
+        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
     )
     
     year_dropdown = ft.Dropdown(
@@ -3556,9 +3813,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         ref=selected_year, 
         width=120, 
         on_change=on_month_year_change,
-        bgcolor=get_current_theme_colors(page).get('field_background'),
-        color=get_current_theme_colors(page).get('on_surface'),
-        border_color=get_current_theme_colors(page).get('outline')
+        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
     )
 
     # Conteúdo da aba Score
@@ -3570,9 +3827,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 border_radius=8,
                 on_change=lambda e: search_suppliers(),
                 ref=search_field_ref,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             ft.Row(
                 controls=[
@@ -3580,9 +3837,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         label="PO", 
                         expand=True, 
                         border_radius=8,
-                        bgcolor=get_current_theme_colors(page).get('field_background'),
-                        color=get_current_theme_colors(page).get('on_surface'),
-                        border_color=get_current_theme_colors(page).get('outline'),
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                         ref=selected_po
                     ),
                     ft.TextField(
@@ -3591,9 +3848,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         border_radius=8, 
                         ref=selected_bu, 
                         on_change=lambda e: search_suppliers(),
-                        bgcolor=get_current_theme_colors(page).get('field_background'),
-                        color=get_current_theme_colors(page).get('on_surface'),
-                        border_color=get_current_theme_colors(page).get('outline')
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                     ),
                     month_dropdown,
                     year_dropdown,
@@ -3609,7 +3866,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     score_form_container = ft.Container(
         content=score_form, 
         padding=15,
-        bgcolor=get_current_theme_colors(page).get('field_background'),
+        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
         border_radius=8
     )
 
@@ -3642,7 +3899,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def config_tab_item(icon, text, idx):
         is_selected = selected_config_tab.current == idx
-        colors = get_current_theme_colors(page)
+        colors = get_current_theme_colors(get_theme_name_from_page(page))
         return ft.Container(
             content=ft.Column([
                 ft.Icon(icon, color=colors['primary'] if is_selected else colors['on_surface'], size=24),
@@ -3783,25 +4040,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 label='Nome SQIE', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('sqie'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'alias': ft.TextField(
                 label='Alias SQIE', 
                 width=200, 
                 on_change=lambda e: validate_input_exists('sqie'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'email': ft.TextField(
                 label='Email SQIE', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('sqie'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
@@ -3812,25 +4069,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 label='Nome Continuity', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('continuity'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'alias': ft.TextField(
                 label='Alias Continuity', 
                 width=200, 
                 on_change=lambda e: validate_input_exists('continuity'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'email': ft.TextField(
                 label='Email Continuity', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('continuity'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
@@ -3841,25 +4098,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 label='Nome Planner', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('planner'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'alias': ft.TextField(
                 label='Alias Planner', 
                 width=200, 
                 on_change=lambda e: validate_input_exists('planner'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'email': ft.TextField(
                 label='Email Planner', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('planner'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
@@ -3870,25 +4127,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 label='Nome Sourcing', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('sourcing'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'alias': ft.TextField(
                 label='Alias Sourcing', 
                 width=200, 
                 on_change=lambda e: validate_input_exists('sourcing'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'email': ft.TextField(
                 label='Email Sourcing', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('sourcing'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
@@ -3899,9 +4156,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 label='Nome BU', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('bu'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
@@ -3912,9 +4169,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 label='Nome Category', 
                 expand=True, 
                 on_change=lambda e: validate_input_exists('category'),
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
@@ -3961,7 +4218,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         alias = item["alias"]
                         display_text = item["display"]
                         is_selected = lists_controls[key]['selected_item'] == alias
-                        colors = get_current_theme_colors(page)
+                        colors = get_current_theme_colors(get_theme_name_from_page(page))
                         
                         # Separar as linhas do display_text
                         lines = display_text.split('\n')
@@ -4675,106 +4932,110 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             elif status_value == "Inactive":
                 e.control.color = "red"
             else:
-                e.control.color = get_current_theme_colors(page).get('on_surface')
+                e.control.color = get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
             page.update()
 
         # Campos editáveis
         fields = {
             "vendor_name": ft.TextField(
-                label="Vendor Name", 
-                value=vendor_name, 
+                label="Vendor Name",
+                value=vendor_name,  # Preencher com valor do banco
+                filled=False,
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "supplier_category": ft.Dropdown(
-                label="Category", 
-                value=supplier_category, 
+                label="Category",
+                value=supplier_category,  # Preencher com valor do banco
                 options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('categories_table','category'))],
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "bu": ft.Dropdown(
                 label="BU (Business Unit)",
-                value=bu,
+                value=bu,  # Preencher com valor do banco
                 options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('business_unit_table','bu'))],
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "supplier_name": ft.TextField(
-                label="Supplier Name", 
-                value=supplier_name, 
+                label="Supplier Name",
+                value=supplier_name,  # Preencher com valor do banco
+                filled=False,
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "supplier_email": ft.TextField(
-                label="Email", 
-                value=supplier_email, 
+                label="Email",
+                value=supplier_email,  # Preencher com valor do banco
+                filled=False,
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "supplier_number": ft.TextField(
-                label="Number", 
-                value=supplier_number, 
+                label="Number",
+                value=supplier_number,  # Preencher com valor do banco
+                filled=False,
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "supplier_status": ft.Dropdown(
                 label="Status",
-                value=supplier_status,
-                options=[ft.dropdown.Option(v) for v in ["Active","Inactive"]],
+                value=supplier_status,  # Preencher com valor do banco
+                options=[ft.dropdown.Option(v) for v in ["Active", "Inactive"]],
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color="green" if supplier_status == "Active" else "red" if supplier_status == "Inactive" else get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline'),
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color="green" if supplier_status == "Active" else "red" if supplier_status == "Inactive" else get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),  # Cor baseada no status
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                 on_change=update_status_color
             ),
             "planner": ft.Dropdown(
                 label="Planner",
-                value=planner,
+                value=planner,  # Preencher com valor do banco
                 options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('planner_table','name'))],
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "continuity": ft.Dropdown(
                 label="Continuity",
-                value=continuity,
+                value=continuity,  # Preencher com valor do banco
                 options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('continuity_table','name'))],
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "sourcing": ft.Dropdown(
                 label="Sourcing",
-                value=sourcing,
+                value=sourcing,  # Preencher com valor do banco
                 options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('sourcing_table','name'))],
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "sqie": ft.Dropdown(
                 label="SQIE",
-                value=sqie,
+                value=sqie,  # Preencher com valor do banco
                 options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('sqie_table','name'))],
                 expand=True,
-                bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
         }
 
@@ -4984,7 +5245,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ),
             elevation=2,
             margin=ft.margin.symmetric(vertical=5),
-            color=get_current_theme_colors(page).get('card_background', 'surface_variant')
+            color=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background', 'surface_variant')
         )
         
         # Guardar referências dos campos e função de layout para facilitar re-tematização e responsividade
@@ -5099,11 +5360,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         add_dialog = AddSupplierDialog(
             on_confirm=handle_confirm,
             on_cancel=handle_cancel,
+            page=page,
             list_options=list_opts
         )
         
         # Aplicar cores do tema aos campos
-        current_colors = get_current_theme_colors(page)
+        current_colors = get_current_theme_colors(get_theme_name_from_page(page))
         field_bgcolor = current_colors.get('field_background')
         for field_name, field in add_dialog.fields.items():
             if hasattr(field, 'bgcolor'):
@@ -5204,9 +5466,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     expand=True,
                     ref=suppliers_search_field_ref,
                     on_change=lambda e: search_suppliers_config(),
-                    bgcolor=get_current_theme_colors(page).get('field_background'),
-                    color=get_current_theme_colors(page).get('on_surface'),
-                    border_color=get_current_theme_colors(page).get('outline')
+                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
                 ft.ElevatedButton("Novo Supplier", icon=ft.Icons.ADD_BUSINESS, on_click=add_new_supplier),
             ], spacing=10),
@@ -5491,7 +5753,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     pickup_check_ref = ft.Ref()
     package_check_ref = ft.Ref()
     action_btn_ref = ft.Ref()
-    delete_btn_ref = ft.Ref()
     clear_btn_ref = ft.Ref()
     
     # Salvar as referências no dicionário users_controls
@@ -5505,9 +5766,77 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         'pickup_check': pickup_check_ref,
         'package_check': package_check_ref,
         'action_btn': action_btn_ref,
-        'delete_btn': delete_btn_ref,
         'clear_btn': clear_btn_ref
     }
+    
+    # Container do formulário de usuários com referência para atualização de tema
+    users_form_container = ft.Container(
+        content=ft.Column([
+            # Linha 1: WWID e Nome
+            ft.Row([
+                ft.TextField(
+                    label="WWID",
+                    hint_text="Digite o WWID do usuário",
+                    prefix_icon=ft.Icons.BADGE,
+                    expand=True,
+                    border_radius=8,
+                    ref=wwid_field_ref,
+                    on_change=on_wwid_change,
+                    filled=False,  # Fundo transparente
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                ),
+                ft.TextField(
+                    label="Nome Completo",
+                    hint_text="Digite o nome do usuário",
+                    prefix_icon=ft.Icons.PERSON,
+                    expand=True,
+                    border_radius=8,
+                    ref=name_field_ref,
+                    filled=False,  # Fundo transparente
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                ),
+            ], spacing=10),
+            
+            # Linha 2: Senha e Privilégio
+            ft.Row([
+                ft.TextField(
+                    label="Senha",
+                    hint_text="Digite a senha do usuário",
+                    prefix_icon=ft.Icons.LOCK,
+                    password=True,
+                    can_reveal_password=True,
+                    expand=True,
+                    border_radius=8,
+                    ref=password_field_ref,
+                    filled=False,  # Fundo transparente
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                ),
+                ft.Dropdown(
+                    label="Nível de Privilégio",
+                    hint_text="Selecione o nível",
+                    options=[
+                        ft.dropdown.Option("User", "User"),
+                        ft.dropdown.Option("Admin", "Admin"),
+                        ft.dropdown.Option("Super Admin", "Super Admin"),
+                    ],
+                    expand=True,
+                    ref=privilege_dropdown_ref,
+                    bgcolor=None,  # Fundo transparente
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                    content_padding=ft.padding.symmetric(horizontal=12, vertical=16),
+                
+                ),
+            ], spacing=10),
+        ], spacing=15),
+        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+        padding=ft.padding.all(20),
+        border_radius=8,
+        border=ft.border.all(1, get_current_theme_colors(get_theme_name_from_page(page)).get('outline'))
+    )
     
     users_content = ft.Container(
         content=ft.Column([
@@ -5527,119 +5856,39 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         padding=ft.padding.only(bottom=10)
                     ),
                     
-                    # Formulário de usuário
+                    # Referência ao container global do formulário de usuário
+                    users_form_container,
+
+                    
+                    ft.Container(height=10),
+                    
+                    # Linha 3: Permissões de notas (checkboxes) - fora do container com fundo
+                    ft.Column([
+                        ft.Text("Permissões de Avaliação:", size=16, weight="bold"),
+                        ft.Row([
+                            ft.Checkbox(label="OTIF", value=False, ref=otif_check_ref),
+                            ft.Checkbox(label="NIL", value=False, ref=nil_check_ref),
+                            ft.Checkbox(label="Pickup", value=False, ref=pickup_check_ref),
+                            ft.Checkbox(label="Package", value=False, ref=package_check_ref),
+                        ], alignment=ft.MainAxisAlignment.CENTER, spacing=30),
+                    ], spacing=8),
+                    
+                    ft.Container(height=15),
+                    
+                    # Botões de ação
                     ft.Container(
-                        content=ft.Column([
-                            # Linha 1: WWID e Nome
-                            ft.Row([
-                                ft.Container(
-                                    content=ft.TextField(
-                                        label="WWID",
-                                        hint_text="Digite o WWID do usuário",
-                                        prefix_icon=ft.Icons.BADGE,
-                                        expand=True,
-                                        ref=wwid_field_ref,
-                                        on_change=on_wwid_change,
-                                        bgcolor=get_current_theme_colors(page).get('field_background'),
-                                        color=get_current_theme_colors(page).get('on_surface'),
-                                        border_color=get_current_theme_colors(page).get('outline')
-                                    ),
-                                    width=350,
-                                    alignment=ft.alignment.center
-                                ),
-                                ft.Container(
-                                    content=ft.TextField(
-                                        label="Nome Completo",
-                                        hint_text="Digite o nome do usuário",
-                                        prefix_icon=ft.Icons.PERSON,
-                                        expand=True,
-                                        ref=name_field_ref,
-                                        bgcolor=get_current_theme_colors(page).get('field_background'),
-                                        color=get_current_theme_colors(page).get('on_surface'),
-                                        border_color=get_current_theme_colors(page).get('outline')
-                                    ),
-                                    width=350,
-                                    alignment=ft.alignment.center
-                                ),
-                            ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
-                            
-                            ft.Container(height=8),
-                            
-                            # Linha 2: Senha e Privilégio
-                            ft.Row([
-                                ft.Container(
-                                    content=ft.TextField(
-                                        label="Senha",
-                                        hint_text="Digite a senha do usuário",
-                                        prefix_icon=ft.Icons.LOCK,
-                                        password=True,
-                                        can_reveal_password=True,
-                                        expand=True,
-                                        ref=password_field_ref,
-                                        bgcolor=get_current_theme_colors(page).get('field_background'),
-                                        color=get_current_theme_colors(page).get('on_surface'),
-                                        border_color=get_current_theme_colors(page).get('outline')
-                                    ),
-                                    width=350,
-                                    alignment=ft.alignment.center
-                                ),
-                                ft.Container(
-                                    content=ft.Dropdown(
-                                        label="Nível de Privilégio",
-                                        hint_text="Selecione o nível",
-                                        options=[
-                                            ft.dropdown.Option("User", "User"),
-                                            ft.dropdown.Option("Admin", "Admin"),
-                                            ft.dropdown.Option("Super Admin", "Super Admin"),
-                                        ],
-                                        expand=True,
-                                        ref=privilege_dropdown_ref,
-                                        bgcolor=get_current_theme_colors(page).get('field_background'),
-                                        color=get_current_theme_colors(page).get('on_surface'),
-                                        border_color=get_current_theme_colors(page).get('outline'),
-                                        filled=True,
-                                        content_padding=ft.padding.symmetric(horizontal=12, vertical=16)
-                                    ),
-                                    width=350,
-                                    alignment=ft.alignment.center
-                                ),
-                            ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
-                            
-                            ft.Container(height=8),
-                            
-                            # Linha 3: Permissões de notas (checkboxes)
-                            ft.Column([
-                                ft.Text("Permissões de Avaliação:", size=16, weight="bold"),
-                                ft.Row([
-                                    ft.Checkbox(label="OTIF", value=False, ref=otif_check_ref),
-                                    ft.Checkbox(label="NIL", value=False, ref=nil_check_ref),
-                                    ft.Checkbox(label="Pickup", value=False, ref=pickup_check_ref),
-                                    ft.Checkbox(label="Package", value=False, ref=package_check_ref),
-                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=30),
-                            ], spacing=8),
-                            
-                            ft.Container(height=15),
-                            
-                            # Botões de ação
-                            ft.Row([
-                                ft.ElevatedButton(
-                                    "Add User", 
-                                    icon=ft.Icons.PERSON_ADD,
-                                    ref=action_btn_ref,
-                                ),
-                                ft.ElevatedButton(
-                                    "Excluir Usuário", 
-                                    icon=ft.Icons.PERSON_REMOVE, 
-                                    color="red",
-                                    ref=delete_btn_ref,
-                                ),
-                                ft.ElevatedButton(
-                                    "Limpar Campos", 
-                                    icon=ft.Icons.CLEAR,
-                                    ref=clear_btn_ref,
-                                ),
-                            ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
-                        ], spacing=15),
+                        content=ft.Row([
+                            ft.ElevatedButton(
+                                "Add User", 
+                                icon=ft.Icons.PERSON_ADD,
+                                ref=action_btn_ref,
+                            ),
+                            ft.ElevatedButton(
+                                "Limpar Campos", 
+                                icon=ft.Icons.CLEAR,
+                                ref=clear_btn_ref,
+                            ),
+                        ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
                         padding=ft.padding.symmetric(vertical=10)
                     ),
                     
@@ -5681,31 +5930,35 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Navegar pela nova estrutura com scroll
         scroll_container = users_content.content.controls[2].content  # ListView dentro do Container
-        form_container = scroll_container.controls[1].content  # Container do formulário
+        
+        # O formulário está como um Container (form_outer_container) cujo content é um Column 
+        # contendo um Row (linha 1) e outro Row (linha 2). A variável users_form_container foi criada com esse formato.
+        form_outer_container = scroll_container.controls[1]  # Container do formulário
+        form_column = form_outer_container.content  # Column([...])
         
         # Linha 1: WWID e Nome
-        row1 = form_container.controls[0]
-        users_refs['wwid'] = row1.controls[0].content
-        users_refs['name'] = row1.controls[1].content
+        row1 = form_column.controls[0]
+        users_refs['wwid'] = row1.controls[0]
+        users_refs['name'] = row1.controls[1]
         
-        # Linha 2: Senha e Privilégio  
-        row2 = form_container.controls[2]
-        users_refs['password'] = row2.controls[0].content
-        users_refs['privilege'] = row2.controls[1].content
+        # Linha 2: Senha e Privilégio
+        row2 = form_column.controls[1]
+        users_refs['password'] = row2.controls[0]
+        users_refs['privilege'] = row2.controls[1]
         
-        # Checkboxes
-        permissions_column = form_container.controls[4]
+        # Checkboxes (fora do container com fundo)
+        permissions_column = scroll_container.controls[3]
         checkboxes_row = permissions_column.controls[1]
         users_refs['otif_check'] = checkboxes_row.controls[0]
         users_refs['nil_check'] = checkboxes_row.controls[1]
         users_refs['pickup_check'] = checkboxes_row.controls[2]
         users_refs['package_check'] = checkboxes_row.controls[3]
         
-        # Botões
-        buttons_row = form_container.controls[6]
-        users_refs['action_btn'] = buttons_row.controls[0]  # Botão único para Add/Update
-        users_refs['delete_btn'] = buttons_row.controls[1]
-        users_refs['clear_btn'] = buttons_row.controls[2]
+        # Botões (fora do container com fundo)
+        buttons_container = scroll_container.controls[5]
+        buttons_row = buttons_container.content
+        users_refs['action_btn'] = buttons_row.controls[0]  # Botão Add/Update
+        users_refs['clear_btn'] = buttons_row.controls[1]
         
         # Lista de usuários - usar referência direta
         users_refs['users_list'] = users_list_ref.current
@@ -5793,34 +6046,102 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     )
                 )
             else:
-                for user in users:
-                    line1 = user["line1"]
-                    line2 = user["line2"]
-                    user_wwid = user["wwid"]
-                    is_selected = selected_user == user_wwid
-                    
-                    # Usar cores do tema atual
-                    colors = get_current_theme_colors(page)
-                    
-                    users_list.controls.append(
-                        ft.Container(
-                            content=ft.ListTile(
-                                title=ft.Text(
-                                    line1, 
-                                    size=14, 
-                                    weight="bold",
-                                    color=colors['primary'] if is_selected else colors['on_surface']
-                                ),
-                                subtitle=ft.Text(line2, size=12, color="outline"),
-                                content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                dense=True,
-                                on_click=lambda e, w=user_wwid: select_user(w),
-                            ),
-                            bgcolor=colors['primary_container'] if is_selected else None,
-                            border_radius=4,
-                            padding=ft.padding.all(2)
-                        )
+                # Helper local para criar um card de usuário
+                def _make_user_card(u):
+                    user_wwid = u["wwid"]
+                    name_display = u["name"] or "Nome não informado"
+                    privilege = u["privilege"]
+                    permissions_str = u["line2"].replace("Permissões: ", "")
+                    is_selected = (selected_user == user_wwid)
+                    colors = get_current_theme_colors(get_theme_name_from_page(page))
+
+                    # Botões de ação
+                    edit_btn = ft.TextButton(
+                        "Editar",
+                        icon=ft.Icons.EDIT,
+                        on_click=lambda e, w=user_wwid: select_user(w)
                     )
+
+                    def _delete_from_card(e, w=user_wwid):
+                        try:
+                            # Diálogo de confirmação utilizando o componente já existente
+                            def confirm_delete(evt):
+                                try:
+                                    cur = db_conn.cursor()
+                                    cur.execute("DELETE FROM users_table WHERE UPPER(user_wwid) = ?", (w.upper(),))
+                                    db_conn.commit()
+                                    page.close(dialog)
+                                    # Se o usuário selecionado foi excluído, limpar seleção e campos
+                                    if globals().get('selected_user') == w:
+                                        clear_users_fields()
+                                    refresh_users_list()
+                                    page.snack_bar = ft.SnackBar(ft.Text(f"✅ Usuário '{w}' removido com sucesso"))
+                                    page.snack_bar.open = True
+                                    page.update()
+                                except Exception as ex:
+                                    page.close(dialog)
+                                    page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao excluir usuário: {ex}"))
+                                    page.snack_bar.open = True
+                                    page.update()
+
+                            def cancel_delete(evt):
+                                page.close(dialog)
+                                page.update()
+
+                            dialog = DeleteListItemConfirmationDialog(
+                                item_name=w,
+                                item_type="Usuário",
+                                on_confirm=confirm_delete,
+                                on_cancel=cancel_delete,
+                                scale_func=lambda x: x
+                            )
+                            page.open(dialog)
+                            page.update()
+                        except Exception as ex:
+                            page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao tentar excluir usuário: {ex}"))
+                            page.snack_bar.open = True
+                            page.update()
+
+                    delete_btn = ft.TextButton(
+                        "Apagar",
+                        icon=ft.Icons.DELETE,
+                        style=ft.ButtonStyle(color="red"),
+                        on_click=_delete_from_card
+                    )
+
+                    header_row = ft.Row([
+                        ft.Row([
+                            ft.Icon(ft.Icons.PERSON, color=colors['primary']),
+                            ft.Text(f"{name_display}", size=15, weight="bold", color=colors['on_surface'])
+                        ], spacing=8),
+                        ft.Container(
+                            content=ft.Text(f"WWID: {user_wwid}", size=12, color="outline"),
+                            alignment=ft.alignment.center_right,
+                            expand=True
+                        )
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+                    content_column = ft.Column([
+                        header_row,
+                        ft.Text(f"Privilégio: {privilege}", size=12, color="outline"),
+                        ft.Text(f"Permissões: {permissions_str}", size=12, color="outline"),
+                        ft.Divider(),
+                        ft.Row([edit_btn, delete_btn], alignment=ft.MainAxisAlignment.END, spacing=10)
+                    ], spacing=6)
+
+                    card_container = ft.Container(
+                        content=content_column,
+                        padding=12,
+                        bgcolor=colors['primary_container'] if is_selected else get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
+                        border_radius=8,
+                        border=ft.border.all(1, colors['outline'])
+                    )
+
+                    return ft.Card(content=card_container, elevation=1)
+
+                # Adicionar cards ao ListView
+                for user in users:
+                    users_list.controls.append(_make_user_card(user))
             
             users_list.update()
         except Exception as ex:
@@ -5886,29 +6207,54 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         try:
             print("Limpando todos os campos...")
             
-            # Limpar campos de texto
-            users_controls['wwid'].value = ""
-            users_controls['name'].value = ""
-            users_controls['password'].value = ""
-            users_controls['privilege'].value = None
+            # Limpar campos usando busca direta na estrutura
+            try:
+                wwid_field = find_field_by_label("WWID")
+                if wwid_field:
+                    wwid_field.value = ""
+            except Exception as e:
+                print(f"Erro ao limpar WWID: {e}")
             
-            # Limpar checkboxes - definir diretamente como False
-            users_controls['otif_check'].value = False
-            users_controls['nil_check'].value = False
-            users_controls['pickup_check'].value = False
-            users_controls['package_check'].value = False
+            try:
+                name_field = find_field_by_label("Nome Completo")
+                if name_field:
+                    name_field.value = ""
+            except Exception as e:
+                print(f"Erro ao limpar Name: {e}")
+            
+            try:
+                password_field = find_field_by_label("Senha")
+                if password_field:
+                    password_field.value = ""
+            except Exception as e:
+                print(f"Erro ao limpar Password: {e}")
+            
+            try:
+                privilege_field = find_field_by_label("Nível de Privilégio")
+                if privilege_field:
+                    privilege_field.value = None
+            except Exception as e:
+                print(f"Erro ao limpar Privilege: {e}")
+            
+            # Limpar checkboxes usando busca direta
+            checkbox_labels = ["OTIF", "NIL", "Pickup", "Package"]
+            for label in checkbox_labels:
+                try:
+                    checkbox = find_checkbox_by_label(label)
+                    if checkbox:
+                        checkbox.value = False
+                except Exception as e:
+                    print(f"Erro ao limpar checkbox {label}: {e}")
             
             # Limpar seleção global
             global selected_user
             selected_user = None
             
-            # Atualizar todos os controles individualmente
-            for key, control in users_controls.items():
-                if hasattr(control, 'update'):
-                    control.update()
-            
-            # Forçar atualização da página
-            page.update()
+            # Atualizar página diretamente
+            try:
+                page.update()
+            except Exception as e:
+                print(f"Erro ao atualizar página: {e}")
             
             # Atualizar botão de ação
             update_action_button()
@@ -6082,25 +6428,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ref=log_user_filter_ref,
                     label="Filtrar por usuário", 
                     expand=True,
-                    bgcolor=get_current_theme_colors(page).get('field_background'),
-                    color=get_current_theme_colors(page).get('on_surface'),
-                    border_color=get_current_theme_colors(page).get('outline')
+                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
                 ft.TextField(
                     ref=log_start_date_ref,
                     label="Data inicial", 
                     expand=True,
-                    bgcolor=get_current_theme_colors(page).get('field_background'),
-                    color=get_current_theme_colors(page).get('on_surface'),
-                    border_color=get_current_theme_colors(page).get('outline')
+                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
                 ft.TextField(
                     ref=log_end_date_ref,
                     label="Data final", 
                     expand=True,
-                    bgcolor=get_current_theme_colors(page).get('field_background'),
-                    color=get_current_theme_colors(page).get('on_surface'),
-                    border_color=get_current_theme_colors(page).get('outline')
+                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
                 ft.ElevatedButton("Filtrar", icon=ft.Icons.FILTER_LIST),
             ], spacing=10),
@@ -6217,7 +6563,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             spacing=12,
         ),
         padding=ft.padding.only(left=4, right=4),  # Removido padding esquerdo
-        bgcolor=get_current_theme_colors(page)["rail_background"]  # Cor mais escura
+        bgcolor=get_current_theme_colors(get_theme_name_from_page(page))["rail_background"]  # Cor mais escura
     )
 
     page.add(
@@ -6261,7 +6607,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     try:
         print("Configurando eventos dos botões...")
         users_controls['action_btn'].on_click = lambda e: add_or_update_user()
-        users_controls['delete_btn'].on_click = lambda e: delete_user()
         users_controls['clear_btn'].on_click = lambda e: clear_users_fields()
         print("Eventos configurados com sucesso!")
     except Exception as ex:
