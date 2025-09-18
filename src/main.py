@@ -366,74 +366,68 @@ class ResponsiveAppManager:
             
             # Acessar a estrutura da aba Users através da página
             # A estrutura é: page -> Container -> Row -> [rail, divider, content_container] -> content_container -> Column[views] -> configs_view -> Column -> Stack -> users_content
-            users_content_found = None
-            
-            try:
-                # Navegação mais robusta pela estrutura
-                page_container = self.page.controls[0]  # Container principal da página
-                main_row = page_container.content  # Row principal (rail + content)
-                content_container = main_row.controls[2]  # Container do conteúdo (terceiro elemento: rail, divider, content)
-                views_column = content_container.content  # Column com as views (score, timeline, risks, email, configs)
-                configs_view = views_column.controls[4]  # configs_view (índice 4)
-                configs_main_column = configs_view.content  # Column principal do configs
-                configs_stack_container = configs_main_column.controls[2]  # Container que contém o Stack
-                configs_stack = configs_stack_container.content  # Stack com as abas de configuração
-                users_content_found = configs_stack.controls[3]  # users_content (índice 3)
-                
-                print(f"🔍 Debug: Acessando users_content...")
-                
-            except (IndexError, AttributeError) as e:
-                print(f"❌ Navegação para users_content falhou: {e}")
-                # Vamos tentar uma abordagem alternativa usando busca recursiva
-                try:
-                    users_content_found = self._find_users_content_recursive(self.page.controls[0])
-                    if users_content_found:
-                        print("✅ users_content encontrado através de busca recursiva")
-                    else:
-                        print("❌ users_content não encontrado mesmo com busca recursiva")
-                        return
-                except Exception as e2:
-                    print(f"❌ Busca recursiva também falhou: {e2}")
-                    return
-            
-            if not users_content_found:
-                print("❌ users_content não encontrado")
-                return
-            
-            # Navegar pela estrutura interna do users_content
-            try:
-                main_column = users_content_found.content  # Column principal do users_content
-                scroll_container = main_column.controls[2]  # Container com scroll (terceiro elemento)
-                listview_container = scroll_container.content  # ListView
-                form_container_wrapper = listview_container.controls[1]  # Container do formulário (segundo elemento)
-                # Em algumas versões o container interno já é o Column do formulário
-                form_container = getattr(form_container_wrapper, 'content', form_container_wrapper)
-                
-                print(f"🔍 Debug: Estrutura interna acessada com sucesso")
-                
-            except (IndexError, AttributeError) as e:
-                print(f"❌ Erro ao acessar estrutura interna: {e}")
-                return
-            
-            # Verificar se os elementos existem
-            if not hasattr(form_container, 'controls') or len(form_container.controls) < 2:
-                print(f"❌ form_container não tem controls suficientes: {len(form_container.controls) if hasattr(form_container, 'controls') else 'sem controls'}")
-                return
-            
-            # Encontrar as duas primeiras linhas relevantes (Row/Column)
-            rows = [c for c in form_container.controls if isinstance(c, (ft.Row, ft.Column))]
-            if len(rows) < 2:
-                print(f"❌ Não foi possível detectar as duas linhas do formulário (encontradas: {len(rows)})")
-                return
-            
-            # Pegar as rows/columns existentes (Linha 1: WWID/Nome, Linha 2: Senha/Privilégio)
-            row1 = rows[0]
-            row2 = rows[1]
-            
-            # Verificar se são Rows/Columns e têm os controles esperados
-            if not isinstance(row1, (ft.Row, ft.Column)) or not isinstance(row2, (ft.Row, ft.Column)):
-                print(f"❌ Tipos incorretos: row1={type(row1)}, row2={type(row2)}")
-                return
+            users_form_container = ft.Container(
+                content=ft.Column([
+                    # Linha 1: WWID e Nome
+                    ft.Row([
+                        ft.TextField(
+                            label="WWID",
+                            hint_text="Digite o WWID do usuário",
+                            prefix_icon=ft.Icons.BADGE,
+                            expand=True,
+                            border_radius=8,
+                            filled=False,  # Fundo transparente
+                        ),
+                        ft.TextField(
+                            label="Nome Completo",
+                            hint_text="Digite o nome do usuário",
+                            prefix_icon=ft.Icons.PERSON,
+                            expand=True,
+                            border_radius=8,
+                            filled=False,  # Fundo transparente
+                        ),
+                    ], spacing=10),
+
+                    # Linha 2: Senha e Privilégio
+                    ft.Row([
+                        ft.TextField(
+                            label="Senha",
+                            hint_text="Digite a senha do usuário",
+                            prefix_icon=ft.Icons.LOCK,
+                            password=True,
+                            can_reveal_password=True,
+                            expand=True,
+                            border_radius=8,
+                            filled=False,  # Fundo transparente
+                        ),
+                        ft.Dropdown(
+                            label="Nível de Privilégio",
+                            hint_text="Selecione o nível",
+                            options=[
+                                ft.dropdown.Option("User", "User"),
+                                ft.dropdown.Option("Admin", "Admin"),
+                                ft.dropdown.Option("Super Admin", "Super Admin"),
+                            ],
+                            expand=True,
+                            bgcolor=None,  # Fundo transparente
+                            content_padding=ft.padding.symmetric(horizontal=12, vertical=16),
+                        ),
+                    ], spacing=10),
+                ], spacing=15),
+                bgcolor=None,
+                padding=ft.padding.all(20),
+                border_radius=8,
+                border=None
+            )
+
+            # Wrapper externo para limitar largura
+            users_form_container = ft.Container(
+                content=users_form_container,
+                width=500,
+                alignment=ft.alignment.center
+            )
+            print(f"❌ Tipos incorretos: row1 ou row2 não são Row/Column")
+            return
                 
             if len(row1.controls) < 2 or len(row2.controls) < 2:
                 print(f"❌ Controles insuficientes: row1={len(row1.controls)}, row2={len(row2.controls)}")
