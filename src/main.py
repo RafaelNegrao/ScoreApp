@@ -561,6 +561,30 @@ selected_user = None  # Para controlar a seleção de usuários na aba Users
 suppliers_results_list = None  # Lista global dos cards de suppliers
 score_control_type = "slider"  # Tipo de controle: "slider" ou "spinbox"
 
+# ===== FUNÇÕES AUXILIARES =====
+
+def safe_update_control(control, page=None):
+    """
+    Atualiza um controle de forma segura, lidando com casos onde o controle
+    não está devidamente vinculado à página
+    """
+    try:
+        if hasattr(control, 'page') and control.page is not None:
+            control.update()
+        elif page is not None:
+            # Se o controle não está vinculado à página, atualizar toda a página
+            page.update()
+        else:
+            # Tentar atualizar o controle mesmo assim
+            control.update()
+    except Exception as update_error:
+        print(f"Aviso: Erro ao atualizar controle, tentando page.update(): {update_error}")
+        if page is not None:
+            try:
+                page.update()
+            except Exception as page_error:
+                print(f"Erro ao atualizar página: {page_error}")
+
 # ===== DEFINIÇÕES SIMPLES DE TEMAS =====
 
 def get_current_theme_colors(theme_name="white"):
@@ -2111,6 +2135,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             risks_view.visible = idx == 2
             email_view.visible = idx == 3
             configs_view.visible = idx == 4
+            
+            # Quando aba Score é selecionada e não há busca ativa, mostrar favoritos
+            if idx == 0 and search_field_ref.current:
+                search_term = search_field_ref.current.value.strip()
+                bu_val = selected_bu.current.value if selected_bu.current else None
+                # Se não há termo de busca nem BU, mostrar favoritos
+                if not search_term and (not bu_val or not bu_val.strip()):
+                    show_favorites_only()
+                    
             update_menu()
             page.update()
         return handler
@@ -2885,20 +2918,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     save_button._restore_thread = None
                 if hasattr(save_button, '_restore_thread_cancelled'):
                     save_button._restore_thread_cancelled = False
-                save_button.update()
+                safe_update_control(save_button, page)
             
             # Aplicar efeito visual de loading
             save_button.text = "Salvando..."
             save_button.icon = ft.Icons.HOURGLASS_EMPTY
             save_button.disabled = True
-            save_button.update()
+            safe_update_control(save_button, page)
             
             if not db_conn:
                 # Restaurar botão em caso de erro
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Erro: Banco de dados não conectado.", "red")
                 return
                 
@@ -2907,7 +2940,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Selecione mês e ano antes de salvar.", "orange")
                 return
                 
@@ -2919,7 +2952,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Selecione mês e ano antes de salvar.", "orange")
                 return
 
@@ -2938,7 +2971,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Valores de mês e ano inválidos.", "red")
                 return
                 
@@ -2948,7 +2981,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Não é possível salvar scores para meses futuros.", "orange")
                 return
 
@@ -3016,7 +3049,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     save_button.text = original_text
                     save_button.icon = original_icon
                     save_button.disabled = False
-                    save_button.update()
+                    safe_update_control(save_button, page)
                     show_toast("Você não tem permissão para salvar nenhum campo.", "red")
                     return
                 
@@ -3116,7 +3149,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = "Salvo!"
                 save_button.icon = ft.Icons.CHECK
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 
                 # Cancelar thread anterior se existir
                 if hasattr(save_button, '_restore_thread') and save_button._restore_thread is not None:
@@ -3141,7 +3174,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         save_button._restore_thread = None
                         save_button._restore_thread_cancelled = False
                         save_button._is_processing = False  # CRÍTICO: resetar flag de processamento
-                        save_button.update()
+                        safe_update_control(save_button, page)
                 
                 import threading
                 save_button._restore_thread_cancelled = False
@@ -3154,7 +3187,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 save_button._is_processing = False  # Adicionar reset do flag
-                save_button.update()
+                safe_update_control(save_button, page)
                 
                 show_toast(f"❌ Erro ao salvar: {str(ex)}", "red")
                 print(f"❌ Erro detalhado ao salvar dados:")
@@ -3165,9 +3198,57 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 traceback.print_exc()
 
         def toggle_favorite(e):
-            e.control.selected = not e.control.selected
-            print(f"Favorito -> ID {supplier_id}: {e.control.selected}")
-            e.control.update()
+            global current_user_wwid
+            if not current_user_wwid:
+                show_toast("Erro: Usuário não autenticado.", "red")
+                return
+                
+            if not db_conn:
+                show_toast("Erro: Banco de dados não conectado.", "red")
+                return
+                
+            try:
+                cursor = db_conn.cursor()
+                
+                # Verificar se já está nos favoritos
+                check_query = "SELECT COUNT(*) FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
+                cursor.execute(check_query, (current_user_wwid, supplier_id))
+                is_favorited = cursor.fetchone()[0] > 0
+                
+                if is_favorited:
+                    # Remover dos favoritos
+                    delete_query = "DELETE FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
+                    cursor.execute(delete_query, (current_user_wwid, supplier_id))
+                    e.control.selected = False
+                    show_toast(f"{vendor_name} removido dos favoritos", "orange")
+                    print(f"Favorito removido: {vendor_name} (ID: {supplier_id})")
+                else:
+                    # Adicionar aos favoritos
+                    insert_query = "INSERT INTO favorites_table (user_wwid, supplier_id) VALUES (?, ?)"
+                    cursor.execute(insert_query, (current_user_wwid, supplier_id))
+                    e.control.selected = True
+                    show_toast(f"{vendor_name} adicionado aos favoritos", "green")
+                    print(f"Favorito adicionado: {vendor_name} (ID: {supplier_id})")
+                
+                db_conn.commit()
+                
+                # Atualização segura do controle
+                try:
+                    if hasattr(e.control, 'page') and e.control.page is not None:
+                        e.control.update()
+                    else:
+                        # Se o controle não está vinculado à página, atualizar toda a página
+                        page.update()
+                except Exception as update_error:
+                    print(f"Aviso: Erro ao atualizar controle, atualizando página: {update_error}")
+                    page.update()
+                
+            except sqlite3.Error as db_error:
+                show_toast(f"Erro ao salvar favorito: {db_error}", "red")
+                print(f"Erro no banco de dados: {db_error}")
+            except Exception as ex:
+                show_toast(f"Erro inesperado: {ex}", "red")
+                print(f"Erro ao toggle favorite: {ex}")
 
         notas_col = ft.Column(spinboxes_rows, spacing=8, expand=1)  # Permite variação, mas com largura mínima
 
@@ -3387,13 +3468,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         # Verificar se já está nos favoritos ao criar o card
         def check_favorite_status():
-            user_wwid = "default_user"  # TODO: Implementar sistema de usuários
-            if not db_conn:
+            global current_user_wwid
+            if not current_user_wwid or not db_conn:
                 return False
             try:
                 cursor = db_conn.cursor()
                 check_query = "SELECT COUNT(*) FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
-                cursor.execute(check_query, (user_wwid, supplier_id))
+                cursor.execute(check_query, (current_user_wwid, supplier_id))
                 return cursor.fetchone()[0] > 0
             except sqlite3.Error:
                 return False
@@ -3426,20 +3507,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     save_button._restore_thread = None
                 if hasattr(save_button, '_restore_thread_cancelled'):
                     save_button._restore_thread_cancelled = False
-                save_button.update()
+                safe_update_control(save_button, page)
             
             # Aplicar efeito visual de loading
             save_button.text = "Salvando..."
             save_button.icon = ft.Icons.HOURGLASS_EMPTY
             save_button.disabled = True
-            save_button.update()
+            safe_update_control(save_button, page)
             
             if not db_conn:
                 # Restaurar botão em caso de erro
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Erro: Banco de dados não conectado.", "red")
                 return
                 
@@ -3448,7 +3529,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Selecione mês e ano antes de salvar.", "orange")
                 return
                 
@@ -3460,7 +3541,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Selecione mês e ano antes de salvar.", "orange")
                 return
 
@@ -3479,7 +3560,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Valores de mês e ano inválidos.", "red")
                 return
                 
@@ -3489,7 +3570,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 show_toast("Não é possível salvar scores para meses futuros.", "orange")
                 return
 
@@ -3557,7 +3638,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     save_button.text = original_text
                     save_button.icon = original_icon
                     save_button.disabled = False
-                    save_button.update()
+                    safe_update_control(save_button, page)
                     show_toast("Você não tem permissão para salvar nenhum campo.", "red")
                     return
                 
@@ -3645,7 +3726,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = "Salvo!"
                 save_button.icon = ft.Icons.CHECK
                 save_button.disabled = False
-                save_button.update()
+                safe_update_control(save_button, page)
                 
                 # Cancelar thread anterior se existir
                 if hasattr(save_button, '_restore_thread') and save_button._restore_thread is not None:
@@ -3670,7 +3751,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         save_button._restore_thread = None
                         save_button._restore_thread_cancelled = False
                         save_button._is_processing = False  # CRÍTICO: resetar flag de processamento
-                        save_button.update()
+                        safe_update_control(save_button, page)
                 
                 import threading
                 save_button._restore_thread_cancelled = False
@@ -3683,7 +3764,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 save_button._is_processing = False  # Adicionar reset do flag
-                save_button.update()
+                safe_update_control(save_button, page)
                 
                 show_toast(f"❌ Erro ao salvar: {str(ex)}", "red")
                 print(f"❌ Erro detalhado ao salvar dados:")
@@ -3694,10 +3775,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 traceback.print_exc()
 
         def toggle_favorite(e):
-            # Por enquanto, vou usar um usuário padrão. Em uma implementação real, 
-            # isso viria de um sistema de login
-            user_wwid = "default_user"  # TODO: Implementar sistema de usuários
-            
+            global current_user_wwid
+            if not current_user_wwid:
+                show_toast("Erro: Usuário não autenticado.", "red")
+                return
+                
             if not db_conn:
                 show_toast("Erro: Banco de dados não conectado.", "red")
                 return
@@ -3707,13 +3789,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 # Verificar se já está nos favoritos
                 check_query = "SELECT COUNT(*) FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
-                cursor.execute(check_query, (user_wwid, supplier_id))
+                cursor.execute(check_query, (current_user_wwid, supplier_id))
                 is_favorited = cursor.fetchone()[0] > 0
                 
                 if is_favorited:
                     # Remover dos favoritos
                     delete_query = "DELETE FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
-                    cursor.execute(delete_query, (user_wwid, supplier_id))
+                    cursor.execute(delete_query, (current_user_wwid, supplier_id))
                     is_favorite.current = False
                     e.control.selected = False
                     show_toast(f"{vendor_name} removido dos favoritos", "orange")
@@ -3721,14 +3803,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 else:
                     # Adicionar aos favoritos
                     insert_query = "INSERT INTO favorites_table (user_wwid, supplier_id) VALUES (?, ?)"
-                    cursor.execute(insert_query, (user_wwid, supplier_id))
+                    cursor.execute(insert_query, (current_user_wwid, supplier_id))
                     is_favorite.current = True
                     e.control.selected = True
                     show_toast(f"{vendor_name} adicionado aos favoritos", "green")
                     print(f"Favorito adicionado: {vendor_name} (ID: {supplier_id})")
                 
                 db_conn.commit()
-                e.control.update()
+                
+                # Atualização segura do controle
+                try:
+                    if hasattr(e.control, 'page') and e.control.page is not None:
+                        e.control.update()
+                    else:
+                        # Se o controle não está vinculado à página, atualizar toda a página
+                        page.update()
+                except Exception as update_error:
+                    print(f"Aviso: Erro ao atualizar controle, atualizando página: {update_error}")
+                    page.update()
                 
             except sqlite3.Error as db_error:
                 show_toast(f"Erro ao salvar favorito: {db_error}", "red")
@@ -3878,7 +3970,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             results_list.controls.clear()
             results_list.update()
 
+        # Se não há termo de busca nem BU selecionada, mostrar favoritos
         if not search_term and (not bu_val or not bu_val.strip()):
+            show_favorites_only()
             return
 
         if not db_conn:
@@ -3930,6 +4024,100 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Adicionar cada card individualmente
                 for i, record in enumerate(records):
                     print(f"Criando card {i+1}/{len(records)}: {record[1]}")
+                    try:
+                        card = create_result_widget(record)
+                        if responsive_app_manager:
+                            responsive_app_manager.add_card_to_layout(card)
+                        else:
+                            results_list.controls.append(card)
+                    except Exception as card_error:
+                        print(f"Erro ao criar card para {record[1]}: {card_error}")
+                        continue
+            
+        except sqlite3.Error as db_error:
+            error_msg = f"Erro no banco de dados: {db_error}"
+            print(error_msg)
+            results_list.controls.append(
+                ft.Container(
+                    ft.Text(error_msg, color="red"),
+                    padding=20
+                )
+            )
+        except Exception as e:
+            error_msg = f"Erro inesperado: {e}"
+            print(error_msg)
+            results_list.controls.append(
+                ft.Container(
+                    ft.Text(error_msg, color="red"),
+                    padding=20
+                )
+            )
+
+        # Atualizar a lista
+        results_list.update()
+        
+        # Carregar scores após criar os cards
+        if results_list.controls and selected_month.current and selected_year.current:
+            load_scores()
+
+    def show_favorites_only():
+        """Mostra apenas os suppliers favoritos do usuário logado"""
+        global current_user_wwid
+        
+        if not current_user_wwid:
+            results_list.controls.append(
+                ft.Container(
+                    ft.Text("Erro: Usuário não autenticado.", color="red"),
+                    padding=20
+                )
+            )
+            results_list.update()
+            return
+
+        if not db_conn:
+            results_list.controls.append(
+                ft.Container(
+                    ft.Text("Erro: Não foi possível conectar ao banco de dados.", color="red"),
+                    padding=20
+                )
+            )
+            results_list.update()
+            return
+
+        try:
+            # Buscar suppliers favoritos do usuário
+            favorites_query = """
+                SELECT s.supplier_id, s.vendor_name, s.BU, s.supplier_status, s.supplier_number
+                FROM supplier_database_table s
+                INNER JOIN favorites_table f ON s.supplier_id = f.supplier_id
+                WHERE f.user_wwid = ?
+                ORDER BY s.vendor_name
+            """
+            
+            print(f"Buscando favoritos para usuário: {current_user_wwid}")
+            cursor = db_conn.cursor()
+            cursor.execute(favorites_query, (current_user_wwid,))
+            records = cursor.fetchall()
+            
+            print(f"Encontrados {len(records)} favoritos")
+            
+            if not records:
+                results_list.controls.append(
+                    ft.Container(
+                        ft.Column([
+                            ft.Icon(ft.Icons.FAVORITE_BORDER, size=40, color="gray"),
+                            ft.Text("Você ainda não tem favoritos.", italic=True, size=16, text_align=ft.TextAlign.CENTER),
+                            ft.Text("Use o campo de pesquisa para encontrar suppliers e clique no coração para favoritar.", 
+                                   size=12, text_align=ft.TextAlign.CENTER, color="gray")
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+                        alignment=ft.alignment.center,
+                        padding=40
+                    )
+                )
+            else:
+                # Adicionar cada card individualmente
+                for i, record in enumerate(records):
+                    print(f"Criando card favorito {i+1}/{len(records)}: {record[1]}")
                     try:
                         card = create_result_widget(record)
                         if responsive_app_manager:
@@ -7033,6 +7221,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # Carregar usuários na inicialização
     refresh_users_list()
+    
+    # Mostrar favoritos inicialmente na aba Score
+    show_favorites_only()
     
     # Carregar critérios salvos na inicialização
     saved_criteria = load_user_criteria(current_user_wwid)
