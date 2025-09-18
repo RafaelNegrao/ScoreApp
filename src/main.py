@@ -559,6 +559,7 @@ current_user_privilege = None
 current_user_permissions = {}
 selected_user = None  # Para controlar a seleção de usuários na aba Users
 suppliers_results_list = None  # Lista global dos cards de suppliers
+score_control_type = "slider"  # Tipo de controle: "slider" ou "spinbox"
 
 # ===== DEFINIÇÕES SIMPLES DE TEMAS =====
 
@@ -2292,14 +2293,105 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if "duplicate column name" not in str(e).lower():
                 print(f"Erro ao adicionar coluna target_weight: {e}")
         
+        # Adicionar colunas para configurações gerais na tabela app_settings
+        try:
+            cursor.execute("ALTER TABLE app_settings ADD COLUMN setting_key TEXT")
+            print("Coluna setting_key adicionada à tabela app_settings")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                print(f"Erro ao adicionar coluna setting_key: {e}")
+        
+        try:
+            cursor.execute("ALTER TABLE app_settings ADD COLUMN setting_value TEXT")
+            print("Coluna setting_value adicionada à tabela app_settings")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                print(f"Erro ao adicionar coluna setting_value: {e}")
+        
         db_conn.commit()
         
     except sqlite3.Error as e:
         print(f"Erro ao conectar ao banco de dados: {e}")
         db_conn = None # Garante que o app não quebre se a conexão falhar
 
+    def save_score_control_type(control_type):
+        """Salva o tipo de controle de score no banco de dados"""
+        if not db_conn:
+            return
+        try:
+            cursor = db_conn.cursor()
+            # Verificar se já existe uma configuração
+            cursor.execute("SELECT COUNT(*) FROM app_settings WHERE setting_key = 'score_control_type'")
+            exists = cursor.fetchone()[0] > 0
+            
+            if exists:
+                cursor.execute("UPDATE app_settings SET setting_value = ? WHERE setting_key = 'score_control_type'", (control_type,))
+            else:
+                cursor.execute("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)", ('score_control_type', control_type))
+            
+            db_conn.commit()
+            print(f"Tipo de controle salvo no banco: {control_type}")
+        except Exception as e:
+            print(f"Erro ao salvar tipo de controle: {e}")
+
+    def load_score_control_type():
+        """Carrega o tipo de controle de score do banco de dados"""
+        global score_control_type
+        if not db_conn:
+            return "slider"
+        try:
+            cursor = db_conn.cursor()
+            cursor.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'score_control_type'")
+            result = cursor.fetchone()
+            if result:
+                score_control_type = result[0]
+                print(f"Tipo de controle carregado do banco: {score_control_type}")
+                return result[0]
+        except Exception as e:
+            print(f"Erro ao carregar tipo de controle: {e}")
+        return "slider"
+    
+    def save_spinbox_increment(increment):
+        """Salva o incremento do spinbox no banco de dados"""
+        if not db_conn:
+            return
+        try:
+            cursor = db_conn.cursor()
+            # Verificar se já existe uma configuração
+            cursor.execute("SELECT COUNT(*) FROM app_settings WHERE setting_key = 'spinbox_increment'")
+            exists = cursor.fetchone()[0] > 0
+            
+            if exists:
+                cursor.execute("UPDATE app_settings SET setting_value = ? WHERE setting_key = 'spinbox_increment'", (str(increment),))
+            else:
+                cursor.execute("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)", ('spinbox_increment', str(increment)))
+            
+            db_conn.commit()
+            print(f"Incremento do spinbox salvo no banco: {increment}")
+        except Exception as e:
+            print(f"Erro ao salvar incremento do spinbox: {e}")
+
+    def load_spinbox_increment():
+        """Carrega o incremento do spinbox do banco de dados"""
+        if not db_conn:
+            return 0.1
+        try:
+            cursor = db_conn.cursor()
+            cursor.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'spinbox_increment'")
+            result = cursor.fetchone()
+            if result:
+                increment = float(result[0])
+                print(f"Incremento do spinbox carregado do banco: {increment}")
+                return increment
+        except Exception as e:
+            print(f"Erro ao carregar incremento do spinbox: {e}")
+        return 0.1
+
     def create_spinbox():
         """Cria um widget de spinbox customizado para notas."""
+        # Carregar incremento do banco
+        increment = load_spinbox_increment()
+        
         score_field = ft.TextField(
             value="0.0", 
             text_align=ft.TextAlign.CENTER, 
@@ -2314,10 +2406,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             try:
                 current_value = float(score_field.value)
                 if e.control.data == "+":
-                    current_value += 0.5
+                    current_value += increment
                 elif e.control.data == "-":
-                    current_value -= 0.5
-                score_field.value = str(round(max(0, current_value), 2)) # Impede notas negativas
+                    current_value -= increment
+                # Garantir que não seja negativo e limitar a 10
+                new_value = max(0, min(10, current_value))
+                score_field.value = str(round(new_value, 1))
                 score_field.update()
             except ValueError:
                 score_field.value = "0.0"
@@ -2543,10 +2637,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 continue
 
             supplier_id = card.data["supplier_id"]
+            
+            # Verificar se é slider ou spinbox
             score_sliders = card.data.get("score_sliders")
             score_texts = card.data.get("score_texts")
+            spinbox_refs = card.data.get("spinbox_refs")
             
-            if not score_sliders or not score_texts:
+            # Se não tem nenhum dos dois tipos de controle, pular
+            if not score_sliders and not spinbox_refs:
                 continue
             
             try:
@@ -2569,22 +2667,50 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     }
                     comment_value = score_record[4] if score_record[4] is not None else ""
                     
-                    # Atualizar valores dos sliders e textos
-                    for ui_name, score_value in scores.items():
-                        if ui_name in score_sliders:
-                            try:
-                                val = float(score_value)
-                                score_sliders[ui_name].value = val
-                                score_texts[ui_name].value = f"{val:.1f}"
-                                
-                                # Verificar se o slider está na página antes de atualizar
-                                if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
-                                    score_sliders[ui_name].update()
-                                if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
-                                    score_texts[ui_name].update()
-                            except Exception as e:
-                                print(f"Erro ao atualizar slider {ui_name}: {e}")
-                                continue
+                    # Atualizar valores nos sliders (se existirem)
+                    if score_sliders and score_texts:
+                        for ui_name, score_value in scores.items():
+                            if ui_name in score_sliders:
+                                try:
+                                    val = float(score_value)
+                                    score_sliders[ui_name].value = val
+                                    score_texts[ui_name].value = f"{val:.1f}"
+                                    
+                                    # Verificar se o slider está na página antes de atualizar
+                                    if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
+                                        score_sliders[ui_name].update()
+                                    if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
+                                        score_texts[ui_name].update()
+                                except Exception as e:
+                                    print(f"Erro ao atualizar slider {ui_name}: {e}")
+                                    continue
+                    
+                    # Atualizar valores nos spinboxes (se existirem)
+                    if spinbox_refs:
+                        print(f"🔍 DEBUG spinbox_refs disponíveis: {list(spinbox_refs.keys())}")
+                        for ui_name, score_value in scores.items():
+                            if ui_name in spinbox_refs:
+                                try:
+                                    val = float(score_value)
+                                    print(f"🔍 DEBUG atualizando spinbox {ui_name} com valor {val:.1f}")
+                                    print(f"🔍 DEBUG tipo do spinbox_refs[{ui_name}]: {type(spinbox_refs[ui_name])}")
+                                    
+                                    spinbox_refs[ui_name].value = f"{val:.1f}"
+                                    print(f"🔍 DEBUG valor definido: {spinbox_refs[ui_name].value}")
+                                    
+                                    # Verificar se o spinbox está na página antes de atualizar
+                                    if hasattr(spinbox_refs[ui_name], 'page') and spinbox_refs[ui_name].page is not None:
+                                        spinbox_refs[ui_name].update()
+                                        print(f"✅ Spinbox {ui_name} atualizado com sucesso")
+                                    else:
+                                        print(f"⚠️ Spinbox {ui_name} não está na página")
+                                except Exception as e:
+                                    print(f"❌ Erro ao atualizar spinbox {ui_name}: {e}")
+                                    continue
+                            else:
+                                print(f"⚠️ Spinbox {ui_name} não encontrado em spinbox_refs")
+                    else:
+                        print("⚠️ Nenhum spinbox_refs encontrado no card")
                     
                     # Atualizar comentário se houver referência para ele no card
                     if "comment_field" in card.data and card.data["comment_field"]:
@@ -2598,20 +2724,36 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         
                 else:
                     # Não encontrou registro, zerar valores
-                    for ui_name in ["OTIF", "Pickup", "Package", "NIL"]:
-                        if ui_name in score_sliders:
-                            try:
-                                score_sliders[ui_name].value = 0.0
-                                score_texts[ui_name].value = "0.0"
-                                
-                                # Verificar se o slider está na página antes de atualizar
-                                if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
-                                    score_sliders[ui_name].update()
-                                if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
-                                    score_texts[ui_name].update()
-                            except Exception as e:
-                                print(f"Erro ao zerar slider {ui_name}: {e}")
-                                continue
+                    # Zerar sliders (se existirem)
+                    if score_sliders and score_texts:
+                        for ui_name in ["OTIF", "Pickup", "Package", "NIL"]:
+                            if ui_name in score_sliders:
+                                try:
+                                    score_sliders[ui_name].value = 0.0
+                                    score_texts[ui_name].value = "0.0"
+                                    
+                                    # Verificar se o slider está na página antes de atualizar
+                                    if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
+                                        score_sliders[ui_name].update()
+                                    if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
+                                        score_texts[ui_name].update()
+                                except Exception as e:
+                                    print(f"Erro ao zerar slider {ui_name}: {e}")
+                                    continue
+                    
+                    # Zerar spinboxes (se existirem)
+                    if spinbox_refs:
+                        for ui_name in ["OTIF", "Pickup", "Package", "NIL"]:
+                            if ui_name in spinbox_refs:
+                                try:
+                                    spinbox_refs[ui_name].value = "0.0"
+                                    
+                                    # Verificar se o spinbox está na página antes de atualizar
+                                    if hasattr(spinbox_refs[ui_name], 'page') and spinbox_refs[ui_name].page is not None:
+                                        spinbox_refs[ui_name].update()
+                                except Exception as e:
+                                    print(f"Erro ao zerar spinbox {ui_name}: {e}")
+                                    continue
                     
                     # Limpar comentário
                     if "comment_field" in card.data and card.data["comment_field"]:
@@ -2637,7 +2779,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         status = record[3] if len(record) > 3 else "?"
         supplier_number = record[4] if len(record) > 4 else "?"
 
-        print(f"Criando card para: {vendor_name} (ID: {supplier_id})")
+        print(f"🏗️ CRIANDO CARD: {vendor_name} (ID: {supplier_id}) com TIPO: {score_control_type}")
         print(f"🔍 DEBUG PERMISSÕES NO CARD:")
         print(f"  current_user_permissions = {current_user_permissions}")
 
@@ -2661,30 +2803,58 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             print(f"  {ui_name}: permission_key='{permission_key}', has_permission={has_permission}")
             
-            # Apenas criar o campo se o usuário tiver permissão
-            if has_permission:
-                print(f"    ✅ Criando campo {ui_name}")
+            # Sempre criar o campo, mas desabilitar se não tiver permissão
+            print(f"    ✅ Criando {score_control_type} {ui_name} ({'habilitado' if has_permission else 'desabilitado'})")
+            
+            if score_control_type == "slider":
+                slider_row, slider_control, text_control = create_score_slider()
+                # Desabilitar slider se não tiver permissão
+                if not has_permission:
+                    slider_control.disabled = True
+                    slider_control.opacity = 0.5
+                spinbox_refs[ui_name] = slider_control  # Guardar referência do controle principal
+                control_widget = slider_row
+                print(f"    📊 Slider {ui_name} criado - referência salva: {type(slider_control)}")
+            else:  # spinbox
                 spinbox = create_spinbox()
                 spinbox_field = spinbox.controls[1]  # O TextField é o segundo controle
+                # Desabilitar spinbox se não tiver permissão
+                if not has_permission:
+                    spinbox_field.disabled = True
+                    spinbox_field.opacity = 0.5
+                    # Desabilitar botões também
+                    spinbox.controls[0].disabled = True  # Botão de diminuir
+                    spinbox.controls[2].disabled = True  # Botão de aumentar
+                    spinbox.controls[0].opacity = 0.5
+                    spinbox.controls[2].opacity = 0.5
                 spinbox_refs[ui_name] = spinbox_field
-                
-                spinboxes_rows.append(
-                    ft.Row(
-                        [ft.Text(ui_name, weight="bold", width=80), spinbox], 
-                        alignment=ft.MainAxisAlignment.START, 
-                        spacing=10
-                    )
+                control_widget = spinbox
+                print(f"    🔢 Spinbox {ui_name} criado - referência salva: {type(spinbox_field)}")
+                print(f"    🔍 Spinbox field value inicial: {spinbox_field.value}")
+                print(f"    🔍 Spinbox refs atual: {list(spinbox_refs.keys())}")
+            
+            # Criar o texto do label com opacidade reduzida se não tiver permissão
+            label_text = ft.Text(
+                ui_name, 
+                weight="bold", 
+                width=80, 
+                opacity=0.5 if not has_permission else 1.0
+            )
+            
+            spinboxes_rows.append(
+                ft.Row(
+                    [label_text, control_widget], 
+                    alignment=ft.MainAxisAlignment.START, 
+                    spacing=10
                 )
-            else:
-                print(f"    ❌ Ocultando campo {ui_name}")
+            )
 
         comment_field = ft.TextField(
             label="Comentário", 
-            expand=True, 
             border_radius=8, 
             multiline=True, 
-            min_lines=4, 
-            max_lines=6,
+            min_lines=6,
+            max_lines=8,
             bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
             color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
             border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
@@ -2905,7 +3075,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Favorito -> ID {supplier_id}: {e.control.selected}")
             e.control.update()
 
-        notas_col = ft.Column(spinboxes_rows, spacing=8)
+        notas_col = ft.Column(spinboxes_rows, spacing=8, expand=1)  # Permite variação, mas com largura mínima
 
         info_col = ft.Column([
             ft.Text(vendor_name, weight="bold", size=16),
@@ -2913,7 +3083,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Text(f"PO: {supplier_number}"),
             ft.Text(f"ID: {supplier_id}"),
             ft.Text(f"Status: {status}", color="green" if str(status).strip() == "Active" else "red" if str(status).strip() == "Inactive" else "gray"),
-        ], width=210, spacing=4, alignment=ft.MainAxisAlignment.START)
+        ], spacing=4, alignment=ft.MainAxisAlignment.START, expand=1)  # Permite variação de tamanho
 
         # Reorganizar a estrutura do card para posicionar os botões no canto inferior direito
         left_section = ft.Row([
@@ -2923,29 +3093,40 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.VerticalDivider()
         ], alignment=ft.MainAxisAlignment.START)
 
-        # Seção direita com comentário e botões alinhados
+        # Seção direita apenas com comentário
         right_section = ft.Column([
             comment_field,
-            ft.Container(height=20),  # Espaçamento
-            ft.Row([
-                ft.Container(expand=True),  # Empurra os botões para a direita
-                ft.IconButton(
-                    icon=ft.Icons.FAVORITE_BORDER, 
-                    selected_icon=ft.Icons.FAVORITE, 
-                    on_click=toggle_favorite, 
-                    tooltip="Favoritar"
-                ),
-                ft.ElevatedButton("Salvar", on_click=save_score, icon=ft.Icons.SAVE),
-            ], alignment=ft.MainAxisAlignment.END, tight=True)
-        ], expand=True, alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        ], expand=True, alignment=ft.MainAxisAlignment.START)
 
         card = ft.Card(
             content=ft.Container(
                 padding=15,
-                content=ft.Row([
-                    left_section,
-                    right_section
-                ], vertical_alignment=ft.CrossAxisAlignment.STRETCH, expand=True)
+                height=300,  # Altura fixa de 300px
+                content=ft.Column([
+                    # Área principal com layout horizontal
+                    ft.Container(
+                        content=ft.Row([
+                            left_section,
+                            right_section
+                        ], vertical_alignment=ft.CrossAxisAlignment.STRETCH),
+                        expand=True
+                    ),
+                    # Botões sempre na parte inferior
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Container(expand=True),  # Empurra os botões para a direita
+                            ft.IconButton(
+                                icon=ft.Icons.FAVORITE_BORDER, 
+                                selected_icon=ft.Icons.FAVORITE, 
+                                on_click=toggle_favorite, 
+                                tooltip="Favoritar"
+                            ),
+                            ft.ElevatedButton("Salvar", on_click=save_score, icon=ft.Icons.SAVE),
+                        ], alignment=ft.MainAxisAlignment.END, tight=True),
+                        height=50,  # Altura fixa para os botões
+                        alignment=ft.alignment.bottom_right
+                    )
+                ], spacing=0)
             ),
             color=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background')
         )
@@ -2956,6 +3137,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "spinbox_refs": spinbox_refs,
             "comment_field": comment_field
         }
+        
+        print(f"💾 Card data salvo para {vendor_name}:")
+        print(f"  - supplier_id: {supplier_id}")
+        print(f"  - spinbox_refs keys: {list(spinbox_refs.keys()) if spinbox_refs else 'VAZIO'}")
+        print(f"  - comment_field: {comment_field is not None}")
+        print(f"  - score_control_type usado: {score_control_type}")
         
         return card
 
@@ -2979,7 +3166,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         def on_slider_change(e):
             # Formata o valor para ter uma casa decimal
             score_text.value = f"{e.control.value:.1f}"
-            score_text.update()
+            # Apenas atualizar se o controle estiver na página
+            if hasattr(score_text, 'page') and score_text.page is not None:
+                score_text.update()
         
         score_slider.on_change = on_slider_change
         
@@ -3028,38 +3217,62 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             print(f"  {ui_name}: permission_key='{permission_key}', has_permission={has_permission}")
             
-            # Apenas criar o campo se o usuário tiver permissão
-            if has_permission:
-                print(f"    ✅ Criando slider {ui_name}")
+            # Sempre criar o campo, mas desabilitar se não tiver permissão
+            print(f"    {'✅ Criando' if has_permission else '🔒 Criando (desabilitado)'} {score_control_type} {ui_name}")
+            
+            if score_control_type == "slider":
                 slider_row, slider_control, text_control = create_score_slider()
-                
+                # Desabilitar slider se não tiver permissão
+                if not has_permission:
+                    slider_control.disabled = True
+                    slider_control.opacity = 0.5
+                    text_control.disabled = True
+                    text_control.opacity = 0.5
                 score_sliders[ui_name] = slider_control
                 score_texts[ui_name] = text_control
-                
-                row = ft.Row([
-                    ft.Container(
-                        content=ft.Text(ui_name, weight="bold", size=14),
-                        alignment=ft.alignment.center_left,
-                        expand=1
+                control_widget = slider_row
+            else:  # spinbox
+                spinbox_control = create_spinbox()
+                spinbox_field = spinbox_control.controls[1]  # O TextField é o segundo controle
+                # Desabilitar spinbox se não tiver permissão
+                if not has_permission:
+                    spinbox_field.disabled = True
+                    spinbox_field.opacity = 0.5
+                    # Desabilitar botões também
+                    spinbox_control.controls[0].disabled = True  # Botão de diminuir
+                    spinbox_control.controls[2].disabled = True  # Botão de aumentar
+                    spinbox_control.controls[0].opacity = 0.5
+                    spinbox_control.controls[2].opacity = 0.5
+                score_sliders[ui_name] = spinbox_field
+                control_widget = spinbox_control
+            
+            row = ft.Row([
+                ft.Container(
+                    content=ft.Text(
+                        ui_name, 
+                        weight="bold", 
+                        size=14, 
+                        opacity=0.5 if not has_permission else 1.0
                     ),
-                    slider_row
-                ], 
-                alignment=ft.MainAxisAlignment.START, 
-                spacing=10,
-                tight=True
-                )
-                slider_row.expand = 2
-                score_rows.append(row)
-            else:
-                print(f"    ❌ Ocultando slider {ui_name}")
+                    alignment=ft.alignment.center_left,
+                    expand=1
+                ),
+                control_widget
+            ], 
+            alignment=ft.MainAxisAlignment.START, 
+            spacing=10,
+            tight=True
+            )
+            if score_control_type == "slider":
+                control_widget.expand = 2
+            score_rows.append(row)
 
         # Campo de comentário mais simples
         comment_field = ft.TextField(
             label="Comentário",
             multiline=True,
-            min_lines=2,
-            max_lines=4,
-            dense=True,
+            min_lines=6,
+            max_lines=8,
             border_radius=8,
             bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
             color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -3352,22 +3565,23 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         ], 
         spacing=4, 
         tight=True,
-        expand=3
+        expand=1  # Permite variação de tamanho
         )
 
         scores_col = ft.Column(
             score_rows, 
             spacing=8, 
             tight=True,
-            expand=4
+            width=240  # Largura fixa para a área das notas
         )
 
-        # Coluna de ações sem os botões (apenas comentário)
+        # Coluna de ações com comentário que se expande
         actions_col = ft.Column([
             comment_field
         ], 
-        expand=5,
-        spacing=10
+        expand=True,  # O comentário pode se expandir
+        spacing=10,
+        alignment=ft.MainAxisAlignment.START
         )
 
         # Conteúdo principal do card (sem os botões)
@@ -3411,11 +3625,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     alignment=ft.MainAxisAlignment.END,
                     tight=True
                     ),
-                    right=0,
-                    bottom=0,
+                    right=5,
+                    bottom=5,
                 )
             ], expand=True),
             padding=15,
+            height=300,  # Altura fixa consistente
             border_radius=12
         )
 
@@ -3427,12 +3642,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         )
         
         # Anexar dados necessários ao card
-        card.data = {
-            "supplier_id": supplier_id,
-            "score_sliders": score_sliders,
-            "score_texts": score_texts,
-            "comment_field": comment_field
-        }
+        if score_control_type == "slider":
+            card.data = {
+                "supplier_id": supplier_id,
+                "score_sliders": score_sliders,
+                "score_texts": score_texts,
+                "comment_field": comment_field
+            }
+        else:  # spinbox
+            # Para spinbox, usar spinbox_refs como esperado pelo load_scores()
+            spinbox_refs = score_sliders  # Os spinboxes foram salvos em score_sliders
+            card.data = {
+                "supplier_id": supplier_id,
+                "spinbox_refs": spinbox_refs,
+                "comment_field": comment_field
+            }
         
         return card
 
@@ -3708,6 +3932,48 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         on_change=theme_changed,
     )
     
+    def control_type_changed(e):
+        """Callback quando o tipo de controle é alterado"""
+        global score_control_type
+        score_control_type = e.control.value
+        save_score_control_type(score_control_type)
+        show_toast(f"⚙️ Tipo de controle alterado para: {score_control_type.capitalize()}", "blue")
+        print(f"🔧 Tipo de controle alterado para: {score_control_type}")
+        
+        # Limpar os resultados existentes para forçar recriação com novo controle
+        print(f"🧹 Limpando resultados existentes...")
+        if responsive_app_manager:
+            responsive_app_manager.clear_results()
+            print(f"✅ Resultados limpos via responsive_app_manager")
+        else:
+            results_list.controls.clear()
+            results_list.update()
+            print(f"✅ Resultados limpos via results_list")
+        print(f"🔄 Próxima busca criará cards com: {score_control_type}")
+    
+    # Carregar configuração salva do tipo de controle
+    load_score_control_type()
+    
+    # Salvar incremento padrão no banco se não existir
+    try:
+        if db_conn:
+            cursor = db_conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM app_settings WHERE setting_key = 'spinbox_increment'")
+            if cursor.fetchone()[0] == 0:
+                save_spinbox_increment(0.1)  # Valor padrão
+    except Exception as e:
+        print(f"Erro ao verificar/salvar incremento padrão: {e}")
+    
+    # RadioGroup para seleção do tipo de controle
+    control_type_radio_group = ft.RadioGroup(
+        content=ft.Column([
+            ft.Radio(value="slider", label="Slider (Deslizante)"),
+            ft.Radio(value="spinbox", label="Spinbox (Botões +/-)"),
+        ]),
+        value=score_control_type,  # Usar o valor carregado do banco
+        on_change=control_type_changed,
+    )
+    
     # Carregar tema salvo do usuário e aplicar ao radio group
     if current_user_wwid:
         saved_theme = load_user_theme(current_user_wwid)
@@ -3747,6 +4013,23 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         show_toast(f"⚙️ Duração do toast alterada para {new_duration}s", "blue")
     
     toast_duration_slider.on_change = update_toast_duration
+    
+    # Slider para configurar incremento do spinbox
+    spinbox_increment_slider = ft.Slider(
+        min=0.1,
+        max=1.0,
+        divisions=9,
+        value=load_spinbox_increment(),
+        label="Incremento: {value}",
+        width=300,
+    )
+    
+    def update_spinbox_increment(e):
+        new_increment = round(e.control.value, 1)
+        save_spinbox_increment(new_increment)
+        show_toast(f"⚙️ Incremento do Spinbox alterado para {new_increment}", "blue")
+    
+    spinbox_increment_slider.on_change = update_spinbox_increment
 
     # Conteúdo da sub-aba Themes
     themes_content = ft.Container(
@@ -3755,10 +4038,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Divider(),
             theme_radio_group,
             ft.Divider(),
+            ft.Text("Tipo de Controle de Score", size=16, weight="bold"),
+            ft.Text("Escolha o tipo de controle para inserir scores:", size=12, color="on_surface_variant"),
+            control_type_radio_group,
+            ft.Divider(),
             ft.Text("Configurações de Interface", size=16, weight="bold"),
             ft.Row([
                 ft.Text("Duração das notificações (toast):"),
                 toast_duration_slider,
+            ], alignment=ft.MainAxisAlignment.START),
+            ft.Row([
+                ft.Text("Incremento do Spinbox:"),
+                spinbox_increment_slider,
             ], alignment=ft.MainAxisAlignment.START),
         ], spacing=15),
         padding=20,
