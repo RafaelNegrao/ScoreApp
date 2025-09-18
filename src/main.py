@@ -4563,9 +4563,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 color=get_current_theme_colors(page).get('on_surface'),
                 border_color=get_current_theme_colors(page).get('outline')
             ),
-            "supplier_category": ft.TextField(
+            "supplier_category": ft.Dropdown(
                 label="Category", 
                 value=supplier_category, 
+                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('categories_table','category'))],
                 expand=True,
                 bgcolor=get_current_theme_colors(page).get('field_background'),
                 color=get_current_theme_colors(page).get('on_surface'),
@@ -4813,6 +4814,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         ], spacing=10, expand=True)
 
         right_column = ft.Column([
+            ft.Text("Configurações", size=12, weight="bold", color="primary"),
             fields["supplier_status"],
             ft.Row([fields["planner"], fields["continuity"]], spacing=10),
             ft.Row([fields["sourcing"], fields["sqie"]], spacing=10),
@@ -5053,12 +5055,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Container(height=10),
             ft.Container(
                 content=suppliers_results_list,
-                height=500,
+                expand=True,
                 padding=20,
             ),
-        ], spacing=15),
+        ], spacing=15, expand=True),
         padding=20,
-        visible=False
+        visible=False,
+        expand=True
     )
 
     # Controle para mostrar a soma total dos pesos
