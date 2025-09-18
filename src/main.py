@@ -76,6 +76,9 @@ class ResponsiveAppManager:
             self.current_layout = new_layout
             print(f"🔄 Mudando layout para: {new_layout} (largura: {window_width}px)")
             self.apply_responsive_layout()
+            
+        # Atualizar layout dos cards de suppliers se necessário
+        self.update_supplier_cards_layout(window_width)
     
     def apply_responsive_layout(self):
         """Aplica o layout responsivo baseado no estado atual"""
@@ -255,6 +258,102 @@ class ResponsiveAppManager:
             self.results_container.controls.append(card)
             self.results_container.update()
             print(f"🔧 Card adicionado em layout single (total: {len(self.results_container.controls)})")
+    
+    def update_supplier_cards_layout(self, window_width):
+        """Atualiza o layout interno dos cards de suppliers baseado na largura da janela"""
+        try:
+            # Encontrar a lista de suppliers (suppliers_results_list)
+            # Esta função será chamada globalmente, então precisamos acessar a lista de suppliers
+            # de forma indireta através da página
+            global suppliers_results_list
+            if 'suppliers_results_list' in globals() and suppliers_results_list:
+                should_use_single_column = window_width < 1000
+                
+                # Percorrer todos os cards de suppliers e atualizar seu layout interno
+                for card_control in suppliers_results_list.controls:
+                    if isinstance(card_control, ft.Card):
+                        # Recrear o conteúdo do card com o novo layout
+                        self._update_single_supplier_card_layout(card_control, should_use_single_column)
+                
+                # Atualizar a interface
+                suppliers_results_list.update()
+                print(f"📱 Layout dos cards de suppliers atualizado: {'uma coluna' if should_use_single_column else 'duas colunas'}")
+                
+        except Exception as e:
+            print(f"❌ Erro ao atualizar layout dos cards de suppliers: {e}")
+    
+    def _update_single_supplier_card_layout(self, card, use_single_column):
+        """Atualiza o layout interno de um único card de supplier"""
+        try:
+            # Verificar se o card tem os dados necessários (função de criar layout)
+            if hasattr(card, 'data') and card.data and 'create_layout' in card.data:
+                create_layout_func = card.data['create_layout']
+                
+                # Recriar o layout usando a função armazenada
+                new_layout = create_layout_func(use_single_column)
+                
+                # Substituir o conteúdo do container
+                if hasattr(card, 'content') and hasattr(card.content, 'content'):
+                    card.content.content = new_layout
+                    
+                print(f"✅ Card {card.data.get('supplier_id', 'unknown')} atualizado para {'uma' if use_single_column else 'duas'} coluna(s)")
+                
+        except Exception as e:
+            print(f"❌ Erro ao atualizar card individual: {e}")
+            # Fallback para o método antigo se necessário
+            self._update_single_supplier_card_layout_fallback(card, use_single_column)
+    
+    def _update_single_supplier_card_layout_fallback(self, card, use_single_column):
+        """Método de fallback para cards antigos sem função de layout armazenada"""
+        try:
+            # Obter o container interno do card
+            if hasattr(card, 'content') and hasattr(card.content, 'content'):
+                container_content = card.content.content
+                
+                # Verificar se é uma Column com o layout que esperamos
+                if isinstance(container_content, ft.Column) and len(container_content.controls) >= 1:
+                    # Primeiro controle deve ser Row (duas colunas) ou Column (uma coluna)
+                    main_content = container_content.controls[0]
+                    
+                    # Obter as referências das colunas left_column e right_column
+                    left_column = None
+                    right_column = None
+                    
+                    if isinstance(main_content, ft.Row):
+                        # Layout de duas colunas atual
+                        if len(main_content.controls) >= 3:  # left_column, divider, right_column
+                            left_column = main_content.controls[0]
+                            right_column = main_content.controls[2]
+                    elif isinstance(main_content, ft.Column):
+                        # Layout de uma coluna atual - precisamos extrair as partes
+                        if len(main_content.controls) >= 3:
+                            left_column = main_content.controls[0]
+                            right_column = main_content.controls[2]
+                    
+                    if left_column and right_column:
+                        # Recriar o layout baseado na decisão
+                        if use_single_column:
+                            # Layout de uma coluna
+                            new_layout = ft.Column([
+                                left_column,
+                                ft.Divider(),
+                                right_column,
+                                ft.Divider(),
+                                container_content.controls[-1] if len(container_content.controls) > 1 else ft.Container()  # actions_row
+                            ], spacing=15)
+                        else:
+                            # Layout de duas colunas
+                            new_layout = ft.Column([
+                                ft.Row([left_column, ft.VerticalDivider(), right_column], expand=True),
+                                ft.Divider(),
+                                container_content.controls[-1] if len(container_content.controls) > 1 else ft.Container()  # actions_row
+                            ], spacing=15)
+                        
+                        # Substituir o conteúdo
+                        card.content.content = new_layout
+                        
+        except Exception as e:
+            print(f"❌ Erro no fallback: {e}")
 
 # Instância global do gerenciador responsivo
 responsive_app_manager = None
@@ -265,6 +364,7 @@ current_user_name = None
 current_user_privilege = None
 current_user_permissions = {}
 selected_user = None  # Para controlar a seleção de usuários na aba Users
+suppliers_results_list = None  # Lista global dos cards de suppliers
 
 # ===== DEFINIÇÕES CENTRALIZADAS DE TEMAS =====
 THEME_DEFINITIONS = {
@@ -847,6 +947,17 @@ class AddSupplierDialog(ft.AlertDialog):
         self.scale_func = scale_func or (lambda x: x)
         self.list_options = list_options or {}
         
+        def update_status_color_dialog(e):
+            """Atualiza a cor do texto do dropdown de status no diálogo"""
+            status_value = e.control.value
+            if status_value == "Active":
+                e.control.color = "green"
+            elif status_value == "Inactive":
+                e.control.color = "red"
+            else:
+                e.control.color = get_current_theme_colors(self.page).get('on_surface') if hasattr(self, 'page') else "black"
+            e.page.update() if e.page else None
+        
         # Campos do formulário organizados por seção (sem supplier_id)
         self.fields = {
             # Informações Básicas
@@ -896,10 +1007,12 @@ class AddSupplierDialog(ft.AlertDialog):
                 label="Status",
                 width=200,
                 value="Active",  # Valor padrão
+                color="green",  # Cor padrão para Active
                 options=[
                     ft.dropdown.Option("Active"),
                     ft.dropdown.Option("Inactive"),
-                ]
+                ],
+                on_change=update_status_color_dialog
             ),
             
             # Configurações de Gestão
@@ -2789,7 +2902,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Text(f"BU: {bu}"),
             ft.Text(f"PO: {supplier_number}"),
             ft.Text(f"ID: {supplier_id}"),
-            ft.Text(f"Status: {status}", color="green" if str(status).lower().startswith("active") else "red"),
+            ft.Text(f"Status: {status}", color="green" if str(status).strip() == "Active" else "red" if str(status).strip() == "Inactive" else "gray"),
         ], width=210, spacing=4, alignment=ft.MainAxisAlignment.START)
 
         # Reorganizar a estrutura do card para posicionar os botões no canto inferior direito
@@ -4534,6 +4647,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # Lógica para gerenciamento de suppliers
     suppliers_search_field_ref = ft.Ref()
+    global suppliers_results_list
     suppliers_results_list = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO)
 
     def create_supplier_card(record, page):
@@ -4552,6 +4666,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         sqie = record[11] if len(record) > 11 else ""
 
         print(f"Criando card de supplier para: {vendor_name} (ID: {supplier_id})")
+
+        def update_status_color(e):
+            """Atualiza a cor do texto do dropdown de status baseado no valor selecionado"""
+            status_value = e.control.value
+            if status_value == "Active":
+                e.control.color = "green"
+            elif status_value == "Inactive":
+                e.control.color = "red"
+            else:
+                e.control.color = get_current_theme_colors(page).get('on_surface')
+            page.update()
 
         # Campos editáveis
         fields = {
@@ -4611,8 +4736,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 options=[ft.dropdown.Option(v) for v in ["Active","Inactive"]],
                 expand=True,
                 bgcolor=get_current_theme_colors(page).get('field_background'),
-                color=get_current_theme_colors(page).get('on_surface'),
-                border_color=get_current_theme_colors(page).get('outline')
+                color="green" if supplier_status == "Active" else "red" if supplier_status == "Inactive" else get_current_theme_colors(page).get('on_surface'),
+                border_color=get_current_theme_colors(page).get('outline'),
+                on_change=update_status_color
             ),
             "planner": ft.Dropdown(
                 label="Planner",
@@ -4805,37 +4931,69 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.ElevatedButton("Excluir", on_click=delete_supplier, icon=ft.Icons.DELETE, color="red"),
         ], alignment=ft.MainAxisAlignment.END, spacing=10)
 
-        # Layout do card
-        left_column = ft.Column([
-            ft.Text(f"ID: {supplier_id}", size=12, weight="bold", color="primary"),
-            ft.Row([fields["vendor_name"], fields["supplier_category"]], spacing=10),
-            ft.Row([fields["bu"], fields["supplier_name"]], spacing=10),
-            ft.Row([fields["supplier_email"], fields["supplier_number"]], spacing=10),
-        ], spacing=10, expand=True)
+        # Layout do card com responsividade
+        def should_use_single_column_layout():
+            """Determina se deve usar layout de uma coluna baseado no tamanho da janela"""
+            window_width = page.window.width or 1200
+            return window_width < 1000  # Se menor que 1000px, usar uma coluna
 
-        right_column = ft.Column([
-            ft.Text("Configurações", size=12, weight="bold", color="primary"),
-            fields["supplier_status"],
-            ft.Row([fields["planner"], fields["continuity"]], spacing=10),
-            ft.Row([fields["sourcing"], fields["sqie"]], spacing=10),
-        ], spacing=10, expand=True)
+        def create_card_layout(use_single_column=None):
+            """Cria o layout do card baseado na decisão de usar uma ou duas colunas"""
+            if use_single_column is None:
+                use_single_column = should_use_single_column_layout()
+            
+            left_column = ft.Column([
+                ft.Text(f"ID: {supplier_id}", size=12, weight="bold", color="primary"),
+                ft.Row([fields["vendor_name"], fields["supplier_category"]], spacing=10),
+                ft.Row([fields["bu"], fields["supplier_name"]], spacing=10),
+                ft.Row([fields["supplier_email"], fields["supplier_number"]], spacing=10),
+            ], spacing=10, expand=True)
 
-        card = ft.Card(
-            content=ft.Container(
-                content=ft.Column([
+            right_column = ft.Column([
+                ft.Text("Configurações", size=12, weight="bold", color="primary"),
+                fields["supplier_status"],
+                ft.Row([fields["planner"], fields["continuity"]], spacing=10),
+                ft.Row([fields["sourcing"], fields["sqie"]], spacing=10),
+            ], spacing=10, expand=True)
+
+            # Aplicar layout responsivo
+            if use_single_column:
+                # Layout de uma coluna - configurações abaixo das informações principais
+                return ft.Column([
+                    left_column,
+                    ft.Divider(),
+                    right_column,
+                    ft.Divider(),
+                    actions_row
+                ], spacing=15)
+            else:
+                # Layout de duas colunas - configurações ao lado das informações principais
+                return ft.Column([
                     ft.Row([left_column, ft.VerticalDivider(), right_column], expand=True),
                     ft.Divider(),
                     actions_row
-                ], spacing=15),
+                ], spacing=15)
+        
+        # Criar layout inicial
+        card_content = create_card_layout()
+
+        card = ft.Card(
+            content=ft.Container(
+                content=card_content,
                 padding=20
             ),
             elevation=2,
             margin=ft.margin.symmetric(vertical=5),
             color=get_current_theme_colors(page).get('card_background', 'surface_variant')
         )
-        # Guardar referências dos campos para facilitar re-tematização
+        
+        # Guardar referências dos campos e função de layout para facilitar re-tematização e responsividade
         try:
-            card.data = { 'fields': fields }
+            card.data = { 
+                'fields': fields,
+                'create_layout': create_card_layout,
+                'supplier_id': supplier_id
+            }
         except Exception:
             pass
 
