@@ -1147,19 +1147,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         """Atualiza o texto e ícone do botão de ação baseado no estado atual."""
         if 'action_btn' not in users_controls:
             return
-        
-        wwid = users_controls['wwid'].current.value.strip() if 'wwid' in users_controls and users_controls['wwid'].current and users_controls['wwid'].current.value else ''
-        
+
+        wwid_ctrl = resolve_control(users_controls.get('wwid')) if 'wwid' in users_controls else None
+        wwid = wwid_ctrl.value.strip() if wwid_ctrl and getattr(wwid_ctrl, 'value', None) else ''
+
+        action_btn_ctrl = resolve_control(users_controls.get('action_btn'))
+
         if wwid and check_user_exists(wwid):
             # Usuário existe - botão Update
-            users_controls['action_btn'].current.text = "Update"
-            users_controls['action_btn'].current.icon = ft.Icons.EDIT
+            if action_btn_ctrl:
+                action_btn_ctrl.text = "Update"
+                action_btn_ctrl.icon = ft.Icons.EDIT
         else:
             # Usuário não existe - botão Add User
-            users_controls['action_btn'].current.text = "Add User"
-            users_controls['action_btn'].current.icon = ft.Icons.PERSON_ADD
-        
-        users_controls['action_btn'].current.update()
+            if action_btn_ctrl:
+                action_btn_ctrl.text = "Add User"
+                action_btn_ctrl.icon = ft.Icons.PERSON_ADD
+
+        if action_btn_ctrl and hasattr(action_btn_ctrl, 'update'):
+            action_btn_ctrl.update()
 
     def on_wwid_change(e):
         """Função chamada quando o WWID é alterado para verificar em tempo real."""
@@ -1185,24 +1191,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         """Limpa todos os campos exceto o WWID quando digitando um WWID novo."""
         try:
             # Limpar campos de texto (exceto WWID)
-            users_controls['name'].current.value = ""
-            users_controls['password'].current.value = ""
-            users_controls['privilege'].current.value = None
-            
+            for key, val in [('name', ''), ('password', ''), ('privilege', None)]:
+                ctrl = resolve_control(users_controls.get(key))
+                if ctrl is not None:
+                    ctrl.value = val
+                    if hasattr(ctrl, 'update'):
+                        ctrl.update()
+
             # Limpar checkboxes
-            users_controls['otif_check'].current.value = False
-            users_controls['nil_check'].current.value = False
-            users_controls['pickup_check'].current.value = False
-            users_controls['package_check'].current.value = False
-            
-            # Atualizar controles
-            users_controls['name'].current.update()
-            users_controls['password'].current.update()
-            users_controls['privilege'].current.update()
-            users_controls['otif_check'].current.update()
-            users_controls['nil_check'].current.update()
-            users_controls['pickup_check'].current.update()
-            users_controls['package_check'].current.update()
+            for key in ['otif_check', 'nil_check', 'pickup_check', 'package_check']:
+                ctrl = resolve_control(users_controls.get(key))
+                if ctrl is not None:
+                    ctrl.value = False
+                    if hasattr(ctrl, 'update'):
+                        ctrl.update()
             
             # Não limpar selected_user automaticamente para evitar problemas com exclusão
             # A limpeza será feita apenas manualmente através da função clear_users_fields()
@@ -1228,24 +1230,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 print(f"🔄 Preenchimento automático para WWID {wwid}")
                 
                 # Preencher campos de texto
-                users_controls['name'].current.value = str(name) if name else ""
-                users_controls['password'].current.value = str(password) if password else ""
-                users_controls['privilege'].current.value = str(privilege) if privilege else None
+                name_ctrl = resolve_control(users_controls.get('name'))
+                pwd_ctrl = resolve_control(users_controls.get('password'))
+                priv_ctrl = resolve_control(users_controls.get('privilege'))
+                if name_ctrl is not None:
+                    name_ctrl.value = str(name) if name else ""
+                if pwd_ctrl is not None:
+                    pwd_ctrl.value = str(password) if password else ""
+                if priv_ctrl is not None:
+                    priv_ctrl.value = str(privilege) if privilege else None
                 
                 # Definir valores dos checkboxes
-                users_controls['otif_check'].current.value = int(otif) == 1
-                users_controls['nil_check'].current.value = int(nil) == 1
-                users_controls['pickup_check'].current.value = int(pickup) == 1
-                users_controls['package_check'].current.value = int(package) == 1
+                for key, db_val in [('otif_check', otif), ('nil_check', nil), ('pickup_check', pickup), ('package_check', package)]:
+                    ctrl = resolve_control(users_controls.get(key))
+                    if ctrl is not None:
+                        ctrl.value = int(db_val) == 1
                 
                 # Atualizar controles
-                users_controls['name'].current.update()
-                users_controls['password'].current.update()
-                users_controls['privilege'].current.update()
-                users_controls['otif_check'].current.update()
-                users_controls['nil_check'].current.update()
-                users_controls['pickup_check'].current.update()
-                users_controls['package_check'].current.update()
+                for key in ['name', 'password', 'privilege', 'otif_check', 'nil_check', 'pickup_check', 'package_check']:
+                    ctrl = resolve_control(users_controls.get(key))
+                    if ctrl is not None and hasattr(ctrl, 'update'):
+                        ctrl.update()
                 
                 # Definir usuário selecionado globalmente
                 global selected_user
@@ -1698,6 +1703,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         control.bgcolor = theme_colors.get('field_background')
                         control.color = theme_colors.get('on_surface')
                         control.border_color = theme_colors.get('outline')
+                        # Propriedades específicas de Dropdown (se suportadas)
+                        if hasattr(control, 'filled'):
+                            control.filled = True
+                        if hasattr(control, 'content_padding'):
+                            control.content_padding = ft.padding.symmetric(horizontal=12, vertical=16)
+                        if hasattr(control, 'focused_border_color'):
+                            control.focused_border_color = theme_colors.get('focus_border')
                         if hasattr(control, 'update'):
                             control.update()
                         print("Debug: Dropdown privilege atualizado com sucesso")
@@ -4819,6 +4831,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             margin=ft.margin.symmetric(vertical=5),
             color=get_current_theme_colors(page).get('card_background', 'surface_variant')
         )
+        # Guardar referências dos campos para facilitar re-tematização
+        try:
+            card.data = { 'fields': fields }
+        except Exception:
+            pass
 
         return card
 
