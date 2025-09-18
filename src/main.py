@@ -2337,131 +2337,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             return
         
         try:
-            cursor = db_conn.cursor()
-            
-            # Carregar dados das tabelas com name, alias, email
-            tables_with_email = {
-                'sqie': ('sqie_table', 'name, alias, email'),
-                'continuity': ('continuity_table', 'name, alias, email'), 
-                'planner': ('planner_table', 'name, alias, email'),
-                'sourcing': ('sourcing_table', 'name, alias, email')
-            }
-            
-            for key, (table_name, columns) in tables_with_email.items():
-                cursor.execute(f"SELECT {columns} FROM {table_name} ORDER BY alias")
-                rows = cursor.fetchall()
-                
-                col = lists_controls[key]['list']
-                col.controls.clear()
-                
-                if not rows:
-                    col.controls.append(
-                        ft.Container(
-                            content=ft.Text(
-                                "Nenhum item adicionado",
-                                color="outline",
-                                italic=True,
-                                text_align=ft.TextAlign.CENTER
-                            ),
-                            alignment=ft.alignment.center,
-                            padding=10
-                        )
-                    )
-                else:
-                    for row in rows:
-                        name, alias, email = row
-                        is_selected = lists_controls[key]['selected_item'] == alias
-                        colors = get_current_theme_colors(get_theme_name_from_page(page))
-                        col.controls.append(
-                            ft.Container(
-                                content=ft.ListTile(
-                                    title=ft.Text(f"{alias} - {name}", size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
-                                    subtitle=ft.Text(email or "Email não informado", size=12, color="outline") if email else ft.Text("Email não informado", size=12, color="outline"),
-                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                    dense=True,
-                                    on_click=lambda e, k=key, v=alias: select_list_item(k, v),
-                                ),
-                                bgcolor=colors['primary_container'] if is_selected else None,
-                                border_radius=4,
-                                padding=ft.padding.all(2)
-                            )
-                        )
-            
-            # Carregar Business Units
-            cursor.execute("SELECT bu FROM business_unit_table ORDER BY bu")
-            bu_rows = cursor.fetchall()
-            
-            bu_col = lists_controls['bu']['list']
-            bu_col.controls.clear()
-            
-            if not bu_rows:
-                bu_col.controls.append(
-                    ft.Container(
-                        content=ft.Text(
-                            "Nenhum item adicionado",
-                            color="outline",
-                            italic=True,
-                            text_align=ft.TextAlign.CENTER
-                        ),
-                        alignment=ft.alignment.center,
-                        padding=10
-                    )
-                )
-            else:
-                for row in bu_rows:
-                    is_selected = lists_controls['bu']['selected_item'] == row[0]
-                    colors = get_current_theme_colors(get_theme_name_from_page(page))
-                    bu_col.controls.append(
-                        ft.Container(
-                            content=ft.ListTile(
-                                title=ft.Text(row[0], size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
-                                content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                dense=True,
-                                on_click=lambda e, v=row[0]: select_list_item('bu', v),
-                            ),
-                            bgcolor=colors['primary_container'] if is_selected else None,
-                            border_radius=4,
-                            padding=ft.padding.all(2)
-                        )
-                    )
-            
-            # Carregar Categories
-            cursor.execute("SELECT category FROM categories_table ORDER BY category")
-            category_rows = cursor.fetchall()
-            
-            category_col = lists_controls['category']['list']
-            category_col.controls.clear()
-            
-            if not category_rows:
-                category_col.controls.append(
-                    ft.Container(
-                        content=ft.Text(
-                            "Nenhum item adicionado",
-                            color="outline",
-                            italic=True,
-                            text_align=ft.TextAlign.CENTER
-                        ),
-                        alignment=ft.alignment.center,
-                        padding=10
-                    )
-                )
-            else:
-                for row in category_rows:
-                    is_selected = lists_controls['category']['selected_item'] == row[0]
-                    colors = get_current_theme_colors(get_theme_name_from_page(page))
-                    category_col.controls.append(
-                        ft.Container(
-                            content=ft.ListTile(
-                                title=ft.Text(row[0], size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
-                                content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                dense=True,
-                                on_click=lambda e, v=row[0]: select_list_item('category', v),
-                            ),
-                            bgcolor=colors['primary_container'] if is_selected else None,
-                            border_radius=4,
-                            padding=ft.padding.all(2)
-                        )
-                    )
+            # Usar refresh_list_ui para cada tipo de lista
+            # Isso garantirá consistência com a nova estrutura de cards
+            for key in lists_controls.keys():
+                refresh_list_ui(key)
                     
         except Exception as e:
             print(f"Erro ao carregar dados das listas: {e}")
@@ -2484,134 +2363,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def reload_single_list_with_style(key):
         """Recarrega uma lista específica mantendo o estilo da load_all_lists_data"""
-        if not db_conn:
-            return
-        
-        try:
-            cursor = db_conn.cursor()
-            colors = get_current_theme_colors(get_theme_name_from_page(page))
-            
-            if key in ['sqie', 'continuity', 'planner', 'sourcing']:
-                # Tabelas com name, alias, email
-                table_name = f"{key}_table"
-                cursor.execute(f"SELECT name, alias, email FROM {table_name} ORDER BY alias")
-                rows = cursor.fetchall()
-                
-                col = lists_controls[key]['list']
-                col.controls.clear()
-                
-                if not rows:
-                    col.controls.append(
-                        ft.Container(
-                            content=ft.Text(
-                                "Nenhum item adicionado",
-                                color="outline",
-                                italic=True,
-                                text_align=ft.TextAlign.CENTER
-                            ),
-                            alignment=ft.alignment.center,
-                            padding=10
-                        )
-                    )
-                else:
-                    for row in rows:
-                        name, alias, email = row
-                        is_selected = lists_controls[key]['selected_item'] == alias
-                        
-                        # Usar Container para garantir que o bgcolor funcione
-                        col.controls.append(
-                            ft.Container(
-                                content=ft.ListTile(
-                                    title=ft.Text(f"{alias} - {name}", size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
-                                    subtitle=ft.Text(email or "Email não informado", size=12, color="outline") if email else ft.Text("Email não informado", size=12, color="outline"),
-                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                    dense=True,
-                                    on_click=lambda e, k=key, v=alias: select_list_item(k, v),
-                                ),
-                                bgcolor=colors['primary_container'] if is_selected else None,
-                                border_radius=4,
-                                padding=ft.padding.all(2)
-                            )
-                        )
-                        
-            elif key == 'bu':
-                # Business Units
-                cursor.execute("SELECT bu FROM business_unit_table ORDER BY bu")
-                rows = cursor.fetchall()
-                
-                col = lists_controls[key]['list']
-                col.controls.clear()
-                
-                if not rows:
-                    col.controls.append(
-                        ft.Container(
-                            content=ft.Text(
-                                "Nenhum item adicionado",
-                                color="outline",
-                                italic=True,
-                                text_align=ft.TextAlign.CENTER
-                            ),
-                            alignment=ft.alignment.center,
-                            padding=10
-                        )
-                    )
-                else:
-                    for row in rows:
-                        is_selected = lists_controls[key]['selected_item'] == row[0]
-                        col.controls.append(
-                            ft.Container(
-                                content=ft.ListTile(
-                                    title=ft.Text(row[0], size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
-                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                    dense=True,
-                                    on_click=lambda e, v=row[0]: select_list_item('bu', v),
-                                ),
-                                bgcolor=colors['primary_container'] if is_selected else None,
-                                border_radius=4,
-                                padding=ft.padding.all(2)
-                            )
-                        )
-                        
-            elif key == 'category':
-                # Categories
-                cursor.execute("SELECT category FROM categories_table ORDER BY category")
-                rows = cursor.fetchall()
-                
-                col = lists_controls[key]['list']
-                col.controls.clear()
-                
-                if not rows:
-                    col.controls.append(
-                        ft.Container(
-                            content=ft.Text(
-                                "Nenhum item adicionado",
-                                color="outline",
-                                italic=True,
-                                text_align=ft.TextAlign.CENTER
-                            ),
-                            alignment=ft.alignment.center,
-                            padding=10
-                        )
-                    )
-                else:
-                    for row in rows:
-                        is_selected = lists_controls[key]['selected_item'] == row[0]
-                        col.controls.append(
-                            ft.Container(
-                                content=ft.ListTile(
-                                    title=ft.Text(row[0], size=14, weight="bold", color=colors['primary'] if is_selected else colors['on_surface']),
-                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                    dense=True,
-                                    on_click=lambda e, v=row[0]: select_list_item('category', v),
-                                ),
-                                bgcolor=colors['primary_container'] if is_selected else None,
-                                border_radius=4,
-                                padding=ft.padding.all(2)
-                            )
-                        )
-                        
-        except Exception as e:
-            print(f"Erro ao recarregar lista {key}: {e}")
+        # Usar refresh_list_ui para manter consistência
+        refresh_list_ui(key)
 
     def load_list_options(table_name, column_name):
         """Retorna lista de tuplas (value, text) para popular Dropdowns."""
@@ -2637,26 +2390,34 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             return []
 
     def load_list_items_full(table_name):
-        """Retorna dados completos dos itens da lista com name, alias, email."""
+        """Retorna dados completos dos itens da lista com name, alias, email e ID único."""
         if not db_conn:
             return []
         try:
             cur = db_conn.cursor()
-            if table_name in ("business_unit_table",):
-                cur.execute(f"SELECT bu FROM {table_name} ORDER BY bu")
+            if table_name == "business_unit_table":
+                cur.execute(f"SELECT business_id, bu FROM {table_name} ORDER BY bu")
                 rows = cur.fetchall()
-                return [{"display": r[0], "alias": r[0]} for r in rows]
+                return [{"id": r[0], "display": r[1], "alias": r[1]} for r in rows]
             elif table_name == "categories_table":
-                cur.execute(f"SELECT category FROM {table_name} ORDER BY category")
+                cur.execute(f"SELECT categories_id, category FROM {table_name} ORDER BY category")
                 rows = cur.fetchall()
-                return [{"display": r[0], "alias": r[0]} for r in rows]
+                return [{"id": r[0], "display": r[1], "alias": r[1]} for r in rows]
             else:
-                # Para tabelas com name, alias, email
-                cur.execute(f"SELECT name, alias, email FROM {table_name} ORDER BY alias")
+                # Para tabelas com name, alias, email - incluir ID da tabela
+                id_columns = {
+                    'sqie_table': 'sqie_id',
+                    'continuity_table': 'continuity_id', 
+                    'planner_table': 'planner_id',
+                    'sourcing_table': 'sourcing_id'
+                }
+                
+                id_col = id_columns.get(table_name, 'id')
+                cur.execute(f"SELECT {id_col}, name, alias, email FROM {table_name} ORDER BY alias")
                 rows = cur.fetchall()
                 items = []
                 for row in rows:
-                    name, alias, email = row
+                    row_id, name, alias, email = row
                     # Criar texto de exibição com as informações completas
                     display_parts = []
                     if name and name.strip():
@@ -2668,6 +2429,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     
                     display_text = " | ".join(display_parts) if display_parts else "Item sem dados"
                     items.append({
+                        "id": row_id,
                         "display": display_text,
                         "alias": alias or name or "",
                         "name": name or "",
@@ -4173,6 +3935,231 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         },
     }
 
+    def create_list_item_card(key, item):
+        """Cria um card para um item de lista com botões de ação"""
+        colors = get_current_theme_colors(get_theme_name_from_page(page))
+        
+        # Determinar que tipo de lista estamos lidando
+        list_types_with_edit = ['sqie', 'continuity', 'planner', 'sourcing']
+        supports_edit = key in list_types_with_edit
+        
+        # Extrair informações do item
+        alias = item.get("alias", "")
+        name = item.get("name", "")
+        email = item.get("email", "")
+        
+        # Criar título baseado no tipo
+        if key in list_types_with_edit:
+            title = f"{alias} - {name}" if name else alias
+            subtitle = email if email else "Email não informado"
+        else:
+            title = alias or item.get("display", "")
+            subtitle = None
+        
+        # Criar conteúdo do card
+        content_column = ft.Column([
+            ft.Text(
+                title, 
+                size=14, 
+                weight="bold",
+                color=colors['on_surface']
+            )
+        ], spacing=2)
+        
+        if subtitle:
+            content_column.controls.append(
+                ft.Text(subtitle, size=12, color="outline")
+            )
+        
+        # Criar botões de ação
+        action_buttons = []
+        
+        if supports_edit:
+            action_buttons.append(
+                ft.IconButton(
+                    icon=ft.Icons.EDIT,
+                    tooltip="Editar",
+                    icon_size=18,
+                    on_click=lambda e, k=key, it=item: show_edit_list_dialog(k, it)
+                )
+            )
+        
+        action_buttons.append(
+            ft.IconButton(
+                icon=ft.Icons.DELETE,
+                tooltip="Excluir",
+                icon_size=18,
+                icon_color="red",
+                on_click=lambda e, k=key, it=item: confirm_delete_list_item(k, it)
+            )
+        )
+        
+        # Layout do card
+        card_content = ft.Row([
+            ft.Container(
+                content=content_column,
+                expand=True
+            ),
+            ft.Row(action_buttons, spacing=0)
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        
+        return ft.Card(
+            content=ft.Container(
+                content=card_content,
+                padding=ft.padding.all(12),
+                bgcolor=colors['card_background'],
+                border_radius=8
+            ),
+            elevation=1,
+            margin=ft.margin.only(bottom=4)
+        )
+
+    def show_edit_list_dialog(key, item):
+        """Mostra diálogo para editar um item da lista"""
+        colors = get_current_theme_colors(get_theme_name_from_page(page))
+        
+        # Campos atuais - extrair ID único
+        current_id = item.get('id', '')
+        current_alias = item.get('alias', '')
+        current_name = item.get('name', '')
+        current_email = item.get('email', '')
+        
+        # Criar campos de entrada
+        name_field = ft.TextField(
+            label="Nome",
+            value=current_name,
+            width=380,
+            bgcolor=colors['field_background'],
+            color=colors['on_surface'],
+            border_color=colors['outline']
+        )
+        
+        alias_field = ft.TextField(
+            label="Alias",
+            value=current_alias,
+            width=380,
+            bgcolor=colors['field_background'],
+            color=colors['on_surface'],
+            border_color=colors['outline']
+        )
+        
+        email_field = ft.TextField(
+            label="Email",
+            value=current_email,
+            width=380,
+            bgcolor=colors['field_background'],
+            color=colors['on_surface'],
+            border_color=colors['outline']
+        )
+        
+        error_text = ft.Text("", color="red", visible=False)
+        
+        def save_changes(e):
+            new_name = name_field.value.strip()
+            new_alias = alias_field.value.strip().upper()
+            new_email = email_field.value.strip()
+            
+            # Validação
+            if not new_name or not new_alias or not new_email:
+                error_text.value = "Todos os campos são obrigatórios"
+                error_text.visible = True
+                edit_dialog.update()
+                return
+            
+            try:
+                # Mapear tabela e coluna ID
+                table_map = {
+                    'sqie': ('sqie_table', 'id'),
+                    'continuity': ('continuity_table', 'id'),
+                    'planner': ('planner_table', 'id'),
+                    'sourcing': ('sourcing_table', 'id')
+                }
+                
+                table_name, id_column = table_map[key]
+                
+                # Atualizar no banco usando ID único
+                cursor = db_conn.cursor()
+                cursor.execute(
+                    f"UPDATE {table_name} SET name = ?, alias = ?, email = ? WHERE {id_column} = ?",
+                    (new_name, new_alias, new_email, current_id)
+                )
+                db_conn.commit()
+                
+                # Atualizar seleção se ID mudou (usar novo ID)
+                if lists_controls[key]['selected_item'] == current_id:
+                    lists_controls[key]['selected_item'] = current_id
+                
+                # Fechar diálogo e atualizar UI
+                page.close(edit_dialog)
+                refresh_list_ui(key)
+                update_all_comboboxes()
+                
+                page.snack_bar = ft.SnackBar(ft.Text("✅ Item atualizado com sucesso"))
+                page.snack_bar.open = True
+                page.update()
+                
+            except Exception as ex:
+                import sqlite3 as _sqlite
+                if isinstance(ex, _sqlite.IntegrityError):
+                    error_text.value = "Alias já existe. Escolha outro."
+                    error_text.visible = True
+                    edit_dialog.update()
+                else:
+                    page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao atualizar: {ex}"))
+                    page.snack_bar.open = True
+                    page.update()
+        
+        def cancel_edit(e):
+            page.close(edit_dialog)
+            page.update()
+        
+        # Criar diálogo
+        edit_dialog = ft.AlertDialog(
+            title=ft.Text("Editar Item"),
+            content=ft.Column([
+                ft.Container(
+                    content=ft.Column([
+                        name_field,
+                        ft.Container(height=10),
+                        alias_field,
+                        ft.Container(height=10),
+                        email_field,
+                        ft.Container(height=15),
+                        error_text
+                    ], spacing=0),
+                    width=400
+                )
+            ], tight=True, spacing=15),
+            actions=[
+                ft.TextButton("Cancelar", on_click=cancel_edit),
+                ft.ElevatedButton("Salvar", on_click=save_changes)
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+        )
+        
+        page.open(edit_dialog)
+        page.update()
+
+    def confirm_delete_list_item(key, item):
+        """Confirma exclusão de item da lista"""
+        alias = item.get('alias', '')
+        
+        # Mapear informações da tabela
+        table_info = {
+            'sqie': {'table': 'sqie_table', 'column': 'alias', 'display': 'SQIE'},
+            'continuity': {'table': 'continuity_table', 'column': 'alias', 'display': 'Continuity'},
+            'planner': {'table': 'planner_table', 'column': 'alias', 'display': 'Planner'},
+            'sourcing': {'table': 'sourcing_table', 'column': 'alias', 'display': 'Sourcing'},
+            'bu': {'table': 'business_unit_table', 'column': 'bu', 'display': 'Business Unit'},
+            'category': {'table': 'categories_table', 'column': 'category', 'display': 'Category'}
+        }
+        
+        info = table_info.get(key, {})
+        list_display = info.get('display', key.upper())
+        
+        # Usar o diálogo de confirmação existente
+        delete_alias_handler(info['table'], info['column'], alias)
+
     def refresh_list_ui(key):
         try:
             # Mapear tabelas e colunas
@@ -4207,38 +4194,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         )
                     )
                 else:
-                    # Adicionar cada item mantendo o estilo da load_all_lists_data
+                    # Usar cards ao invés de ListTiles
                     for item in items:
-                        alias = item["alias"]
-                        display_text = item["display"]
-                        is_selected = lists_controls[key]['selected_item'] == alias
-                        colors = get_current_theme_colors(get_theme_name_from_page(page))
-                        
-                        # Separar as linhas do display_text
-                        lines = display_text.split('\n')
-                        line1 = lines[0] if lines else display_text
-                        line2 = lines[1] if len(lines) > 1 else ""
-                        
-                        col.controls.append(
-                            ft.ListTile(
-                                title=ft.Text(
-                                    line1, 
-                                    size=14, 
-                                    weight="bold",
-                                    color=colors['primary'] if is_selected else colors['on_surface']
-                                ),
-                                subtitle=ft.Text(
-                                    line2, 
-                                    size=12, 
-                                    color="outline"
-                                ) if line2 else None,
-                                content_padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                dense=True,
-                                on_click=lambda e, k=key, v=alias: select_list_item(k, v),
-                                selected=is_selected,
-                                bgcolor=colors['primary_container'] if is_selected else None
-                            )
-                        )
+                        card = create_list_item_card(key, item)
+                        col.controls.append(card)
                         
         except Exception as ex:
             print(f"Erro ao atualizar UI da lista {key}: {ex}")
@@ -4559,11 +4518,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         'Adicionar', 
                         on_click=add_alias_handler_sqie,
                         icon=ft.Icons.ADD
-                    ),
-                    ft.OutlinedButton(
-                        'Excluir', 
-                        on_click=lambda e: delete_alias_handler('sqie_table','alias', lists_controls['sqie']['alias'].value.strip().upper() if lists_controls['sqie']['alias'].value else lists_controls['sqie']['input'].value.strip()),
-                        icon=ft.Icons.DELETE
                     )
                 ], spacing=8),
                 
@@ -4610,11 +4564,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         'Adicionar', 
                         on_click=lambda e: add_alias_handler_generic('continuity_table', lists_controls['continuity']['input'], lists_controls['continuity']['alias']),
                         icon=ft.Icons.ADD
-                    ),
-                    ft.OutlinedButton(
-                        'Excluir', 
-                        on_click=lambda e: delete_alias_handler('continuity_table','alias', lists_controls['continuity']['alias'].value.strip().upper() if lists_controls['continuity']['alias'].value else lists_controls['continuity']['input'].value.strip()),
-                        icon=ft.Icons.DELETE
                     )
                 ], spacing=8),
                 
@@ -4663,10 +4612,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             ),
                             lists_controls['sqie']['feedback'],
                             ft.Row([
-                                ft.ElevatedButton('Adicionar', on_click=add_alias_handler_sqie, icon=ft.Icons.ADD),
-                                ft.OutlinedButton('Excluir', 
-                                    on_click=lambda e: delete_alias_handler('sqie_table','alias'), 
-                                    icon=ft.Icons.DELETE)
+                                ft.ElevatedButton('Adicionar', on_click=add_alias_handler_sqie, icon=ft.Icons.ADD)
                             ], spacing=10),
                             ft.Text("Itens:", size=12, weight="bold"),
                             ft.Container(
@@ -4707,10 +4653,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             ft.Row([
                                 ft.ElevatedButton('Adicionar', 
                                     on_click=lambda e: add_alias_handler_generic('continuity_table', lists_controls['continuity']['input'], lists_controls['continuity']['alias']), 
-                                    icon=ft.Icons.ADD),
-                                ft.OutlinedButton('Excluir', 
-                                    on_click=lambda e: delete_alias_handler('continuity_table','alias'), 
-                                    icon=ft.Icons.DELETE)
+                                    icon=ft.Icons.ADD)
                             ], spacing=10),
                             ft.Text("Itens:", size=12, weight="bold"),
                             ft.Container(
@@ -4750,10 +4693,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             ft.Row([
                                 ft.ElevatedButton('Adicionar', 
                                     on_click=lambda e: add_alias_handler_generic('planner_table', lists_controls['planner']['input'], lists_controls['planner']['alias']), 
-                                    icon=ft.Icons.ADD),
-                                ft.OutlinedButton('Excluir', 
-                                    on_click=lambda e: delete_alias_handler('planner_table','alias'), 
-                                    icon=ft.Icons.DELETE)
+                                    icon=ft.Icons.ADD)
                             ], spacing=10),
                             ft.Text("Itens:", size=12, weight="bold"),
                             ft.Container(
@@ -4793,10 +4733,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             ft.Row([
                                 ft.ElevatedButton('Adicionar', 
                                     on_click=lambda e: add_alias_handler_generic('sourcing_table', lists_controls['sourcing']['input'], lists_controls['sourcing']['alias']), 
-                                    icon=ft.Icons.ADD),
-                                ft.OutlinedButton('Excluir', 
-                                    on_click=lambda e: delete_alias_handler('sourcing_table','alias'), 
-                                    icon=ft.Icons.DELETE)
+                                    icon=ft.Icons.ADD)
                             ], spacing=10),
                             ft.Text("Itens:", size=12, weight="bold"),
                             ft.Container(
@@ -4830,10 +4767,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             ft.Row([
                                 ft.ElevatedButton('Adicionar', 
                                     on_click=lambda e: add_alias_handler_generic('business_unit_table', lists_controls['bu']['input']), 
-                                    icon=ft.Icons.ADD),
-                                ft.OutlinedButton('Excluir', 
-                                    on_click=lambda e: delete_alias_handler('business_unit_table','bu'), 
-                                    icon=ft.Icons.DELETE)
+                                    icon=ft.Icons.ADD)
                             ], spacing=10),
                             ft.Text("Itens:", size=12, weight="bold"),
                             ft.Container(
@@ -4867,10 +4801,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             ft.Row([
                                 ft.ElevatedButton('Adicionar', 
                                     on_click=lambda e: add_alias_handler_generic('categories_table', lists_controls['category']['input']), 
-                                    icon=ft.Icons.ADD),
-                                ft.OutlinedButton('Excluir', 
-                                    on_click=lambda e: delete_alias_handler('categories_table','category'), 
-                                    icon=ft.Icons.DELETE)
+                                    icon=ft.Icons.ADD)
                             ], spacing=10),
                             ft.Text("Itens:", size=12, weight="bold"),
                             ft.Container(
