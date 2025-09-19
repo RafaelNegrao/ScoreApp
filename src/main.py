@@ -2102,32 +2102,60 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         apply_theme("white", is_initialization=True)  # fallback para tema padrão
     # ===== FIM DO CARREGAMENTO INICIAL DO TEMA =====
 
-    def show_toast(message, color="green"):
-        """Mostra um toast com duração configurável."""
+    def show_toast(message, color="green", restore_control=None):
+        """Mostra um toast com duração configurável.
+
+        If `restore_control` is provided, the control will be re-enabled and its
+        processing flag cleared before showing the toast. This ensures error/warning
+        flows that call `show_toast` don't accidentally leave the originating
+        control disabled.
+        """
         global app_settings
-        
-        page.overlay.append(
-            ft.Container(
-                content=ft.Text(message, color="white", weight="bold"),
-                bgcolor=color,
-                padding=10,
-                border_radius=5,
-                top=50,
-                right=20,
-                animate_opacity=300,
+
+        try:
+            # If a control is provided, make sure it's restored immediately
+            if restore_control is not None:
+                try:
+                    restore_control.disabled = False
+                    if hasattr(restore_control, '_is_processing'):
+                        restore_control._is_processing = False
+                    safe_update_control(restore_control, page)
+                except Exception as _:
+                    # If restoring the control fails, continue to show the toast
+                    print(f"Aviso: não foi possível restaurar controle antes do toast: {_}")
+
+            page.overlay.append(
+                ft.Container(
+                    content=ft.Text(message, color="white", weight="bold"),
+                    bgcolor=color,
+                    padding=10,
+                    border_radius=5,
+                    top=50,
+                    right=20,
+                    animate_opacity=300,
+                )
             )
-        )
-        page.update()
-        
-        # Remover toast após a duração configurada
+            page.update()
+        except Exception as ex:
+            # Never let a toast break the UI flow
+            print(f"Erro ao mostrar toast: {ex}")
+
+        # Remover toast após a duração configurada (mais robusto)
         import threading
         def remove_toast():
-            import time
-            time.sleep(app_settings['toast_duration'])
-            if page.overlay:
-                page.overlay.pop()
-                page.update()
-        
+            try:
+                import time
+                time.sleep(app_settings.get('toast_duration', 3))
+                try:
+                    if getattr(page, 'overlay', None):
+                        if len(page.overlay) > 0:
+                            page.overlay.pop()
+                            page.update()
+                except Exception as inner:
+                    print(f"Erro ao remover toast: {inner}")
+            except Exception as outer:
+                print(f"Erro na thread de toast: {outer}")
+
         threading.Thread(target=remove_toast, daemon=True).start()
 
     def load_user_criteria(user_wwid=None):
@@ -3206,7 +3234,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Erro: Banco de dados não conectado.", "red")
+                show_toast("Erro: Banco de dados não conectado.", "red", restore_control=save_button)
                 return
                 
             if not selected_month.current or not selected_year.current:
@@ -3215,7 +3243,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Selecione mês e ano antes de salvar.", "orange")
+                show_toast("Selecione mês e ano antes de salvar.", "orange", restore_control=save_button)
                 return
                 
             month_val = selected_month.current.value
@@ -3227,7 +3255,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Selecione mês e ano antes de salvar.", "orange")
+                show_toast("Selecione mês e ano antes de salvar.", "orange", restore_control=save_button)
                 return
 
             # Validação de data futura baseada na lógica legacy
@@ -3246,7 +3274,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Valores de mês e ano inválidos.", "red")
+                show_toast("Valores de mês e ano inválidos.", "red", restore_control=save_button)
                 return
                 
             # Prevenir salvamento de scores para meses futuros
@@ -3256,7 +3284,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Não é possível salvar scores para meses futuros.", "orange")
+                show_toast("Não é possível salvar scores para meses futuros.", "orange", restore_control=save_button)
                 return
 
             try:
@@ -3324,7 +3352,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     save_button.icon = original_icon
                     save_button.disabled = False
                     safe_update_control(save_button, page)
-                    show_toast("Você não tem permissão para salvar nenhum campo.", "red")
+                    show_toast("Você não tem permissão para salvar nenhum campo.", "red", restore_control=save_button)
                     return
                 
                 comment_val = comment_field.value or ""
@@ -3796,7 +3824,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Erro: Banco de dados não conectado.", "red")
+                show_toast("Erro: Banco de dados não conectado.", "red", restore_control=save_button)
                 return
                 
             if not selected_month.current or not selected_year.current:
@@ -3805,7 +3833,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Selecione mês e ano antes de salvar.", "orange")
+                show_toast("Selecione mês e ano antes de salvar.", "orange", restore_control=save_button)
                 return
                 
             month_val = selected_month.current.value
@@ -3817,7 +3845,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Selecione mês e ano antes de salvar.", "orange")
+                show_toast("Selecione mês e ano antes de salvar.", "orange", restore_control=save_button)
                 return
 
             # Validação de data futura baseada na lógica legacy
@@ -3836,7 +3864,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Valores de mês e ano inválidos.", "red")
+                show_toast("Valores de mês e ano inválidos.", "red", restore_control=save_button)
                 return
                 
             # Prevenir salvamento de scores para meses futuros
@@ -3846,7 +3874,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Não é possível salvar scores para meses futuros.", "orange")
+                show_toast("Não é possível salvar scores para meses futuros.", "orange", restore_control=save_button)
                 return
 
             try:
@@ -4435,11 +4463,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # --- Início: Lógica e Controles da Aba Score ---
 
-    results_list = ft.ListView(
-        expand=True, 
-        spacing=10, 
-        padding=20
-    )
+    results_list = ft.ListView(spacing=10, padding=20)
 
     # Referências para dropdowns que precisam ser atualizados com tema
     month_dropdown = ft.Dropdown(
@@ -7387,6 +7411,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         ],
         visible=True,
         expand=True,
+        scroll=ft.ScrollMode.AUTO,
     )
     # --- Início: Lógica da Aba Timeline ---
     
@@ -7935,6 +7960,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             month, year_data, _, _, _, _, _, _ = record_data
 
+            # Obter supplier_id selecionado atualmente no filtro da timeline
+            vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown and timeline_vendor_dropdown.current else None
+            if not vendor_id:
+                show_timeline_snackbar("❌ Erro: Nenhum fornecedor selecionado para atualizar o registro.")
+                return
+
             cursor = db_conn.cursor()
 
             # Calcular novo total_score
@@ -7942,11 +7973,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if otif is not None and nil is not None and pickup is not None and package is not None:
                 total_score = (otif + nil + pickup + package) / 4
 
+            # Registrar quem fez a alteração e quando (compatível com a aba Score)
+            from datetime import datetime
+            current_date = datetime.now()
+            register_date = current_date.strftime("%Y-%m-%d %H:%M:%S")
+            registered_by = current_user_name if 'current_user_name' in globals() else None
+
             cursor.execute("""UPDATE supplier_score_records_table
                              SET otif = ?, nil = ?, quality_pickup = ?, quality_package = ?,
-                                 total_score = ?, comment = ?
-                             WHERE month = ? AND year = ?""",
-                          (otif, nil, pickup, package, total_score, comment, month, year_data))
+                                 total_score = ?, comment = ?, registered_by = ?, register_date = ?, changed_by = ?
+                             WHERE supplier_id = ? AND month = ? AND year = ?""",
+                          (otif, nil, pickup, package, total_score, comment, registered_by, register_date, registered_by, vendor_id, month, year_data))
             db_conn.commit()
 
             # Atualizar a tabela
@@ -8689,51 +8726,46 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 t4 = trend_icon(q4, q3)
 
                 # Construir card simplificado
-                # Layout redesenhado: maior, responsivo e com posição definida para elementos
+                # Layout final: card maior; média posicionada acima da linha dos Qs, à direita
                 card_inner = ft.Container(
                     content=ft.Column([
-                        # Top section: nome, BU e ID (lado esquerdo)
+                        # Topo: nome, BU e ID + média
                         ft.Row([
                             ft.Column([
-                                ft.Text(vendor_name, weight=ft.FontWeight.BOLD, size=18, overflow=ft.TextOverflow.ELLIPSIS),
+                                ft.Text(vendor_name, weight=ft.FontWeight.BOLD, size=18, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                                 ft.Text(f"BU: {bu}" if bu else "BU: -", size=12, color="gray"),
                                 ft.Text(f"ID: {supplier_id}", size=11, color="gray")
                             ], expand=True),
-                            # Espaço para alinhar a média no canto inferior direito do cartão
-                            ft.Column([
-                                ft.Container(expand=True),
-                                ft.Column([
-                                    ft.Text("Média", size=12, color="gray"),
-                                    ft.Text(f"{media_val:.2f}", size=26, weight=ft.FontWeight.BOLD, color="red", text_align=ft.TextAlign.RIGHT)
-                                ], horizontal_alignment=ft.CrossAxisAlignment.END)
-                            ], width=110)
+                            ft.Text(f"{media_val:.2f}", size=28, weight=ft.FontWeight.BOLD, color="red")
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
 
                         ft.Divider(),
 
-                        # Bottom section: trimestres com ícones de tendência
-                        ft.Row([
-                            ft.Column([ft.Text("Q1", size=12), ft.Text(f"{q1:.2f}" if q1 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
-                            ft.Container(width=8),
-                            t2,
-                            ft.Container(width=12),
-                            ft.Column([ft.Text("Q2", size=12), ft.Text(f"{q2:.2f}" if q2 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
-                            ft.Container(width=8),
-                            t3,
-                            ft.Container(width=12),
-                            ft.Column([ft.Text("Q3", size=12), ft.Text(f"{q3:.2f}" if q3 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
-                            ft.Container(width=8),
-                            t4,
-                            ft.Container(width=12),
-                            ft.Column([ft.Text("Q4", size=12), ft.Text(f"{q4:.2f}" if q4 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
-                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-                    ], spacing=10),
-                    padding=14,
-                    width=380,
-                    height=180,
+                        # Meio: trimestres (responsivos, quebram linha se faltar espaço)
+                        # O controle ft.Wrap não está disponível na sua versão do Flet.
+                        # Usando ft.Row com a propriedade wrap=True, que é
+                        # a abordagem correta para versões mais antigas e garante a quebra de linha.
+                        ft.Row(
+                            controls=[
+                                ft.Column([ft.Text("Q1", size=11), ft.Text(f"{q1:.2f}" if q1 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
+                                t2,
+                                ft.Column([ft.Text("Q2", size=11), ft.Text(f"{q2:.2f}" if q2 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
+                                t3,
+                                ft.Column([ft.Text("Q3", size=11), ft.Text(f"{q3:.2f}" if q3 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
+                                t4,
+                                ft.Column([ft.Text("Q4", size=11), ft.Text(f"{q4:.2f}" if q4 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+                            wrap=True,
+                            spacing=16
+                        )
+                    ], spacing=8), # Espaçamento interno do card reduzido
+                    # Padding ajustado para um visual mais "justo"
+                    padding=ft.padding.symmetric(vertical=12, horizontal=16),
                     border_radius=12,
                     bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background')
                 )
+
 
                 card = ft.Card(content=card_inner, elevation=6)
                 # armazenar média no próprio objeto do card para ordenação segura
@@ -8762,19 +8794,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Ordenar cards por média (menor para maior - maior risco primeiro)
             cards.sort(key=lambda card: float(getattr(card, 'media_score', float('inf'))))
 
-            # Ajustar grid responsivo com base na largura da janela
-            window_width = page.window.width if page and page.window and page.window.width else 1200
-            approx_card_width = 340
-            runs = max(1, int(window_width / approx_card_width))
-
-            risks_cards_container.current.content = ft.GridView(
-                runs_count=runs,
-                max_extent=approx_card_width,
-                child_aspect_ratio=2.3,
+            # O GridView força todos os cards em uma mesma linha a terem a mesma altura,
+            # o que pode criar um espaço vazio (a "borda exagerada") em cards com menos conteúdo.
+            # Para que cada card "abrace" seu próprio conteúdo, usaremos um `ft.Row` com a
+            # propriedade `wrap=True`. Isso permite que os cards tenham alturas variáveis.
+            risks_cards_container.current.content = ft.Row(
+                # Envolvemos cada card em um Container com largura fixa para criar o efeito de colunas.
+                controls=[ft.Container(c, width=400) for c in cards],
+                wrap=True,
                 spacing=10,
-                run_spacing=12,
-                controls=cards,
-                expand=True
+                run_spacing=10,
+                # Alinha os cards à esquerda dentro do container.
+                # Para centralizar, poderia usar ft.MainAxisAlignment.CENTER
+                alignment=ft.MainAxisAlignment.START,
             )
             risks_cards_container.current.update()
 
@@ -8785,6 +8817,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if risks_cards_container and risks_cards_container.current:
                 risks_cards_container.current.content = ft.Text(f"Erro ao gerar cards de risco: {ex}", color="red")
                 risks_cards_container.current.update()
+
+
+
+
 
     # Container da aba Risks (com dropdown de anos e área responsiva para cards)
     risks_view = ft.Container(
