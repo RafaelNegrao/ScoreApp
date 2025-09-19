@@ -588,28 +588,37 @@ def safe_update_control(control, page=None):
 # ===== DEFINIÇÕES SIMPLES DE TEMAS =====
 
 def get_current_theme_colors(theme_name="white"):
-    """Retorna as cores básicas do tema especificado"""
+    """Return base colors for the given theme
+
+    Nota: os campos de "Comentário" e os campos de nota (spinbox/slider TextField)
+    presentes nos cards da aba Score foram configurados para usar a mesma cor de
+    fundo do card (`card_background`) para terem aparencia integrada ao card.
+    Para alterar esse comportamento, edite os locais onde `bgcolor=...get('card_background')`
+    é usado ou modifique os valores retornados por este tema.
+    """
     if theme_name == "dark":
         return {
             "field_background": "#2C2C2C",
-            "on_surface": "#E0E0E0", 
+            "on_surface": "#E0E0E0",
             "outline": "#555555",
             "card_background": "#1E1E1E",
             "primary": "#4EA1FF",
+            "on_primary": "#FFFFFF",
             "primary_container": "#3B3B3B",
             "surface_variant": "#181818",
-            "rail_background": "#121212"
+            "rail_background": "#0F0F0F"
         }
     elif theme_name == "dracula":
         return {
-            "field_background": "#44475A",
+            "field_background": None,
             "on_surface": "#F8F8F2",
             "outline": "#6272A4",
             "card_background": "#343746",
             "primary": "#BD93F9",
+            "on_primary": "#FFFFFF",
             "primary_container": "#6272A4",
             "surface_variant": "#2E303E",
-            "rail_background": "#282A36"
+            "rail_background": "#1E1F29"
         }
     else:  # white
         return {
@@ -618,9 +627,10 @@ def get_current_theme_colors(theme_name="white"):
             "outline": "#CCCCCC",
             "card_background": "#F7F7F7",
             "primary": "#0066CC",
+            "on_primary": "#FFFFFF",
             "primary_container": "#E6F0FF",
             "surface_variant": "#FAFAFA",
-            "rail_background": "#FFFFFF"
+            "rail_background": "#F0F0F0"
         }
 
 def get_theme_name_from_page(page_ref=None):
@@ -1300,6 +1310,198 @@ class AddSupplierDialog(ft.AlertDialog):
     def cancel(self, e):
         self.on_cancel_callback(e)
 
+class EditTimelineRecordDialog(ft.AlertDialog):
+    def __init__(self, record_data, on_confirm, on_cancel, page):
+        super().__init__()
+        self.record_data = record_data  # (month, year, otif, nil, pickup, package, total, comment)
+        self.on_confirm_callback = on_confirm
+        self.on_cancel_callback = on_cancel
+        self.page = page
+
+        month, year, otif, nil, pickup, package, total, comment = record_data
+
+        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        month_name = months[int(month)-1] if 1 <= int(month) <= 12 else str(month)
+
+        self.title = ft.Text(f"Editar Registro - {month_name}/{year}")
+
+        # Criar controles baseados na configuração e permissões
+        self.otif_control = self.create_score_control("OTIF", otif, current_user_permissions.get('otif', False))
+        self.nil_control = self.create_score_control("NIL", nil, current_user_permissions.get('nil', False))
+        self.pickup_control = self.create_score_control("Pickup", pickup, current_user_permissions.get('pickup', False))
+        self.package_control = self.create_score_control("Package", package, current_user_permissions.get('package', False))
+
+        self.comment_field = ft.TextField(
+            label="Comentário",
+            value=comment or "",
+            expand=True,
+            multiline=True,
+            min_lines=6,
+            max_lines=12,
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+        )
+
+        # Layout em duas colunas: duas notas por linha
+        left_col = ft.Column([ft.Container(content=self.otif_control, width=260), ft.Container(height=6), ft.Container(content=self.pickup_control, width=260)], spacing=6)
+        right_col = ft.Column([ft.Container(content=self.nil_control, width=260), ft.Container(height=6), ft.Container(content=self.package_control, width=260)], spacing=6)
+
+        controls_row = ft.Row([
+            left_col,
+            ft.Container(width=12),
+            right_col
+        ], alignment=ft.MainAxisAlignment.START)
+
+        self.content = ft.Container(
+            content=ft.Column([
+                    ft.Text("Edite os valores do registro:", size=14),
+                    ft.Container(height=8),
+                    controls_row,
+                    ft.Container(height=8),
+                    self.comment_field,
+            ], spacing=8, tight=False),
+                # Remover width fixo para permitir adaptação à janela
+                height=420
+        )
+
+        self.actions = [
+            ft.TextButton("Cancelar", on_click=self.cancel, icon=ft.Icons.CANCEL),
+            ft.ElevatedButton("💾 Salvar", on_click=self.confirm,
+                            style=ft.ButtonStyle(
+                                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_primary')
+                            ))
+        ]
+        self.actions_alignment = ft.MainAxisAlignment.END
+
+    def create_score_control(self, label, value, has_permission):
+        """Cria um controle de pontuação baseado na configuração (slider ou spinbox) e permissões"""
+        global score_control_type
+
+        if score_control_type == "slider":
+            # Criar slider
+            score_text = ft.Text(f"{float(value):.1f}" if value is not None else "0.0", width=40, text_align=ft.TextAlign.CENTER)
+            score_slider = ft.Slider(
+                min=0,
+                max=10,
+                divisions=100,
+                value=float(value) if value is not None else 0,
+                width=120,
+                disabled=not has_permission
+            )
+
+            def on_slider_change(e):
+                score_text.value = f"{e.control.value:.1f}"
+                if hasattr(score_text, 'page') and score_text.page is not None:
+                    score_text.update()
+
+            score_slider.on_change = on_slider_change
+
+            # Aplicar opacidade reduzida se não tiver permissão
+            opacity = 1.0 if has_permission else 0.5
+            score_text.opacity = opacity
+
+            return ft.Column([
+                ft.Text(label, size=12, weight="bold", opacity=opacity),
+                score_slider,
+                ft.Container(
+                    content=score_text,
+                    alignment=ft.alignment.center,
+                    width=120,
+                    margin=ft.margin.only(top=-15)
+                )
+            ], spacing=0, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+
+        else:  # spinbox
+            try:
+                increment = load_spinbox_increment()
+            except NameError:
+                # Função não disponível no escopo no momento; usar valor padrão
+                increment = 0.1
+            except Exception as ex:
+                print(f"Aviso: não foi possível carregar increment do spinbox: {ex}")
+                increment = 0.1
+
+            score_field = ft.TextField(
+                value=f"{float(value):.1f}" if value is not None else "0.0",
+                text_align=ft.TextAlign.CENTER,
+                width=70,
+                border_radius=8,
+                # Manter a consistência visual: usar cor de fundo igual à do card
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('card_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                disabled=not has_permission
+            )
+
+            def adjust_score(e):
+                if not has_permission:
+                    return
+                try:
+                    current_value = float(score_field.value)
+                    if e.control.data == "+":
+                        current_value += increment
+                    elif e.control.data == "-":
+                        current_value -= increment
+                    new_value = max(0, min(10, current_value))
+                    score_field.value = str(round(new_value, 1))
+                    score_field.update()
+                except ValueError:
+                    score_field.value = "0.0"
+                    score_field.update()
+
+            # Aplicar opacidade reduzida se não tiver permissão
+            opacity = 1.0 if has_permission else 0.5
+
+            return ft.Column([
+                ft.Text(label, size=12, weight="bold", opacity=opacity),
+                ft.Row([
+                    ft.IconButton(ft.Icons.REMOVE, on_click=adjust_score, data="-", icon_size=16, disabled=not has_permission, opacity=opacity),
+                    score_field,
+                    ft.IconButton(ft.Icons.ADD, on_click=adjust_score, data="+", icon_size=16, disabled=not has_permission, opacity=opacity),
+                ], alignment=ft.MainAxisAlignment.CENTER)
+            ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+
+    def get_control_value(self, control):
+        """Extrai o valor do controle (slider ou spinbox)"""
+        try:
+            if score_control_type == "slider":
+                # Para slider: Column[Slider, Container[Text]]
+                if hasattr(control, 'controls') and len(control.controls) >= 2:
+                    slider = control.controls[1]  # O slider é o segundo controle
+                    if hasattr(slider, 'value'):
+                        return slider.value
+            else:  # spinbox
+                # Para spinbox: Column[Text, Row[IconButton, TextField, IconButton]]
+                if hasattr(control, 'controls') and len(control.controls) >= 2:
+                    spinbox_row = control.controls[1]  # A Row é o segundo controle
+                    if hasattr(spinbox_row, 'controls') and len(spinbox_row.controls) >= 2:
+                        text_field = spinbox_row.controls[1]  # O TextField é o segundo da Row
+                        if hasattr(text_field, 'value') and text_field.value:
+                            return float(text_field.value)
+        except (ValueError, TypeError, AttributeError):
+            pass
+        return None
+
+    def confirm(self, e):
+        # Extrair valores dos controles
+        try:
+            otif = self.get_control_value(self.otif_control)
+            nil = self.get_control_value(self.nil_control)
+            pickup = self.get_control_value(self.pickup_control)
+            package = self.get_control_value(self.package_control)
+            comment = self.comment_field.value.strip() if self.comment_field.value else None
+
+            # Chamar callback com os novos valores
+            self.on_confirm_callback(self.record_data, otif, nil, pickup, package, comment)
+        except Exception as ex:
+            show_timeline_snackbar(f"❌ Erro ao processar valores: {str(ex)}")
+
+    def cancel(self, e):
+        self.on_cancel_callback(e)
+
 # Variável global para o usuário atual
 # Variáveis globais de usuário definidas no início do arquivo
 
@@ -1709,8 +1911,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
 
     def apply_theme(theme_mode, is_initialization=False):
-        """Aplica o tema especificado à página - versão simplificada"""
-        # Configurar cores básicas para cada tema
+        """Apply theme to the page"""
         if theme_mode == "dracula":
             page.theme_mode = ft.ThemeMode.DARK
             page.bgcolor = "#282A36"
@@ -1718,7 +1919,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 color_scheme=ft.ColorScheme(
                     primary="#BD93F9",
                     background="#282A36",
-                    surface="#282A36", 
+                    surface="#282A36",
                     on_surface="#F8F8F2",
                     outline="#6272A4",
                 )
@@ -1732,22 +1933,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             page.theme_mode = ft.ThemeMode.LIGHT
             page.bgcolor = "#FFFFFF"
 
-        # Salvar tema atual
+        # Save current theme
         page.data["theme_name"] = theme_mode
         page.update()
 
-        # Atualizar controles se não for inicialização
-        if not is_initialization:
-            try:
-                refresh_users_list()
-                update_menu()
-                for key in ['planner', 'continuity', 'sourcing', 'sqie']:
-                    refresh_list_ui(key)
-                update_control_colors(page, theme_mode)
-                # Atualizar container dos campos de pesquisa do Timeline
-                update_timeline_search_container_colors(theme_mode)
-            except Exception as e:
-                print(f"Erro ao atualizar listas: {e}")
+        # Update all UI controls (always call, whether init or not)
+        try:
+            refresh_users_list()
+            update_menu()
+            for key in ['planner', 'continuity', 'sourcing', 'sqie']:
+                refresh_list_ui(key)
+            update_control_colors(page, theme_mode)
+            update_timeline_search_container_colors(theme_mode)
+        except Exception as e:
+            print(f"⚠️ Error updating UI: {e}")
 
     def update_timeline_search_container_colors(theme_name):
         """Atualiza as cores do container dos campos de pesquisa do Timeline"""
@@ -1996,201 +2195,179 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             return False
 
     def theme_changed(e):
+        """Handle theme change from UI (radio button)"""
         global current_user_wwid
         theme_mode = e.control.value
 
-        # Aplicar tema
+        # Aplicar tema usando a função centralizada
         apply_theme(theme_mode)
 
         # Salvar tema no banco
         save_user_theme(theme_mode, current_user_wwid)
 
-        # Atualizar os menus para refletir as novas cores
-        update_menu()
-        update_config_tabs()
+        # Atualizar menus, abas e listas
+        try:
+            update_menu()
+            update_config_tabs()
+            load_all_lists_data()
+            load_users_full()
+        except Exception as ex:
+            print(f"⚠️ Error updating after theme change: {ex}")
 
-        # Atualizar as listas para refletir as novas cores
-        load_all_lists_data()
-        load_users_full()
-
-        # Atualizar cor do container dos campos de busca da aba score
+        # Pegar cores atuais do tema
         theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+
+        # --- Containers principais ---
         score_form_container.bgcolor = theme_colors.get('field_background')
         score_form_container.update()
 
-        # Atualizar cor do container do formulário de usuário
         users_form_container.bgcolor = theme_colors.get('field_background')
         users_form_container.border = ft.border.all(1, theme_colors.get('outline'))
         users_form_container.update()
 
-        # Atualizar cor do menu lateral (rail_container)
         rail_container.bgcolor = theme_colors.get('rail_background')
         rail_container.update()
 
-        # Atualizar cores dos dropdowns da aba score
-        month_dropdown.bgcolor = theme_colors.get('field_background')
-        month_dropdown.color = theme_colors.get('on_surface')
-        month_dropdown.border_color = theme_colors.get('outline')
-        month_dropdown.update()
-        year_dropdown.bgcolor = theme_colors.get('field_background')
-        year_dropdown.color = theme_colors.get('on_surface')
-        year_dropdown.border_color = theme_colors.get('outline')
-        year_dropdown.update()
-        
-        # Atualizar cores dos TextFields da aba score
-        if search_field_ref.current:
-            search_field_ref.current.bgcolor = theme_colors.get('field_background')
-            search_field_ref.current.color = theme_colors.get('on_surface')
-            search_field_ref.current.border_color = theme_colors.get('outline')
-            search_field_ref.current.update()
-        
-        if selected_po.current:
-            selected_po.current.bgcolor = theme_colors.get('field_background')
-            selected_po.current.color = theme_colors.get('on_surface')
-            selected_po.current.border_color = theme_colors.get('outline')
-            selected_po.current.update()
-        
-        if selected_bu.current:
-            selected_bu.current.bgcolor = theme_colors.get('field_background')
-            selected_bu.current.color = theme_colors.get('on_surface')
-            selected_bu.current.border_color = theme_colors.get('outline')
-            selected_bu.current.update()
-        
-        # Atualizar cores dos TextFields das abas de configuração
+        # --- Dropdowns da aba score ---
+        for dropdown in [month_dropdown, year_dropdown]:
+            dropdown.bgcolor = theme_colors.get('field_background')
+            dropdown.color = theme_colors.get('on_surface')
+            dropdown.border_color = theme_colors.get('outline')
+            dropdown.update()
+
+        # --- TextFields da aba score ---
+        for field_ref in [search_field_ref, selected_po, selected_bu]:
+            if field_ref.current:
+                field_ref.current.bgcolor = theme_colors.get('field_background')
+                field_ref.current.color = theme_colors.get('on_surface')
+                field_ref.current.border_color = theme_colors.get('outline')
+                field_ref.current.update()
+
+        # --- Campos das abas de configuração ---
         try:
             for config_type in ['sqie', 'continuity', 'planner', 'sourcing', 'bu', 'category']:
                 if config_type in lists_controls:
-                    # Atualizar campo 'input' (todos têm)
-                    if 'input' in lists_controls[config_type]:
-                        lists_controls[config_type]['input'].bgcolor = theme_colors.get('field_background')
-                        lists_controls[config_type]['input'].color = theme_colors.get('on_surface')
-                        lists_controls[config_type]['input'].border_color = theme_colors.get('outline')
-                        lists_controls[config_type]['input'].update()
-                    
-                    # Atualizar campo 'alias' (se existir)
-                    if 'alias' in lists_controls[config_type]:
-                        lists_controls[config_type]['alias'].bgcolor = theme_colors.get('field_background')
-                        lists_controls[config_type]['alias'].color = theme_colors.get('on_surface')
-                        lists_controls[config_type]['alias'].border_color = theme_colors.get('outline')
-                        lists_controls[config_type]['alias'].update()
-                    
-                    # Atualizar campo 'email' (se existir)
-                    if 'email' in lists_controls[config_type]:
-                        lists_controls[config_type]['email'].bgcolor = theme_colors.get('field_background')
-                        lists_controls[config_type]['email'].color = theme_colors.get('on_surface')
-                        lists_controls[config_type]['email'].border_color = theme_colors.get('outline')
-                        lists_controls[config_type]['email'].update()
-        except Exception as e:
-            print(f"Erro ao atualizar cores dos campos de configuração: {e}")
-        
-        # Atualizar cores dos campos da aba Users 
+                    for key in ['input', 'alias', 'email']:
+                        if key in lists_controls[config_type]:
+                            ctrl = lists_controls[config_type][key]
+                            ctrl.bgcolor = theme_colors.get('field_background')
+                            ctrl.color = theme_colors.get('on_surface')
+                            ctrl.border_color = theme_colors.get('outline')
+                            ctrl.update()
+        except Exception as ex:
+            print(f"⚠️ Error updating config fields: {ex}")
+
+        # --- Campos da aba Users ---
         try:
-            # Atualizar campos usando as refs específicas (manter transparentes)
             if wwid_field_ref.current:
-                wwid_field_ref.current.filled = False  # Fundo transparente
+                wwid_field_ref.current.filled = False
                 wwid_field_ref.current.color = theme_colors.get('on_surface')
                 wwid_field_ref.current.border_color = theme_colors.get('outline')
                 wwid_field_ref.current.update()
-                
             if name_field_ref.current:
-                name_field_ref.current.filled = False  # Fundo transparente
+                name_field_ref.current.filled = False
                 name_field_ref.current.color = theme_colors.get('on_surface')
                 name_field_ref.current.border_color = theme_colors.get('outline')
                 name_field_ref.current.update()
-                
             if password_field_ref.current:
-                password_field_ref.current.filled = False  # Fundo transparente
+                password_field_ref.current.filled = False
                 password_field_ref.current.color = theme_colors.get('on_surface')
                 password_field_ref.current.border_color = theme_colors.get('outline')
                 password_field_ref.current.update()
-                
             if privilege_dropdown_ref.current:
-                privilege_dropdown_ref.current.bgcolor = None  # Fundo transparente
+                privilege_dropdown_ref.current.bgcolor = None
                 privilege_dropdown_ref.current.color = theme_colors.get('on_surface')
                 privilege_dropdown_ref.current.border_color = theme_colors.get('outline')
                 privilege_dropdown_ref.current.update()
-                
-        except Exception as e:
-            print(f"Erro ao atualizar cores dos campos de usuário: {e}")
+        except Exception as ex:
+            print(f"⚠️ Error updating user fields: {ex}")
 
-        # Atualizar cores dos campos da aba Log (suporta tanto Ref quanto controle direto)
+        # --- Campos da aba Log ---
         try:
             if 'log_controls' in globals() and log_controls:
-                print("Debug: Atualizando cores dos controles de log.")
                 for ctrl in log_controls.values():
                     control = resolve_control(ctrl)
-                    if control is not None:
+                    if control:
                         control.bgcolor = theme_colors.get('field_background')
                         control.color = theme_colors.get('on_surface')
                         control.border_color = theme_colors.get('outline')
-                        if hasattr(control, 'update'):
-                            control.update()
-        except Exception as e:
-            print(f"Erro ao atualizar cores dos campos de log: {e}")
-        
-        # Atualizar cor do campo de pesquisa de Suppliers
+                        control.update()
+        except Exception as ex:
+            print(f"⚠️ Error updating log controls: {ex}")
+
+        # --- Campo de pesquisa de Suppliers ---
         try:
             if suppliers_search_field_ref.current:
                 suppliers_search_field_ref.current.bgcolor = theme_colors.get('field_background')
                 suppliers_search_field_ref.current.color = theme_colors.get('on_surface')
                 suppliers_search_field_ref.current.border_color = theme_colors.get('outline')
                 suppliers_search_field_ref.current.update()
-        except Exception as e:
-            print(f"Erro ao atualizar campo de pesquisa de suppliers: {e}")
-        
-        # Atualizar cores dos cards de Score existentes
+        except Exception as ex:
+            print(f"⚠️ Error updating suppliers search field: {ex}")
+
+        # --- Cards de Score ---
         try:
             if responsive_app_manager and responsive_app_manager.results_container:
-                print("🎨 Atualizando cores dos cards de Score...")
                 update_control_colors(responsive_app_manager.results_container, theme_mode, 0)
                 responsive_app_manager.results_container.update()
-        except Exception as e:
-            print(f"Erro ao atualizar cores dos cards de Score: {e}")
-        
-        # Atualizar cores dos cards de Suppliers existentes
+        except Exception as ex:
+            print(f"⚠️ Error updating Score cards: {ex}")
+
+        # --- Cards de Suppliers ---
         try:
             if 'suppliers_results_list' in globals() and suppliers_results_list and suppliers_results_list.controls:
-                print("🎨 Atualizando cores dos cards de Suppliers...")
                 for card in suppliers_results_list.controls:
                     update_control_colors(card, theme_mode, 0)
                 suppliers_results_list.update()
-        except Exception as e:
-            print(f"Erro ao atualizar cores dos cards de Suppliers: {e}")
-        
-        # Atualizar cores dos cards de métricas da Timeline
+        except Exception as ex:
+            print(f"⚠️ Error updating Suppliers cards: {ex}")
+
+        # --- Cards de métricas da Timeline ---
         try:
             if 'timeline_cards_refs' in globals() and timeline_cards_refs:
-                print("🎨 Atualizando cores dos cards de Métricas do Timeline...")
                 colors = get_current_theme_colors(theme_mode)
                 primary_color = colors.get('primary')
-                
-                for card_key, refs in timeline_cards_refs.items():
-                    # Update card surface tint
+                for refs in timeline_cards_refs.values():
                     if refs["card"].current:
                         refs["card"].current.surface_tint_color = primary_color
-                    
-                    # Update icon color
                     if refs["icon"].current:
                         refs["icon"].current.color = primary_color
-                    
-                    # Update value text color
                     if refs["value"].current:
                         refs["value"].current.color = primary_color
-                    
-                    # Update gradient
                     if refs["gradient"].current:
                         refs["gradient"].current.gradient = ft.LinearGradient(
                             begin=ft.alignment.top_left,
                             end=ft.alignment.bottom_right,
-                            colors=[ft.Colors.with_opacity(0.1, primary_color), ft.Colors.with_opacity(0.05, primary_color)]
+                            colors=[
+                                ft.Colors.with_opacity(0.1, primary_color),
+                                ft.Colors.with_opacity(0.05, primary_color),
+                            ]
                         )
-                
                 timeline_metrics_row.current.update()
-        except Exception as e:
-            print(f"Erro ao atualizar cores dos cards de Métricas do Timeline: {e}")
-            
-        # Mostrar confirmação
-        page.snack_bar = ft.SnackBar(ft.Text(f"✅ Tema '{theme_mode}' aplicado e salvo!"))
+        except Exception as ex:
+            print(f"⚠️ Error updating Timeline metric cards: {ex}")
+
+        # --- Botões da Timeline ---
+        try:
+            if timeline_chart_button.current and timeline_table_button.current:
+                colors = get_current_theme_colors(theme_mode)
+                if timeline_chart_tab.current:
+                    timeline_chart_button.current.bgcolor = colors.get('primary')
+                    timeline_chart_button.current.color = colors.get('on_primary', '#FFFFFF')
+                    timeline_table_button.current.bgcolor = None
+                    timeline_table_button.current.color = None
+                elif timeline_table_tab.current:
+                    timeline_table_button.current.bgcolor = colors.get('primary')
+                    timeline_table_button.current.color = colors.get('on_primary', '#FFFFFF')
+                    timeline_chart_button.current.bgcolor = None
+                    timeline_chart_button.current.color = None
+                timeline_chart_button.current.update()
+                timeline_table_button.current.update()
+        except Exception as ex:
+            print(f"⚠️ Error updating Timeline buttons: {ex}")
+
+        # Confirmação
+        page.snack_bar = ft.SnackBar(ft.Text(f"✅ Theme '{theme_mode}' applied and saved!"))
         page.snack_bar.open = True
         page.update()
 
@@ -2479,7 +2656,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             cursor = db_conn.cursor()
             cursor.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'spinbox_increment'")
             result = cursor.fetchone()
-            if result:
+            if result and result[0] is not None and str(result[0]).strip() != "":
                 increment = float(result[0])
                 print(f"Incremento do spinbox carregado do banco: {increment}")
                 return increment
@@ -2489,15 +2666,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def create_spinbox():
         """Cria um widget de spinbox customizado para notas."""
-        # Carregar incremento do banco
-        increment = load_spinbox_increment()
+        # Carregar incremento do banco (uso seguro se a função não existir no momento)
+        try:
+            increment = load_spinbox_increment()
+        except NameError:
+            increment = 0.1
+        except Exception as ex:
+            print(f"Aviso: não foi possível carregar increment do spinbox no create_spinbox: {ex}")
+            increment = 0.1
         
         score_field = ft.TextField(
             value="0.0", 
             text_align=ft.TextAlign.CENTER, 
             width=70, 
             border_radius=8,
-            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+            # Usar a mesma cor de fundo do card para integrar visualmente o campo ao card
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
             color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
             border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
         )
@@ -2955,7 +3139,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             multiline=True, 
             min_lines=6,
             max_lines=8,
-            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+            # Tornar o campo visualmente integrado ao card
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
             color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
             border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
         )
@@ -3524,7 +3709,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             min_lines=6,
             max_lines=8,
             border_radius=8,
-            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+            # Usar a mesma cor do card para os campos de comentário
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
             color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
             border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
         )
@@ -3777,14 +3963,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ))
                 
                 db_conn.commit()
-                
-                # Debug: mostrar informações detalhadas do salvamento
-                print(f"✅ Score salvo com sucesso!")
-                print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
-                print(f"   Período: {month_val}/{year_val}")
-                print(f"   Total Score: {total_score}")
-                print(f"   Registrado por: {current_user_wwid}")
-                print(f"   Campos salvos: {list(values_to_save.keys())}")
+            
                 
                 saved_fields = [k.replace('quality_', '').replace('_', ' ').title() for k in values_to_save.keys()]
                 show_toast(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", "green")
@@ -4263,7 +4442,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 border_radius=8,
                 on_change=lambda e: search_suppliers(),
                 ref=search_field_ref,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                bgcolor=None,
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
@@ -4273,7 +4452,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         label="PO", 
                         expand=True, 
                         border_radius=8,
-                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                         ref=selected_po
@@ -4284,7 +4463,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         border_radius=8, 
                         ref=selected_bu, 
                         on_change=lambda e: search_suppliers(),
-                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                     ),
@@ -4299,10 +4478,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     )
 
     # Container dos campos de busca com referência para atualização de tema
+    # Tornar o container e seus campos de pesquisa visualmente integrados ao card
+    # OBS: usamos `card_background` para que o container de pesquisa e os campos
+    # PO/BU tenham exatamente o mesmo fundo do card. Para reverter, troque
+    # `.get('card_background')` para `.get('field_background')` neste bloco.
     score_form_container = ft.Container(
         content=score_form, 
         padding=15,
-        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
         border_radius=8
     )
 
@@ -4814,12 +4997,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
             
             try:
-                # Mapear tabela e coluna ID
+                # Mapear tabela e coluna ID (usar nomes reais das colunas de ID)
+                # antes o código usava 'id' e por isso o UPDATE não encontrava a linha
                 table_map = {
-                    'sqie': ('sqie_table', 'id'),
-                    'continuity': ('continuity_table', 'id'),
-                    'planner': ('planner_table', 'id'),
-                    'sourcing': ('sourcing_table', 'id')
+                    'sqie': ('sqie_table', 'sqie_id'),
+                    'continuity': ('continuity_table', 'continuity_id'),
+                    'planner': ('planner_table', 'planner_id'),
+                    'sourcing': ('sourcing_table', 'sourcing_id')
                 }
                 
                 table_name, id_column = table_map[key]
@@ -7211,6 +7395,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     timeline_chart_tab.current = True
     timeline_table_tab.current = False
     
+    # Referências para os botões de gráfico e tabela
+    timeline_chart_button = ft.Ref[ft.ElevatedButton]()
+    timeline_table_button = ft.Ref[ft.ElevatedButton]()
+    
     # Container para o gráfico e tabela
     timeline_chart_container = ft.Ref[ft.Container]()
     timeline_table_container = ft.Ref[ft.Container]()
@@ -7686,6 +7874,40 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             show_timeline_snackbar(f"❌ Erro ao deletar registro: {str(e)}")
 
+    def edit_timeline_record(record_data, otif, nil, pickup, package, comment):
+        """Edita um registro específico da timeline"""
+        try:
+            if not db_conn:
+                show_timeline_snackbar("❌ Erro: Banco de dados não conectado.")
+                return
+
+            month, year_data, _, _, _, _, _, _ = record_data
+
+            cursor = db_conn.cursor()
+
+            # Calcular novo total_score
+            total_score = None
+            if otif is not None and nil is not None and pickup is not None and package is not None:
+                total_score = (otif + nil + pickup + package) / 4
+
+            cursor.execute("""UPDATE supplier_score_records_table
+                             SET otif = ?, nil = ?, quality_pickup = ?, quality_package = ?,
+                                 total_score = ?, comment = ?
+                             WHERE month = ? AND year = ?""",
+                          (otif, nil, pickup, package, total_score, comment, month, year_data))
+            db_conn.commit()
+
+            # Atualizar a tabela
+            vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
+            year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
+            update_timeline_table(vendor_id, year)
+            # Atualizar gráfico e métricas
+            update_timeline_metrics()
+            show_timeline_snackbar("✅ Registro editado com sucesso!")
+
+        except Exception as e:
+            show_timeline_snackbar(f"❌ Erro ao editar registro: {str(e)}")
+
     def update_timeline_table(vendor_id, year=None):
         """Atualiza a tabela com os dados detalhados"""
         try:
@@ -7728,7 +7950,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ft.Container(ft.Text("OTIF", weight="bold", size=11), width=50),
                     ft.Container(ft.Text("NIL", weight="bold", size=11), width=50),
                     ft.Container(ft.Text("Total", weight="bold", size=11), width=50),
-                    ft.Container(ft.Text("Ações", weight="bold", size=11), width=60),
+                    ft.Container(ft.Text("Ações", weight="bold", size=11), width=100),
                 ], scroll=ft.ScrollMode.AUTO)
             else:
                 header_row = ft.Row([
@@ -7739,7 +7961,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ft.Container(ft.Text("Package", weight="bold", size=12), width=70),
                     ft.Container(ft.Text("Total", weight="bold", size=12), width=60),
                     ft.Container(ft.Text("Comentário", weight="bold", size=12), width=150),
-                    ft.Container(ft.Text("Ações", weight="bold", size=12), width=80),
+                    ft.Container(ft.Text("Ações", weight="bold", size=12), width=120),
                 ])
             
             # Criar linhas de dados
@@ -7752,6 +7974,33 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 month_name = months[int(month)-1] if 1 <= int(month) <= 12 else str(month)
                 
                 bgcolor = "lightgray" if i % 2 == 0 else None
+                
+                # Função para editar este registro específico
+                def create_edit_handler(record_row):
+                    def handle_edit(e):
+                        def handle_confirm(record_data, otif, nil, pickup, package, comment):
+                            edit_timeline_record(record_data, otif, nil, pickup, package, comment)
+                            page.close(edit_dialog)
+                        
+                        def handle_cancel(e):
+                            page.close(edit_dialog)
+                        
+                        edit_dialog = EditTimelineRecordDialog(
+                            record_data=record_row,
+                            on_confirm=handle_confirm,
+                            on_cancel=handle_cancel,
+                            page=page
+                        )
+                        page.open(edit_dialog)
+                    return handle_edit
+                
+                edit_btn = ft.IconButton(
+                    icon=ft.Icons.EDIT,
+                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                    tooltip="Editar registro",
+                    icon_size=16,
+                    on_click=create_edit_handler(row)
+                )
                 
                 # Função para deletar este registro específico
                 def create_delete_handler(m, y, vid):
@@ -7787,15 +8036,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         content=ft.Column([
                             ft.Row([
                                 ft.Container(ft.Text(f"{month_name}/{year_data}", size=11, weight="bold"), width=80),
-                                ft.Container(ft.Text(f"{float(otif):.1f}" if otif else "--", size=11), width=50),
-                                ft.Container(ft.Text(f"{float(nil):.1f}" if nil else "--", size=11), width=50),
-                                ft.Container(ft.Text(f"{float(total):.1f}" if total else "--", size=11, weight="bold"), width=50),
-                                ft.Container(delete_btn, width=60),
+                                ft.Container(ft.Text(f"{float(otif):.1f}" if otif is not None else "--", size=11), width=50),
+                                ft.Container(ft.Text(f"{float(nil):.1f}" if nil is not None else "--", size=11), width=50),
+                                ft.Container(ft.Text(f"{float(total):.1f}" if total is not None else "--", size=11, weight="bold"), width=50),
+                                ft.Container(ft.Row([edit_btn, delete_btn], spacing=5), width=100),
                             ]),
                             # Segunda linha com detalhes extras em mobile
                             ft.Row([
-                                ft.Container(ft.Text(f"P:{float(pickup):.1f}" if pickup else "P:--", size=10, color="gray"), width=60),
-                                ft.Container(ft.Text(f"Pk:{float(package):.1f}" if package else "Pk:--", size=10, color="gray"), width=60),
+                                ft.Container(ft.Text(f"P:{float(pickup):.1f}" if pickup is not None else "P:--", size=10, color="gray"), width=60),
+                                ft.Container(ft.Text(f"Pk:{float(package):.1f}" if package is not None else "Pk:--", size=10, color="gray"), width=60),
                                 ft.Container(ft.Text(comment or "--", size=9, color="gray"), expand=True),
                             ]),
                         ], spacing=2),
@@ -7807,13 +8056,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     data_row = ft.Container(
                         content=ft.Row([
                             ft.Container(ft.Text(f"{month_name}/{year_data}", size=11), width=80),
-                            ft.Container(ft.Text(f"{float(otif):.1f}" if otif else "--", size=11), width=60),
-                            ft.Container(ft.Text(f"{float(nil):.1f}" if nil else "--", size=11), width=60),
-                            ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup else "--", size=11), width=60),
-                            ft.Container(ft.Text(f"{float(package):.1f}" if package else "--", size=11), width=70),
-                            ft.Container(ft.Text(f"{float(total):.1f}" if total else "--", size=11, weight="bold"), width=60),
+                            ft.Container(ft.Text(f"{float(otif):.1f}" if otif is not None else "--", size=11), width=60),
+                            ft.Container(ft.Text(f"{float(nil):.1f}" if nil is not None else "--", size=11), width=60),
+                            ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup is not None else "--", size=11), width=60),
+                            ft.Container(ft.Text(f"{float(package):.1f}" if package is not None else "--", size=11), width=70),
+                            ft.Container(ft.Text(f"{float(total):.1f}" if total is not None else "--", size=11, weight="bold"), width=60),
                             ft.Container(ft.Text(comment or "--", size=10), width=150),
-                            ft.Container(delete_btn, width=80),
+                            ft.Container(ft.Row([edit_btn, delete_btn], spacing=5), width=120),
                         ]),
                         bgcolor=bgcolor,
                         padding=5
@@ -7869,14 +8118,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         timeline_chart_tab.current = True
         timeline_table_tab.current = False
         
-        # Atualizar aparência dos botões
-        e.control.bgcolor = "blue"
-        e.control.color = "white"
+        # Obter cores do tema atual
+        theme_name = get_theme_name_from_page(page)
+        colors = get_current_theme_colors(theme_name)
         
-        # Encontrar e atualizar o botão da tabela
-        table_btn = e.control.parent.controls[1]
-        table_btn.bgcolor = None
-        table_btn.color = None
+        # Atualizar aparência dos botões
+        if timeline_chart_button.current:
+            timeline_chart_button.current.bgcolor = colors.get('primary')
+            timeline_chart_button.current.color = colors.get('on_primary', '#FFFFFF')
+        if timeline_table_button.current:
+            timeline_table_button.current.bgcolor = None
+            timeline_table_button.current.color = None
         
         # Mostrar/esconder containers
         timeline_chart_container.current.visible = True
@@ -7889,14 +8141,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         timeline_chart_tab.current = False  
         timeline_table_tab.current = True
         
-        # Atualizar aparência dos botões
-        e.control.bgcolor = "blue"
-        e.control.color = "white"
+        # Obter cores do tema atual
+        theme_name = get_theme_name_from_page(page)
+        colors = get_current_theme_colors(theme_name)
         
-        # Encontrar e atualizar o botão do gráfico
-        chart_btn = e.control.parent.controls[0]
-        chart_btn.bgcolor = None
-        chart_btn.color = None
+        # Atualizar aparência dos botões
+        if timeline_table_button.current:
+            timeline_table_button.current.bgcolor = colors.get('primary')
+            timeline_table_button.current.color = colors.get('on_primary', '#FFFFFF')
+        if timeline_chart_button.current:
+            timeline_chart_button.current.bgcolor = None
+            timeline_chart_button.current.color = None
         
         # Mostrar/esconder containers
         timeline_chart_container.current.visible = False
@@ -7911,8 +8166,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # Criar conteúdo da aba Timeline
     # Obter cores do tema para a criação inicial dos componentes
-    theme_colors_for_timeline = get_current_theme_colors(get_theme_name_from_page(page))
+    theme_name_for_timeline = get_theme_name_from_page(page)
+    theme_colors_for_timeline = get_current_theme_colors(theme_name_for_timeline)
     primary_color_for_timeline = theme_colors_for_timeline.get('primary')
+    # Se o tema for dracula, usar fundo cinza e textos/icones violeta (primary)
+    if theme_name_for_timeline == 'dracula':
+        timeline_card_bg = theme_colors_for_timeline.get('field_background') or "#44475A"
+        label_color = primary_color_for_timeline
+    else:
+        timeline_card_bg = None
+        label_color = ft.Colors.GREY_600
 
     timeline_view = ft.Container(
         content=ft.Column([
@@ -7964,13 +8227,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             ft.Container(height=20),
             
-            # Cards de métricas - todos na mesma linha com estilo melhorado
+            # Cards de métricas - com scroll horizontal
             ft.Column([
                 ft.Text("Métricas de Performance", size=18, weight="bold", text_align=ft.TextAlign.CENTER, color=ft.Colors.ON_SURFACE),
                 ft.Container(height=15),
-                ft.Row(
+                ft.Container(
                     ref=timeline_metrics_row,
-                    controls=[
+                    content=ft.Row(
+                        controls=[
                     # Card Overall Average
                     ft.Card(
                         ref=timeline_cards_refs["overall"]["card"],
@@ -7979,7 +8243,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             content=ft.Column([
                                 ft.Row([
                                     ft.Icon(ft.Icons.ANALYTICS, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["overall"]["icon"]),
-                                    ft.Text("Overall", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                    ft.Text("Overall", size=11, weight="bold", color=label_color),
                                 ], alignment=ft.MainAxisAlignment.START, spacing=8),
                                 ft.Container(height=8),
                                 ft.Row([
@@ -7987,6 +8251,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ], alignment=ft.MainAxisAlignment.START),
                             ], spacing=2, tight=True),
                             padding=ft.padding.all(20),
+                            bgcolor=timeline_card_bg,
                             width=110,
                             height=85,
                             border_radius=12,
@@ -8007,7 +8272,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             content=ft.Column([
                                 ft.Row([
                                     ft.Icon(ft.Icons.CALENDAR_MONTH, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["12m"]["icon"]),
-                                    ft.Text("12M Avg", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                    ft.Text("12M Avg", size=11, weight="bold", color=label_color),
                                 ], alignment=ft.MainAxisAlignment.START, spacing=8),
                                 ft.Container(height=8),
                                 ft.Row([
@@ -8015,6 +8280,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ], alignment=ft.MainAxisAlignment.END),
                             ], spacing=2, tight=True),
                             padding=ft.padding.all(20),
+                            bgcolor=timeline_card_bg,
                             width=110,
                             height=85,
                             border_radius=12,
@@ -8035,7 +8301,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             content=ft.Column([
                                 ft.Row([
                                     ft.Icon(ft.Icons.CALENDAR_TODAY, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["year"]["icon"]),
-                                    ft.Text("Year Avg", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                    ft.Text("Year Avg", size=11, weight="bold", color=label_color),
                                 ], alignment=ft.MainAxisAlignment.START, spacing=8),
                                 ft.Container(height=8),
                                 ft.Row([
@@ -8043,6 +8309,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ], alignment=ft.MainAxisAlignment.END),
                             ], spacing=2, tight=True),
                             padding=ft.padding.all(20),
+                            bgcolor=timeline_card_bg,
                             width=110,
                             height=85,
                             border_radius=12,
@@ -8063,7 +8330,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ft.Column([
                                     ft.Row([
                                         ft.Icon(ft.Icons.LOOKS_ONE, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q1"]["icon"]),
-                                        ft.Text("Q1", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                        ft.Text("Q1", size=11, weight="bold", color=label_color),
                                     ], alignment=ft.MainAxisAlignment.START, spacing=8),
                                     ft.Container(height=8),
                                     ft.Row([
@@ -8077,6 +8344,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 )
                             ]),
                             padding=ft.padding.all(20),
+                            bgcolor=timeline_card_bg,
                             width=110,
                             height=85,
                             border_radius=12,
@@ -8098,7 +8366,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ft.Column([
                                     ft.Row([
                                         ft.Icon(ft.Icons.LOOKS_TWO, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q2"]["icon"]),
-                                        ft.Text("Q2", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                        ft.Text("Q2", size=11, weight="bold", color=label_color),
                                     ], alignment=ft.MainAxisAlignment.START, spacing=8),
                                     ft.Container(height=8),
                                     ft.Row([
@@ -8112,6 +8380,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 )
                             ]),
                             padding=ft.padding.all(20),
+                            bgcolor=timeline_card_bg,
                             width=110,
                             height=85,
                             border_radius=12,
@@ -8133,7 +8402,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ft.Column([
                                     ft.Row([
                                         ft.Icon(ft.Icons.LOOKS_3, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q3"]["icon"]),
-                                        ft.Text("Q3", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                        ft.Text("Q3", size=11, weight="bold", color=label_color),
                                     ], alignment=ft.MainAxisAlignment.START, spacing=8),
                                     ft.Container(height=8),
                                     ft.Row([
@@ -8147,6 +8416,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 )
                             ]),
                             padding=ft.padding.all(20),
+                            bgcolor=timeline_card_bg,
                             width=110,
                             height=85,
                             border_radius=12,
@@ -8194,7 +8464,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         elevation=3,
                         surface_tint_color=primary_color_for_timeline
                     ),
-                ], alignment=ft.MainAxisAlignment.CENTER, spacing=15, wrap=True),
+                ], spacing=15, tight=True, scroll=ft.ScrollMode.AUTO),
+                    height=100
+                ),
             ]),
             
             ft.Container(height=15),
@@ -8217,13 +8489,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     "Gráfico de Linha",
                     icon=ft.Icons.SHOW_CHART,
                     on_click=switch_to_chart_tab,
-                    bgcolor="blue",
-                    color="white"
+                    ref=timeline_chart_button
                 ),
                 ft.ElevatedButton(
                     "Tabela de Dados",
                     icon=ft.Icons.TABLE_CHART,
-                    on_click=switch_to_table_tab
+                    on_click=switch_to_table_tab,
+                    ref=timeline_table_button
                 ),
             ], spacing=10),
             
