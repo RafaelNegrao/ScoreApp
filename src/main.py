@@ -2462,6 +2462,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Se a aba Risks foi selecionada, gerar os cards imediatamente (usa ano atual se dropdown vazio)
             try:
                 if idx == 2:
+                    # Atualizar valor do target exibido na aba Risks antes de gerar cards
+                    try:
+                        if target_risks_text and target_risks_text.current and target_slider and target_slider.value is not None:
+                            target_risks_text.current.value = f"{target_slider.value:.2f}"
+                            target_risks_text.current.update()
+                    except Exception as _ex:
+                        print(f"Aviso ao atualizar Target na aba Risks: {_ex}")
                     generate_risk_cards()
             except Exception as ex:
                 print(f"Erro ao gerar cards ao abrir aba Risks: {ex}")
@@ -8316,8 +8323,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Container(
                 content=ft.Text("Timeline Analytics", size=24, weight="bold"),
                 alignment=ft.alignment.top_left,
-                margin=ft.margin.only(bottom=20)
             ),
+            ft.Divider(),
             
             # Campos de seleção no topo - centralizados em um container
             ft.Container(
@@ -8671,12 +8678,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def generate_risk_cards(e=None):
         """
         Consulta o banco para encontrar fornecedores em risco e gera os cards de visualização.
-        
-        Fluxo:
-        1. Puxar todos suppliers por supplier_id na table supplier_database_table
-        2. Para cada supplier_id, buscar o avg na table supplier_score_records_table
-        3. Após pegar a média, montar o card e pular para o próximo
-        4. Suppliers com média maior que o target não geram cards
         """
         try:
             # 1. Checagens iniciais
@@ -8707,49 +8708,84 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             risks_cards_container.current.update()
 
             cursor = db_conn.cursor()
-            
-            # 4. Obter fornecedores com médias agregadas por trimestre e média geral
-            filtro_ano = "WHERE sr.year = ?" if search_year else ""
-            # Se search_year for None ou 0, queremos usar o ano atual; já garantimos search_year acima
-            suppliers_query = f"""
-                SELECT 
-                    s.supplier_id, 
-                    s.vendor_name, 
-                    s.BU,
-                    AVG(CASE WHEN sr.month IN (1,2,3) THEN CAST(sr.total_score AS FLOAT) END) AS Q1,
-                    AVG(CASE WHEN sr.month IN (4,5,6) THEN CAST(sr.total_score AS FLOAT) END) AS Q2,
-                    AVG(CASE WHEN sr.month IN (7,8,9) THEN CAST(sr.total_score AS FLOAT) END) AS Q3,
-                    AVG(CASE WHEN sr.month IN (10,11,12) THEN CAST(sr.total_score AS FLOAT) END) AS Q4,
-                    AVG(CAST(sr.total_score AS FLOAT)) AS media_score
+
+            # Abordagem otimizada: buscar todos os scores do ano e processar em Python
+            all_scores_query = """
+                SELECT
+                    s.supplier_id, s.vendor_name, s.BU, sr.month, sr.total_score
                 FROM supplier_database_table s
-                LEFT JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
-                WHERE sr.year = ?
-                GROUP BY s.supplier_id, s.vendor_name, s.BU
+                JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
+                WHERE sr.year = ? AND sr.total_score IS NOT NULL
+                ORDER BY s.supplier_id, sr.month
             """
+            cursor.execute(all_scores_query, (search_year,))
+            all_scores = cursor.fetchall()
 
-            cursor.execute(suppliers_query, (search_year,))
-            suppliers = cursor.fetchall()
+            # Agrupar dados por fornecedor
+            from collections import defaultdict
+            supplier_data = defaultdict(lambda: {'scores': [], 'info': {}})
+            for sid, vname, bu, month, score in all_scores:
+                supplier_data[sid]['scores'].append((int(month), float(score)))
+                supplier_data[sid]['info'] = {'vendor_name': vname, 'bu': bu}
 
-            print(f"Total de suppliers considerados (com dados no ano {search_year}): {len(suppliers)}")
+            print(f"Total de suppliers com dados no ano {search_year}: {len(supplier_data)}")
 
             cards = []
             suppliers_at_risk = 0
 
-            for row in suppliers:
-                supplier_id, vendor_name, bu, q1, q2, q3, q4, media_score = row
+            for supplier_id, data in supplier_data.items():
+                vendor_name = data['info']['vendor_name']
+                bu = data['info']['bu']
+                monthly_scores = data['scores']
 
-                # Filtrar apenas fornecedores com média definida e menor que a meta (target)
-                if media_score is None:
+                scores_list = [s[1] for s in monthly_scores]
+                if not scores_list:
                     continue
+
+                media_score = sum(scores_list) / len(scores_list)
+
+                if media_score >= float(meta):
+                    continue
+
                 try:
                     media_val = float(media_score)
                 except Exception:
                     continue
 
-                if media_val >= float(meta):
-                    continue
-
                 suppliers_at_risk += 1
+
+                # Calcular médias trimestrais
+                q_scores = defaultdict(list)
+                for month, score in monthly_scores:
+                    if 1 <= month <= 3: q_scores['Q1'].append(score)
+                    elif 4 <= month <= 6: q_scores['Q2'].append(score)
+                    elif 7 <= month <= 9: q_scores['Q3'].append(score)
+                    elif 10 <= month <= 12: q_scores['Q4'].append(score)
+
+                q_avgs = {q: sum(s_list) / len(s_list) if s_list else None for q, s_list in q_scores.items()}
+                q1, q2, q3, q4 = q_avgs.get('Q1'), q_avgs.get('Q2'), q_avgs.get('Q3'), q_avgs.get('Q4')
+
+                # Criar mini-gráfico
+                # O gráfico mostrará a evolução da média geral ao longo do ano.
+                cumulative_sum = 0
+                cumulative_count = 0
+                chart_points = []
+                for month, score in monthly_scores: # monthly_scores já está ordenado por mês
+                    cumulative_sum += score
+                    cumulative_count += 1
+                    chart_points.append((month - 1, cumulative_sum / cumulative_count))
+                chart_series = create_colored_line_series(chart_points, meta)
+
+                mini_chart = ft.LineChart(
+                    data_series=chart_series,
+                    min_y=0, max_y=10, min_x=0, max_x=11,
+                    left_axis=ft.ChartAxis(show_labels=False),
+                    bottom_axis=ft.ChartAxis(show_labels=False),
+                    horizontal_grid_lines=ft.ChartGridLines(width=0),
+                    vertical_grid_lines=ft.ChartGridLines(width=0),
+                    border=None,
+                    expand=True,
+                )
 
                 # Helper para criar ícone de tendência
                 def trend_icon(current, previous):
@@ -8762,29 +8798,67 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             return ft.Icon(ft.Icons.ARROW_UPWARD, color=ft.Colors.GREEN)
                         elif cur < prev:
                             return ft.Icon(ft.Icons.ARROW_DOWNWARD, color=ft.Colors.RED)
+                        else:
+                            return ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY)
                     except Exception:
                         # Qualquer erro ao converter, retornar ícone neutro
                         return ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY)
-                    # Se chegou até aqui sem condição, retornar neutro
-                    return ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY)
 
                 t2 = trend_icon(q2, q1)
                 t3 = trend_icon(q3, q2)
                 t4 = trend_icon(q4, q3)
+
+                # Handler para ir para a aba Timeline e filtrar pelo supplier
+                def create_goto_handler(sid):
+                    def handle(e):
+                        try:
+                            # 1. Definir supplier no filtro da Timeline
+                            if timeline_vendor_dropdown and timeline_vendor_dropdown.current:
+                                timeline_vendor_dropdown.current.value = sid
+
+                            # 2. Transferir o ano do filtro de Risks para o de Timeline
+                            if risks_year_dropdown and risks_year_dropdown.current and risks_year_dropdown.current.value:
+                                y = risks_year_dropdown.current.value
+                                if timeline_year_dropdown and timeline_year_dropdown.current:
+                                    timeline_year_dropdown.current.value = y
+
+                            # 3. Mudar para a aba Timeline (índice 1)
+                            set_selected(1)(None)
+
+                            # 4. Atualizar as métricas e o conteúdo da aba Timeline
+                            on_timeline_vendor_change(None)
+
+                            # 5. Garantir que a visualização de tabela esteja ativa
+                            switch_to_table_tab(None)
+
+                        except Exception as ex:
+                            print(f"Erro ao navegar para Timeline: {ex}")
+                            import traceback
+                            traceback.print_exc()
+                    return handle
 
                 # Construir card simplificado
                 # Layout final: card maior; média posicionada acima da linha dos Qs, à direita
                 card_inner = ft.Container(
                     content=ft.Column([
                         # Topo: nome, BU e ID + média
-                        ft.Row([
-                            ft.Column([
-                                ft.Text(vendor_name, weight=ft.FontWeight.BOLD, size=18, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
-                                ft.Text(f"BU: {bu}" if bu else "BU: -", size=12, color="gray"),
-                                ft.Text(f"ID: {supplier_id}", size=11, color="gray")
-                            ], expand=True),
-                            ft.Text(f"{media_val:.2f}", size=28, weight=ft.FontWeight.BOLD, color="red")
-                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Row(
+                            controls=[
+                                ft.Column([
+                                    ft.Text(vendor_name, weight=ft.FontWeight.BOLD, size=18, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(f"BU: {bu}" if bu else "BU: -", size=12, color="gray"),
+                                    ft.Text(f"ID: {supplier_id}", size=11, color="gray")
+                                ], expand=True),
+                                ft.Column([
+                                    ft.Row([
+                                        ft.IconButton(icon=ft.Icons.TIMELINE, tooltip="Abrir Timeline para este fornecedor", icon_size=18, on_click=create_goto_handler(supplier_id))
+                                    ], alignment=ft.MainAxisAlignment.END),
+                                    ft.Text(f"{media_val:.2f}", size=28, weight=ft.FontWeight.BOLD, color="red"),
+                                    ft.Container(content=mini_chart, width=120, height=40)
+                                ], horizontal_alignment=ft.CrossAxisAlignment.END)
+                            ],
+                            vertical_alignment=ft.CrossAxisAlignment.START
+                        ),
 
                         ft.Divider(),
 
@@ -8889,23 +8963,55 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ft.Text("Gestão de Riscos", size=24, weight="bold"),
             ], alignment=ft.MainAxisAlignment.START),
             ft.Divider(),
-            ft.Row([
-                ft.Dropdown(
-                    ref=risks_year_dropdown,
-                    width=220,
-                    value="",
-                    on_change=generate_risk_cards,
-                    options=[ft.dropdown.Option("", "(Ano Atual)")] + [ft.dropdown.Option(str(y), str(y)) for y in range(2024, 2041)],
-                    hint_text="Ano"
+            # Campos ano e meta agrupados em container com cor do tema
+            ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Dropdown(
+                            ref=risks_year_dropdown,
+                            width=220,
+                            value="",
+                            on_change=generate_risk_cards,
+                            options=[ft.dropdown.Option("", "(Ano Atual)")] 
+                                    + [ft.dropdown.Option(str(y), str(y)) for y in range(2024, 2041)],
+                            hint_text="Ano",
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                        ),
+                        ft.Container(width=20),
+                        ft.Container(
+                            content=ft.Row(
+                                [
+                                    ft.Icon(ft.Icons.FLAG_CIRCLE_OUTLINED, color=ft.Colors.AMBER_700, size=20),
+                                    ft.Text("Meta:", weight=ft.FontWeight.BOLD, size=14),
+                                    ft.Text("", ref=target_risks_text, weight=ft.FontWeight.BOLD, size=16, color=ft.Colors.AMBER_700),
+                                ],
+                                spacing=5,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                tight=True,  # <--- IMPORTANTE
+                            ),
+                            padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                            border=ft.border.all(1.5, ft.Colors.AMBER_700),
+                            border_radius=30,
+                            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER_700),
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.START,
+                    spacing=12,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    tight=True,  # <--- IMPORTANTE
                 ),
-                ft.Container(width=20),
-                ft.Text("Meta (target): "),
-                # Mostrar valor formatado a partir do Text que já é atualizado pelo slider
-                ft.Text("", ref=target_risks_text),
-            ], alignment=ft.MainAxisAlignment.START, spacing=12),
+                padding=ft.padding.symmetric(horizontal=16, vertical=16),
+                margin=ft.margin.only(bottom=6),
+                border=ft.border.all(1.5, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+                border_radius=12,
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
+                expand=False,  # <--- NÃO DEIXAR EXPANDIR
+            ),
             ft.Container(height=12),
             ft.Container(ref=risks_cards_container, content=ft.Text("Nenhum risco pesquisado"), expand=True)
-        ], spacing=8),
+        ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.START),
         alignment=ft.alignment.top_center,
         expand=True,
         visible=False,
