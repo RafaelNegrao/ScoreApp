@@ -429,95 +429,95 @@ class ResponsiveAppManager:
             print(f"❌ Tipos incorretos: row1 ou row2 não são Row/Column")
             return
                 
-            if len(row1.controls) < 2 or len(row2.controls) < 2:
-                print(f"❌ Controles insuficientes: row1={len(row1.controls)}, row2={len(row2.controls)}")
-                return
+            # if len(row1.controls) < 2 or len(row2.controls) < 2:
+            #     print(f"❌ Controles insuficientes: row1={len(row1.controls)}, row2={len(row2.controls)}")
+            #     return
             
-            # Pegar os containers dos campos
-            wwid_container = row1.controls[0]
-            name_container = row1.controls[1]
-            password_container = row2.controls[0] 
-            privilege_container = row2.controls[1]
+            # # Pegar os containers dos campos
+            # wwid_container = row1.controls[0]
+            # name_container = row1.controls[1]
+            # password_container = row2.controls[0] 
+            # privilege_container = row2.controls[1]
             
-            if should_use_vertical_layout:
-                # Layout vertical - reorganizar em Column (apenas se ainda não estiver)
-                if isinstance(row1, ft.Row):
-                    print("📱 Aplicando layout VERTICAL na aba Users")
+            # if should_use_vertical_layout:
+            #     # Layout vertical - reorganizar em Column (apenas se ainda não estiver)
+            #     if isinstance(row1, ft.Row):
+            #         print("📱 Aplicando layout VERTICAL na aba Users")
                     
-                    # Ajustar largura dos containers para centralização
-                    wwid_container.width = 400
-                    wwid_container.alignment = ft.alignment.center
-                    name_container.width = 400
-                    name_container.alignment = ft.alignment.center
-                    password_container.width = 400
-                    password_container.alignment = ft.alignment.center
-                    privilege_container.width = 400
-                    privilege_container.alignment = ft.alignment.center
+            #         # Ajustar largura dos containers para centralização
+            #         wwid_container.width = 400
+            #         wwid_container.alignment = ft.alignment.center
+            #         name_container.width = 400
+            #         name_container.alignment = ft.alignment.center
+            #         password_container.width = 400
+            #         password_container.alignment = ft.alignment.center
+            #         privilege_container.width = 400
+            #         privilege_container.alignment = ft.alignment.center
                     
-                    # Recriar as linhas como Column centralizada
-                    new_row1 = ft.Column([
-                        wwid_container,
-                        name_container
-                    ], 
-                    alignment=ft.MainAxisAlignment.CENTER, 
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=15)
+            #         # Recriar as linhas como Column centralizada
+            #         new_row1 = ft.Column([
+            #             wwid_container,
+            #             name_container
+            #         ], 
+            #         alignment=ft.MainAxisAlignment.CENTER, 
+            #         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            #         spacing=15)
                     
-                    new_row2 = ft.Column([
-                        password_container,
-                        privilege_container
-                    ], 
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER, 
-                    spacing=15)
+            #         new_row2 = ft.Column([
+            #             password_container,
+            #             privilege_container
+            #         ], 
+            #         alignment=ft.MainAxisAlignment.CENTER,
+            #         horizontal_alignment=ft.CrossAxisAlignment.CENTER, 
+            #         spacing=15)
                     
-                    # Substituir as rows existentes
-                    # Substituir mantendo a posição original das linhas
-                    idx1 = form_container.controls.index(row1)
-                    idx2 = form_container.controls.index(row2)
-                    form_container.controls[idx1] = new_row1
-                    form_container.controls[idx2] = new_row2
+            #         # Substituir as rows existentes
+            #         # Substituir mantendo a posição original das linhas
+            #         idx1 = form_container.controls.index(row1)
+            #         idx2 = form_container.controls.index(row2)
+            #         form_container.controls[idx1] = new_row1
+            #         form_container.controls[idx2] = new_row2
                     
-                    # Atualizar a interface
-                    users_content_found.update()
-                    print("✅ Layout vertical centralizado aplicado com sucesso")
+            #         # Atualizar a interface
+            #         users_content_found.update()
+            #         print("✅ Layout vertical centralizado aplicado com sucesso")
                 
-            else:
-                # Layout horizontal - manter como Row (apenas se ainda não estiver)
-                if isinstance(row1, ft.Column):
-                    print("📱 Aplicando layout HORIZONTAL na aba Users")
+            # else:
+            #     # Layout horizontal - manter como Row (apenas se ainda não estiver)
+            #     if isinstance(row1, ft.Column):
+            #         print("📱 Aplicando layout HORIZONTAL na aba Users")
                     
-                    # Restaurar largura original dos containers
-                    wwid_container.width = 350
-                    wwid_container.alignment = ft.alignment.center
-                    name_container.width = 350
-                    name_container.alignment = ft.alignment.center
-                    password_container.width = 350
-                    password_container.alignment = ft.alignment.center
-                    privilege_container.width = 350
-                    privilege_container.alignment = ft.alignment.center
+            #         # Restaurar largura original dos containers
+            #         wwid_container.width = 350
+            #         wwid_container.alignment = ft.alignment.center
+            #         name_container.width = 350
+            #         name_container.alignment = ft.alignment.center
+            #         password_container.width = 350
+            #         password_container.alignment = ft.alignment.center
+            #         privilege_container.width = 350
+            #         privilege_container.alignment = ft.alignment.center
                     
-                    # Converter de volta para Rows
-                    new_row1 = ft.Row([
-                        wwid_container,
-                        name_container,
-                    ], alignment=ft.MainAxisAlignment.CENTER, spacing=20)
+            #         # Converter de volta para Rows
+            #         new_row1 = ft.Row([
+            #             wwid_container,
+            #             name_container,
+            #         ], alignment=ft.MainAxisAlignment.CENTER, spacing=20)
                     
-                    new_row2 = ft.Row([
-                        password_container,
-                        privilege_container,
-                    ], alignment=ft.MainAxisAlignment.CENTER, spacing=20)
+            #         new_row2 = ft.Row([
+            #             password_container,
+            #             privilege_container,
+            #         ], alignment=ft.MainAxisAlignment.CENTER, spacing=20)
                     
-                    idx1 = form_container.controls.index(row1)
-                    idx2 = form_container.controls.index(row2)
-                    form_container.controls[idx1] = new_row1
-                    form_container.controls[idx2] = new_row2
+            #         idx1 = form_container.controls.index(row1)
+            #         idx2 = form_container.controls.index(row2)
+            #         form_container.controls[idx1] = new_row1
+            #         form_container.controls[idx2] = new_row2
                     
-                    # Atualizar a interface
-                    users_content_found.update()
-                    print("✅ Layout horizontal aplicado com sucesso")
+            #         # Atualizar a interface
+            #         users_content_found.update()
+            #         print("✅ Layout horizontal aplicado com sucesso")
             
-            print(f"📱 Layout da aba Users atualizado: {'vertical' if should_use_vertical_layout else 'horizontal'}")
+            # print(f"📱 Layout da aba Users atualizado: {'vertical' if should_use_vertical_layout else 'horizontal'}")
             
         except Exception as e:
             print(f"❌ Erro ao atualizar layout da aba Users: {e}")
@@ -629,7 +629,12 @@ def get_theme_name_from_page(page_ref=None):
         return page_ref.data.get("theme_name", "white")
     return "white"
 
-# ===== FIM DAS DEFINIÇÕES DE TEMAS =====
+def get_card_color(theme_name="white"):
+    """Retorna a cor dos cards baseada no tema"""
+    if theme_name == "dracula":
+        return "#6272A4"  # Cor da linha 590 do tema dracula
+    else:
+        return ft.Colors.BLUE_600  # Cor padrão para white e dark
 
 # ===== SISTEMA DE LOGIN =====
 def login_screen(page: ft.Page):
@@ -1739,8 +1744,38 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 for key in ['planner', 'continuity', 'sourcing', 'sqie']:
                     refresh_list_ui(key)
                 update_control_colors(page, theme_mode)
+                # Atualizar container dos campos de pesquisa do Timeline
+                update_timeline_search_container_colors(theme_mode)
             except Exception as e:
                 print(f"Erro ao atualizar listas: {e}")
+
+    def update_timeline_search_container_colors(theme_name):
+        """Atualiza as cores do container dos campos de pesquisa do Timeline"""
+        try:
+            if timeline_search_container.current:
+                colors = get_current_theme_colors(theme_name)
+                
+                # Atualizar as cores do container principal
+                timeline_search_container.current.bgcolor = colors.get('surface_variant')
+                timeline_search_container.current.border = ft.border.all(1.5, colors.get('outline'))
+                
+                # Atualizar o campo de pesquisa
+                
+                # Atualizar os dropdowns dentro do container
+                if timeline_vendor_dropdown.current:
+                    timeline_vendor_dropdown.current.bgcolor = colors.get('field_background')
+                    timeline_vendor_dropdown.current.color = colors.get('on_surface')
+                    timeline_vendor_dropdown.current.border_color = colors.get('outline')
+                
+                if timeline_year_dropdown.current:
+                    timeline_year_dropdown.current.bgcolor = colors.get('field_background')
+                    timeline_year_dropdown.current.color = colors.get('on_surface')
+                    timeline_year_dropdown.current.border_color = colors.get('outline')
+                
+                timeline_search_container.current.update()
+                
+        except Exception as e:
+            print(f"Erro ao atualizar cores do container Timeline: {e}")
 
     def update_control_colors(control, theme_name, depth=0):
         """Atualiza cores de controles recursivamente"""
@@ -2122,6 +2157,38 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             print(f"Erro ao atualizar cores dos cards de Suppliers: {e}")
         
+        # Atualizar cores dos cards de métricas da Timeline
+        try:
+            if 'timeline_cards_refs' in globals() and timeline_cards_refs:
+                print("🎨 Atualizando cores dos cards de Métricas do Timeline...")
+                colors = get_current_theme_colors(theme_mode)
+                primary_color = colors.get('primary')
+                
+                for card_key, refs in timeline_cards_refs.items():
+                    # Update card surface tint
+                    if refs["card"].current:
+                        refs["card"].current.surface_tint_color = primary_color
+                    
+                    # Update icon color
+                    if refs["icon"].current:
+                        refs["icon"].current.color = primary_color
+                    
+                    # Update value text color
+                    if refs["value"].current:
+                        refs["value"].current.color = primary_color
+                    
+                    # Update gradient
+                    if refs["gradient"].current:
+                        refs["gradient"].current.gradient = ft.LinearGradient(
+                            begin=ft.alignment.top_left,
+                            end=ft.alignment.bottom_right,
+                            colors=[ft.Colors.with_opacity(0.1, primary_color), ft.Colors.with_opacity(0.05, primary_color)]
+                        )
+                
+                timeline_metrics_row.current.update()
+        except Exception as e:
+            print(f"Erro ao atualizar cores dos cards de Métricas do Timeline: {e}")
+            
         # Mostrar confirmação
         page.snack_bar = ft.SnackBar(ft.Text(f"✅ Tema '{theme_mode}' aplicado e salvo!"))
         page.snack_bar.open = True
@@ -7113,6 +7180,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     timeline_year_dropdown = ft.Ref[ft.Dropdown]()
     timeline_bu_dropdown = ft.Ref[ft.Dropdown]()
     
+    
+    # Referência para o container dos campos de pesquisa
+    timeline_search_container = ft.Ref[ft.Container]()
+    
+    # Refs for additional score checkboxes
+    timeline_otif_check = ft.Ref[ft.Checkbox]()
+    timeline_nil_check = ft.Ref[ft.Checkbox]()
+    timeline_pickup_check = ft.Ref[ft.Checkbox]()
+    timeline_package_check = ft.Ref[ft.Checkbox]()
+    
     # Referências para os cards de métricas
     overall_avg_card = ft.Ref[ft.Text]()
     twelve_month_avg_card = ft.Ref[ft.Text]()
@@ -7121,6 +7198,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     q2_avg_card = ft.Ref[ft.Text]()
     q3_avg_card = ft.Ref[ft.Text]()
     q4_avg_card = ft.Ref[ft.Text]()
+    
+    # Referências para os ícones de seta nos cards Q
+    q1_arrow_icon = ft.Ref[ft.Icon]()
+    q2_arrow_icon = ft.Ref[ft.Icon]()
+    q3_arrow_icon = ft.Ref[ft.Icon]()
+    q4_arrow_icon = ft.Ref[ft.Icon]()
     
     # Referências para as abas de visualização
     timeline_chart_tab = ft.Ref[bool]()
@@ -7132,25 +7215,42 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     timeline_chart_container = ft.Ref[ft.Container]()
     timeline_table_container = ft.Ref[ft.Container]()
     
+    # Referência para a linha que contém os cards de métricas
+    timeline_metrics_row = ft.Ref[ft.Row]()
+
+    # Dicionário de referências para os componentes dos cards de métricas
+    timeline_cards_refs = {
+        "overall": {"card": ft.Ref(), "icon": ft.Ref(), "value": overall_avg_card, "gradient": ft.Ref()},
+        "12m": {"card": ft.Ref(), "icon": ft.Ref(), "value": twelve_month_avg_card, "gradient": ft.Ref()},
+        "year": {"card": ft.Ref(), "icon": ft.Ref(), "value": year_avg_card, "gradient": ft.Ref()},
+        "q1": {"card": ft.Ref(), "icon": ft.Ref(), "value": q1_avg_card, "gradient": ft.Ref()},
+        "q2": {"card": ft.Ref(), "icon": ft.Ref(), "value": q2_avg_card, "gradient": ft.Ref()},
+        "q3": {"card": ft.Ref(), "icon": ft.Ref(), "value": q3_avg_card, "gradient": ft.Ref()},
+        "q4": {"card": ft.Ref(), "icon": ft.Ref(), "value": q4_avg_card, "gradient": ft.Ref()},
+    }
+    
     def load_suppliers_for_timeline():
-        """Carrega todos os suppliers do banco de dados para o dropdown"""
+        """Carrega todos os suppliers do banco de dados para o dropdown no formato 'Supplier - BU'"""
         try:
             if not db_conn:
                 return [ft.dropdown.Option("", "Nenhum supplier disponível")]
             
             cursor = db_conn.cursor()
-            cursor.execute("SELECT supplier_id, vendor_name FROM supplier_database_table ORDER BY vendor_name")
+            cursor.execute("SELECT supplier_id, vendor_name, BU FROM supplier_database_table ORDER BY vendor_name")
             suppliers = cursor.fetchall()
             
             options = [ft.dropdown.Option("", "Selecione um supplier")]
-            for supplier_id, vendor_name in suppliers:
-                display_text = f"{vendor_name} (ID: {supplier_id})"
+            for supplier_id, vendor_name, bu in suppliers:
+                # Formato: "Supplier - BU"
+                bu_text = bu if bu else "N/A"
+                display_text = f"{vendor_name} - {bu_text}"
                 options.append(ft.dropdown.Option(str(supplier_id), display_text))
                 
             return options
         except Exception as e:
             print(f"Erro ao carregar suppliers: {e}")
             return [ft.dropdown.Option("", "Erro ao carregar suppliers")]
+
             
     def load_business_units_for_timeline():
         """Carrega todas as business units do banco de dados para o dropdown"""
@@ -7210,6 +7310,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         calculate_year_average(vendor_id, year)
         calculate_quarterly_averages(vendor_id, year)
         update_timeline_chart(vendor_id, year)
+        
+        # Atualizar a página após todos os cálculos
+        page.update()
         
     def calculate_overall_average(vendor_id):
         """Calcula a média geral de todos os scores do vendor"""
@@ -7313,6 +7416,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
             cursor = db_conn.cursor()
             current_year = year if year else datetime.date.today().year
+            previous_year = current_year - 1
             
             # Definir meses de cada trimestre
             quarters = {
@@ -7323,167 +7427,265 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             }
             
             quarter_cards = [q1_avg_card, q2_avg_card, q3_avg_card, q4_avg_card]
+            quarter_icons = [q1_arrow_icon, q2_arrow_icon, q3_arrow_icon, q4_arrow_icon]
             quarter_names = ['Q1', 'Q2', 'Q3', 'Q4']
             
             for i, (quarter_name, months) in enumerate(quarters.items()):
+                # Calcular média do ano atual
                 month_placeholders = ','.join(['?' for _ in months])
-                query = f"""SELECT total_score FROM supplier_score_records_table 
-                           WHERE supplier_id = ? AND year = ? AND month IN ({month_placeholders}) AND total_score > 0"""
+                query_current = f"""SELECT total_score FROM supplier_score_records_table 
+                                   WHERE supplier_id = ? AND year = ? AND month IN ({month_placeholders}) AND total_score > 0"""
                 
-                params = [vendor_id, current_year] + months
-                cursor.execute(query, params)
-                results = cursor.fetchall()
+                params_current = [vendor_id, current_year] + months
+                cursor.execute(query_current, params_current)
+                results_current = cursor.fetchall()
                 
-                if results:
-                    scores = [float(row[0]) for row in results]
-                    avg = sum(scores) / len(scores)
-                    quarter_cards[i].current.value = f"{avg:.1f}"
+                avg_current = None
+                if results_current:
+                    scores = [float(row[0]) for row in results_current]
+                    avg_current = sum(scores) / len(scores)
+                    quarter_cards[i].current.value = f"{avg_current:.1f}"
                 else:
                     quarter_cards[i].current.value = "--"
+                
+                # Calcular média do ano anterior
+                query_previous = f"""SELECT total_score FROM supplier_score_records_table 
+                                    WHERE supplier_id = ? AND year = ? AND month IN ({month_placeholders}) AND total_score > 0"""
+                
+                params_previous = [vendor_id, previous_year] + months
+                cursor.execute(query_previous, params_previous)
+                results_previous = cursor.fetchall()
+                
+                avg_previous = None
+                if results_previous:
+                    scores = [float(row[0]) for row in results_previous]
+                    avg_previous = sum(scores) / len(scores)
+                
+                # Definir ícone baseado na comparação
+                if avg_current is not None and avg_previous is not None:
+                    if avg_current > avg_previous:
+                        quarter_icons[i].current.name = ft.Icons.ARROW_UP
+                        quarter_icons[i].current.color = ft.Colors.GREEN
+                    elif avg_current < avg_previous:
+                        quarter_icons[i].current.name = ft.Icons.ARROW_DOWN
+                        quarter_icons[i].current.color = ft.Colors.RED
+                    else:
+                        quarter_icons[i].current.name = ft.Icons.ARROW_FORWARD
+                        quarter_icons[i].current.color = ft.Colors.GREY
+                else:
+                    quarter_icons[i].current.name = ft.Icons.ARROW_FORWARD
+                    quarter_icons[i].current.color = ft.Colors.GREY
                     
         except Exception as e:
             print(f"Erro ao calcular médias trimestrais: {e}")
             for card in [q1_avg_card, q2_avg_card, q3_avg_card, q4_avg_card]:
                 card.current.value = "Error"
                 
+    def find_intersection(p1, p2, target_y):
+        # p1 = (x1, y1), p2 = (x2, y2)
+        if p1[1] == p2[1]:  # Linha horizontal, sem interseção a menos que esteja na linha de destino
+            return None
+        
+        # Calcula a interseção x
+        x = p1[0] + (p2[0] - p1[0]) * (target_y - p1[1]) / (p2[1] - p1[1])
+        return (x, target_y)
+
+    def create_colored_line_series(points, target_y):
+        if not points:
+            return []
+        if len(points) < 2:
+            point = points[0]
+            color = ft.Colors.GREEN_600 if point[1] >= target_y else ft.Colors.RED_600
+            return [ft.LineChartData(data_points=[ft.LineChartDataPoint(point[0], point[1])], color=color, stroke_width=3)]
+
+        above_segments, below_segments = [], []
+        current_above, current_below = [], []
+
+        p1 = points[0]
+        if p1[1] >= target_y:
+            current_above.append(ft.LineChartDataPoint(p1[0], p1[1]))
+        else:
+            current_below.append(ft.LineChartDataPoint(p1[0], p1[1]))
+
+        for i in range(len(points) - 1):
+            p1, p2 = points[i], points[i+1]
+            p1_above, p2_above = p1[1] >= target_y, p2[1] >= target_y
+
+            if p1_above != p2_above:
+                intersection = find_intersection(p1, p2, target_y)
+                if intersection:
+                    ix, iy = intersection
+                    intersection_point = ft.LineChartDataPoint(ix, iy)
+                    if p1_above:
+                        current_above.append(intersection_point)
+                        above_segments.append(current_above)
+                        current_above = []
+                        current_below = [intersection_point, ft.LineChartDataPoint(p2[0], p2[1])]
+                    else:
+                        current_below.append(intersection_point)
+                        below_segments.append(current_below)
+                        current_below = []
+                        current_above = [intersection_point, ft.LineChartDataPoint(p2[0], p2[1])]
+            else:
+                if p2_above:
+                    current_above.append(ft.LineChartDataPoint(p2[0], p2[1]))
+                else:
+                    current_below.append(ft.LineChartDataPoint(p2[0], p2[1]))
+
+        if current_above: above_segments.append(current_above)
+        if current_below: below_segments.append(current_below)
+
+        series = []
+        for segment in above_segments:
+            if len(segment) > 1:
+                series.append(ft.LineChartData(
+                    data_points=segment, color=ft.Colors.GREEN_600, stroke_width=3, curved=True, stroke_cap_round=True,
+                    below_line_gradient=ft.LinearGradient(
+                        begin=ft.alignment.top_center, end=ft.alignment.bottom_center,
+                        colors=[ft.Colors.with_opacity(0.4, ft.Colors.GREEN_400), ft.Colors.with_opacity(0.0, ft.Colors.GREEN_400)]
+                    )
+                ))
+        for segment in below_segments:
+            if len(segment) > 1:
+                series.append(ft.LineChartData(
+                    data_points=segment, color=ft.Colors.RED_600, stroke_width=3, curved=True, stroke_cap_round=True,
+                    below_line_gradient=ft.LinearGradient(
+                        begin=ft.alignment.top_center, end=ft.alignment.bottom_center,
+                        colors=[ft.Colors.with_opacity(0.4, ft.Colors.RED_400), ft.Colors.with_opacity(0.0, ft.Colors.RED_400)]
+                    )
+                ))
+        return series
+
     def update_timeline_chart(vendor_id, year=None):
-        """Atualiza o gráfico de linha baseado no vendor e ano selecionados"""
+        """Atualiza o gráfico de linha baseado no vendor, ano e métricas selecionadas."""
         try:
             if not db_conn or not vendor_id:
+                timeline_chart_container.current.content = ft.Container(
+                    content=ft.Text("Selecione um fornecedor para visualizar o gráfico", size=16, text_align=ft.TextAlign.CENTER),
+                    alignment=ft.alignment.center, expand=True, height=400
+                )
+                timeline_chart_container.current.update()
+                return
+
+            target_value = target_slider.value if target_slider and target_slider.value is not None else 5.0
+            analysis_year = int(year) if year and year.strip() else datetime.date.today().year
+
+            cursor = db_conn.cursor()
+            query = "SELECT month, total_score, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
+            cursor.execute(query, (vendor_id, analysis_year))
+            results = cursor.fetchall()
+
+            monthly_data = {m: {} for m in range(1, 13)}
+            for row in results:
+                month, total, otif, nil, pickup, package = row
+                monthly_data[int(month)] = {
+                    "total_score": float(total) if total is not None else None, "otif": float(otif) if otif is not None else None,
+                    "nil": float(nil) if nil is not None else None, "pickup": float(pickup) if pickup is not None else None,
+                    "package": float(package) if package is not None else None,
+                }
+
+            if not any(data.get("total_score") is not None for data in monthly_data.values()):
+                timeline_chart_container.current.content = ft.Container(
+                    content=ft.Text(f"Nenhum dado de score encontrado para {analysis_year}", size=16, text_align=ft.TextAlign.CENTER),
+                    alignment=ft.alignment.center, expand=True, height=400
+                )
+                timeline_chart_container.current.update()
+                return
+
+            data_series = []
+            total_score_points = [(m - 1, d["total_score"]) for m, d in monthly_data.items() if d and d.get("total_score") is not None]
+            if total_score_points:
+                data_series.extend(create_colored_line_series(total_score_points, target_value))
+
+            # Adicionar linha de target
+            target_line_points = [ft.LineChartDataPoint(i, target_value) for i in range(12)]
+            data_series.append(ft.LineChartData(
+                data_points=target_line_points,
+                color=ft.Colors.AMBER_700,
+                stroke_width=2,
+                curved=False,
+                dash_pattern=[5, 5]
+            ))
+
+            additional_scores_map = {
+                "otif": {"ref": timeline_otif_check, "color": ft.Colors.ORANGE_ACCENT_700},
+                "nil": {"ref": timeline_nil_check, "color": ft.Colors.PURPLE_ACCENT_700},
+                "pickup": {"ref": timeline_pickup_check, "color": ft.Colors.CYAN_700},
+                "package": {"ref": timeline_package_check, "color": ft.Colors.PINK_ACCENT_700},
+            }
+            for key, details in additional_scores_map.items():
+                if hasattr(details["ref"], 'current') and details["ref"].current and details["ref"].current.value:
+                    points = [ft.LineChartDataPoint(m - 1, d[key]) for m, d in monthly_data.items() if d and d.get(key) is not None]
+                    if points:
+                        data_series.append(ft.LineChartData(data_points=points, color=details["color"], stroke_width=2, curved=False, dash_pattern=[3, 3]))
+
+            months_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+            line_chart = ft.LineChart(
+                data_series=data_series,
+                border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                horizontal_grid_lines=ft.ChartGridLines(
+                    interval=1, 
+                    color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE), 
+                    width=1
+                ),
+                vertical_grid_lines=ft.ChartGridLines(
+                    interval=1, 
+                    color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE), 
+                    width=1
+                ),
+                left_axis=ft.ChartAxis(
+                    labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=10)) for i in range(0, 11, 1)], 
+                    labels_size=30
+                ),
+                bottom_axis=ft.ChartAxis(
+                    labels=[ft.ChartAxisLabel(value=i, label=ft.Text(label, size=10, weight=ft.FontWeight.BOLD)) for i, label in enumerate(months_labels)], 
+                    labels_size=30
+                ),
+                tooltip_bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.BLUE_GREY),
+                min_y=0, 
+                max_y=10, 
+                min_x=0, 
+                max_x=11, 
+                expand=True,
+            )
+            timeline_chart_container.current.content = line_chart
+            timeline_chart_container.current.update()
+        except Exception as e:
+            print(f"Erro ao atualizar gráfico: {e}")
+            import traceback
+            traceback.print_exc()
+            timeline_chart_container.current.content = ft.Text(f"Erro ao gerar gráfico: {e}")
+            timeline_chart_container.current.update()
+            
+    def show_timeline_snackbar(message):
+        """Mostra snackbar na timeline"""
+        page.snack_bar = ft.SnackBar(ft.Text(message))
+        page.snack_bar.open = True
+        page.update()
+
+    def delete_timeline_record(month, year_data, vendor_id):
+        """Deleta um registro específico da timeline"""
+        try:
+            if not db_conn:
+                show_timeline_snackbar("❌ Erro: Banco de dados não conectado.")
                 return
                 
             cursor = db_conn.cursor()
+            cursor.execute("""DELETE FROM supplier_score_records_table 
+                             WHERE supplier_id = ? AND month = ? AND year = ?""", 
+                          (vendor_id, month, year_data))
+            db_conn.commit()
             
-            # Query base
-            if year:
-                query = """SELECT month, total_score, year FROM supplier_score_records_table 
-                          WHERE supplier_id = ? AND year = ? AND total_score > 0 
-                          ORDER BY year, month"""
-                cursor.execute(query, (vendor_id, year))
-            else:
-                query = """SELECT month, total_score, year FROM supplier_score_records_table 
-                          WHERE supplier_id = ? AND total_score > 0 
-                          ORDER BY year, month"""
-                cursor.execute(query, (vendor_id,))
-                
-            results = cursor.fetchall()
-            
-            if not results:
-                # Mostrar mensagem de "sem dados"
-                timeline_chart_container.current.content = ft.Container(
-                    content=ft.Text("Nenhum dado encontrado para este fornecedor", 
-                                   size=16, text_align=ft.TextAlign.CENTER),
-                    alignment=ft.alignment.center,
-                    height=400,
-                    expand=True
-                )
-                timeline_chart_container.current.update()
-                return
-            
-            # Preparar dados para o gráfico de linha
-            data_points = []
-            months_labels = []
-            
-            for i, row in enumerate(results):
-                month, score, year_data = row
-                try:
-                    score_float = float(score) if isinstance(score, str) else score
-                    data_points.append(ft.LineChartDataPoint(i, score_float))
-                    months_labels.append(f"{month:02d}/{str(year_data)[2:]}")
-                except (ValueError, TypeError):
-                    continue
-            
-            if not data_points:
-                timeline_chart_container.current.content = ft.Container(
-                    content=ft.Text("Dados inválidos encontrados", 
-                                   size=16, text_align=ft.TextAlign.CENTER),
-                    alignment=ft.alignment.center,
-                    height=400,
-                    expand=True
-                )
-                timeline_chart_container.current.update()
-                return
-            
-            # Criar o gráfico de linha
-            line_chart = ft.LineChart(
-                data_series=[
-                    ft.LineChartData(
-                        data_points=data_points,
-                        stroke_width=3,
-                        color=ft.Colors.BLUE,
-                        curved=True,
-                        stroke_cap_round=True,
-                    )
-                ],
-                border=ft.border.all(2, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
-                horizontal_grid_lines=ft.ChartGridLines(
-                    interval=1, color=ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE), width=1
-                ),
-                vertical_grid_lines=ft.ChartGridLines(
-                    interval=1, color=ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE), width=1
-                ),
-                left_axis=ft.ChartAxis(
-                    labels=[
-                        ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=10))
-                        for i in range(0, 11, 2)
-                    ],
-                    labels_size=40,
-                ),
-                bottom_axis=ft.ChartAxis(
-                    labels=[
-                        ft.ChartAxisLabel(value=i, label=ft.Text(months_labels[i] if i < len(months_labels) else "", size=10, text_align=ft.TextAlign.CENTER))
-                        for i in range(0, len(months_labels), max(1, len(months_labels)//8))
-                    ],
-                    labels_size=50,
-                ),
-                tooltip_bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.BLUE_GREY),
-                min_y=0,
-                max_y=10,
-                expand=True,
-            )
-            
-            # Criar conteúdo do container
-            chart_content = ft.Container(
-                content=ft.Column([
-                    ft.Container(
-                        content=ft.Text(
-                            "Performance Timeline - Gráfico de Linha", 
-                            size=18, 
-                            weight="bold", 
-                            text_align=ft.TextAlign.CENTER
-                        ),
-                        margin=ft.margin.only(bottom=10)
-                    ),
-                    ft.Container(
-                        content=ft.Text(
-                            f"📊 Dados: {len(data_points)} pontos ao longo do tempo", 
-                            size=12, 
-                            color=ft.Colors.GREY_600
-                        ),
-                        margin=ft.margin.only(bottom=15)
-                    ),
-                    ft.Container(
-                        content=line_chart,
-                        expand=True,
-                        height=300,
-                    )
-                ], 
-                spacing=0,
-                expand=True),
-                padding=ft.padding.all(20),
-                border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
-                border_radius=10,
-                expand=True
-            )
-            
-            timeline_chart_container.current.content = chart_content
-            timeline_chart_container.current.update()
+            # Atualizar a tabela
+            year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
+            update_timeline_table(vendor_id, year)
+            # Atualizar gráfico e métricas
+            update_timeline_metrics()
+            show_timeline_snackbar("✅ Registro deletado com sucesso!")
             
         except Exception as e:
-            print(f"Erro ao atualizar gráfico: {e}")
-            timeline_chart_container.current.content = ft.Text(f"Erro: {e}")
-            timeline_chart_container.current.update()
-            
+            show_timeline_snackbar(f"❌ Erro ao deletar registro: {str(e)}")
+
     def update_timeline_table(vendor_id, year=None):
         """Atualiza a tabela com os dados detalhados"""
         try:
@@ -7516,16 +7718,29 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 timeline_table_container.current.update()
                 return
             
-            # Criar cabeçalho da tabela
-            header_row = ft.Row([
-                ft.Container(ft.Text("Mês/Ano", weight="bold", size=12), width=80),
-                ft.Container(ft.Text("OTIF", weight="bold", size=12), width=60),
-                ft.Container(ft.Text("NIL", weight="bold", size=12), width=60),
-                ft.Container(ft.Text("Pickup", weight="bold", size=12), width=60),
-                ft.Container(ft.Text("Package", weight="bold", size=12), width=70),
-                ft.Container(ft.Text("Total", weight="bold", size=12), width=60),
-                ft.Container(ft.Text("Comentário", weight="bold", size=12), expand=True),
-            ])
+            # Verificar largura da tela para layout responsivo
+            is_mobile = page.window.width < 700 if page.window else False
+            
+            # Criar cabeçalho da tabela - responsivo
+            if is_mobile:
+                header_row = ft.Row([
+                    ft.Container(ft.Text("Período", weight="bold", size=11), width=80),
+                    ft.Container(ft.Text("OTIF", weight="bold", size=11), width=50),
+                    ft.Container(ft.Text("NIL", weight="bold", size=11), width=50),
+                    ft.Container(ft.Text("Total", weight="bold", size=11), width=50),
+                    ft.Container(ft.Text("Ações", weight="bold", size=11), width=60),
+                ], scroll=ft.ScrollMode.AUTO)
+            else:
+                header_row = ft.Row([
+                    ft.Container(ft.Text("Mês/Ano", weight="bold", size=12), width=80),
+                    ft.Container(ft.Text("OTIF", weight="bold", size=12), width=60),
+                    ft.Container(ft.Text("NIL", weight="bold", size=12), width=60),
+                    ft.Container(ft.Text("Pickup", weight="bold", size=12), width=60),
+                    ft.Container(ft.Text("Package", weight="bold", size=12), width=70),
+                    ft.Container(ft.Text("Total", weight="bold", size=12), width=60),
+                    ft.Container(ft.Text("Comentário", weight="bold", size=12), width=150),
+                    ft.Container(ft.Text("Ações", weight="bold", size=12), width=80),
+                ])
             
             # Criar linhas de dados
             data_rows = []
@@ -7538,19 +7753,71 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 bgcolor = "lightgray" if i % 2 == 0 else None
                 
-                data_row = ft.Container(
-                    content=ft.Row([
-                        ft.Container(ft.Text(f"{month_name}/{year_data}", size=11), width=80),
-                        ft.Container(ft.Text(f"{float(otif):.1f}" if otif else "--", size=11), width=60),
-                        ft.Container(ft.Text(f"{float(nil):.1f}" if nil else "--", size=11), width=60),
-                        ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup else "--", size=11), width=60),
-                        ft.Container(ft.Text(f"{float(package):.1f}" if package else "--", size=11), width=70),
-                        ft.Container(ft.Text(f"{float(total):.1f}" if total else "--", size=11, weight="bold"), width=60),
-                        ft.Container(ft.Text(comment or "--", size=10), expand=True),
-                    ]),
-                    bgcolor=bgcolor,
-                    padding=5
+                # Função para deletar este registro específico
+                def create_delete_handler(m, y, vid):
+                    def handle_delete(e):
+                        def handle_confirm(e):
+                            delete_timeline_record(m, y, vid)
+                            page.close(delete_dialog)
+                        
+                        def handle_cancel(e):
+                            page.close(delete_dialog)
+                        
+                        delete_dialog = DeleteListItemConfirmationDialog(
+                            item_name=f"{months[int(m)-1] if 1 <= int(m) <= 12 else str(m)}/{y}",
+                            item_type="Registro Timeline",
+                            on_confirm=handle_confirm,
+                            on_cancel=handle_cancel
+                        )
+                        page.open(delete_dialog)
+                    return handle_delete
+                
+                delete_btn = ft.IconButton(
+                    icon=ft.Icons.DELETE,
+                    icon_color="red",
+                    tooltip="Deletar registro",
+                    icon_size=16,
+                    on_click=create_delete_handler(month, year_data, vendor_id)
                 )
+                
+                # Layout responsivo das linhas
+                if is_mobile:
+                    # Layout compacto para mobile
+                    data_row = ft.Container(
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Container(ft.Text(f"{month_name}/{year_data}", size=11, weight="bold"), width=80),
+                                ft.Container(ft.Text(f"{float(otif):.1f}" if otif else "--", size=11), width=50),
+                                ft.Container(ft.Text(f"{float(nil):.1f}" if nil else "--", size=11), width=50),
+                                ft.Container(ft.Text(f"{float(total):.1f}" if total else "--", size=11, weight="bold"), width=50),
+                                ft.Container(delete_btn, width=60),
+                            ]),
+                            # Segunda linha com detalhes extras em mobile
+                            ft.Row([
+                                ft.Container(ft.Text(f"P:{float(pickup):.1f}" if pickup else "P:--", size=10, color="gray"), width=60),
+                                ft.Container(ft.Text(f"Pk:{float(package):.1f}" if package else "Pk:--", size=10, color="gray"), width=60),
+                                ft.Container(ft.Text(comment or "--", size=9, color="gray"), expand=True),
+                            ]),
+                        ], spacing=2),
+                        bgcolor=bgcolor,
+                        padding=5
+                    )
+                else:
+                    # Layout completo para desktop
+                    data_row = ft.Container(
+                        content=ft.Row([
+                            ft.Container(ft.Text(f"{month_name}/{year_data}", size=11), width=80),
+                            ft.Container(ft.Text(f"{float(otif):.1f}" if otif else "--", size=11), width=60),
+                            ft.Container(ft.Text(f"{float(nil):.1f}" if nil else "--", size=11), width=60),
+                            ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup else "--", size=11), width=60),
+                            ft.Container(ft.Text(f"{float(package):.1f}" if package else "--", size=11), width=70),
+                            ft.Container(ft.Text(f"{float(total):.1f}" if total else "--", size=11, weight="bold"), width=60),
+                            ft.Container(ft.Text(comment or "--", size=10), width=150),
+                            ft.Container(delete_btn, width=80),
+                        ]),
+                        bgcolor=bgcolor,
+                        padding=5
+                    )
                 data_rows.append(data_row)
             
             table_content = ft.Container(
@@ -7643,180 +7910,305 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         page.update()
 
     # Criar conteúdo da aba Timeline
+    # Obter cores do tema para a criação inicial dos componentes
+    theme_colors_for_timeline = get_current_theme_colors(get_theme_name_from_page(page))
+    primary_color_for_timeline = theme_colors_for_timeline.get('primary')
+
     timeline_view = ft.Container(
         content=ft.Column([
             # Título da seção
             ft.Container(
                 content=ft.Text("Timeline Analytics", size=24, weight="bold"),
-                alignment=ft.alignment.center,
+                alignment=ft.alignment.top_left,
                 margin=ft.margin.only(bottom=20)
             ),
             
             # Campos de seleção no topo - centralizados em um container
             ft.Container(
-                content=ft.Row([
-                    ft.Dropdown(
-                        label="Supplier",
-                        hint_text="Selecione um fornecedor",
-                        ref=timeline_vendor_dropdown,
-                        on_change=on_timeline_vendor_change,
-                        options=load_suppliers_for_timeline(),
-                        width=400,
-                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                    ),
-                    ft.Dropdown(
-                        label="Ano",
-                        ref=timeline_year_dropdown,
-                        on_change=on_timeline_year_change,
-                        options=[ft.dropdown.Option("", "Todos")] + [ft.dropdown.Option(str(y)) for y in range(2020, 2031)],
-                        value="",
-                        width=120,
-                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                    ),
-                    ft.Dropdown(
-                        label="BU",
-                        ref=timeline_bu_dropdown,
-                        options=load_business_units_for_timeline(),
-                        value="",
-                        width=150,
-                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                    ),
-                ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
-                padding=20,
-                border=ft.border.all(1, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
-                border_radius=10,
+                content=ft.Column([
+                    # (Campo de pesquisa removido)
+                    # Row com dropdowns
+                    ft.Row([
+                        ft.Dropdown(
+                            label="Supplier",
+                            hint_text="Selecione um fornecedor",
+                            ref=timeline_vendor_dropdown,
+                            on_change=on_timeline_vendor_change,
+                            options=load_suppliers_for_timeline(),
+                            expand=True,
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                        ),
+                        ft.Dropdown(
+                            label="Ano",
+                            ref=timeline_year_dropdown,
+                            on_change=on_timeline_year_change,
+                            options=[ft.dropdown.Option("", "Todos")] + [ft.dropdown.Option(str(y)) for y in range(2020, 2031)],
+                            value="",
+                            width=150,
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                        ),
+                    ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                padding=ft.padding.symmetric(horizontal=20, vertical=15),
+                border=ft.border.all(1.5, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+                border_radius=12,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
-                alignment=ft.alignment.center
+                width=700,
+                alignment=ft.alignment.center,
+                ref=timeline_search_container
             ),
             
             ft.Container(height=20),
             
-            # Cards de métricas - todos na mesma linha
+            # Cards de métricas - todos na mesma linha com estilo melhorado
             ft.Column([
-                ft.Text("Métricas de Performance", size=16, weight="bold", text_align=ft.TextAlign.CENTER),
-                ft.Container(height=10),
-                ft.Row([
+                ft.Text("Métricas de Performance", size=18, weight="bold", text_align=ft.TextAlign.CENTER, color=ft.Colors.ON_SURFACE),
+                ft.Container(height=15),
+                ft.Row(
+                    ref=timeline_metrics_row,
+                    controls=[
                     # Card Overall Average
                     ft.Card(
+                        ref=timeline_cards_refs["overall"]["card"],
                         content=ft.Container(
+                            ref=timeline_cards_refs["overall"]["gradient"],
                             content=ft.Column([
                                 ft.Row([
-                                    ft.Icon(ft.Icons.ANALYTICS, color="blue", size=20),
-                                    ft.Text("Overall", size=10, weight="bold", color="grey"),
-                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=4),
-                                ft.Text("--", size=16, weight="bold", color="blue", ref=overall_avg_card, text_align=ft.TextAlign.CENTER),
-                            ], spacing=5, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                            padding=10,
-                            width=100,
-                            height=70,
+                                    ft.Icon(ft.Icons.ANALYTICS, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["overall"]["icon"]),
+                                    ft.Text("Overall", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                                ft.Container(height=8),
+                                ft.Row([
+                                    ft.Text("--", size=18, weight="bold", color=primary_color_for_timeline, ref=overall_avg_card),
+                                ], alignment=ft.MainAxisAlignment.START),
+                            ], spacing=2, tight=True),
+                            padding=ft.padding.all(20),
+                            width=110,
+                            height=85,
+                            border_radius=12,
+                            gradient=ft.LinearGradient(
+                                begin=ft.alignment.top_left,
+                                end=ft.alignment.bottom_right,
+                                colors=[ft.Colors.with_opacity(0.1, primary_color_for_timeline), ft.Colors.with_opacity(0.05, primary_color_for_timeline)]
+                            )
                         ),
-                        elevation=2
+                        elevation=3,
+                        surface_tint_color=primary_color_for_timeline
                     ),
                     # Card 12 Month Average
                     ft.Card(
+                        ref=timeline_cards_refs["12m"]["card"],
                         content=ft.Container(
+                            ref=timeline_cards_refs["12m"]["gradient"],
                             content=ft.Column([
                                 ft.Row([
-                                    ft.Icon(ft.Icons.CALENDAR_MONTH, color="green", size=20),
-                                    ft.Text("12M Avg", size=10, weight="bold", color="grey"),
-                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=4),
-                                ft.Text("--", size=16, weight="bold", color="green", ref=twelve_month_avg_card, text_align=ft.TextAlign.CENTER),
-                            ], spacing=5, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                            padding=10,
-                            width=100,
-                            height=70,
+                                    ft.Icon(ft.Icons.CALENDAR_MONTH, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["12m"]["icon"]),
+                                    ft.Text("12M Avg", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                                ft.Container(height=8),
+                                ft.Row([
+                                    ft.Text("--", size=18, weight="bold", color=primary_color_for_timeline, ref=twelve_month_avg_card),
+                                ], alignment=ft.MainAxisAlignment.END),
+                            ], spacing=2, tight=True),
+                            padding=ft.padding.all(20),
+                            width=110,
+                            height=85,
+                            border_radius=12,
+                            gradient=ft.LinearGradient(
+                                begin=ft.alignment.top_left,
+                                end=ft.alignment.bottom_right,
+                                colors=[ft.Colors.with_opacity(0.1, primary_color_for_timeline), ft.Colors.with_opacity(0.05, primary_color_for_timeline)]
+                            )
                         ),
-                        elevation=2
+                        elevation=3,
+                        surface_tint_color=primary_color_for_timeline
                     ),
                     # Card Year Average
                     ft.Card(
+                        ref=timeline_cards_refs["year"]["card"],
                         content=ft.Container(
+                            ref=timeline_cards_refs["year"]["gradient"],
                             content=ft.Column([
                                 ft.Row([
-                                    ft.Icon(ft.Icons.CALENDAR_TODAY, color="orange", size=20),
-                                    ft.Text("Year Avg", size=10, weight="bold", color="grey"),
-                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=4),
-                                ft.Text("--", size=16, weight="bold", color="orange", ref=year_avg_card, text_align=ft.TextAlign.CENTER),
-                            ], spacing=5, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                            padding=10,
-                            width=100,
-                            height=70,
+                                    ft.Icon(ft.Icons.CALENDAR_TODAY, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["year"]["icon"]),
+                                    ft.Text("Year Avg", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                                ft.Container(height=8),
+                                ft.Row([
+                                    ft.Text("--", size=18, weight="bold", color=primary_color_for_timeline, ref=year_avg_card),
+                                ], alignment=ft.MainAxisAlignment.END),
+                            ], spacing=2, tight=True),
+                            padding=ft.padding.all(20),
+                            width=110,
+                            height=85,
+                            border_radius=12,
+                            gradient=ft.LinearGradient(
+                                begin=ft.alignment.top_left,
+                                end=ft.alignment.bottom_right,
+                                colors=[ft.Colors.with_opacity(0.1, primary_color_for_timeline), ft.Colors.with_opacity(0.05, primary_color_for_timeline)]
+                            )
                         ),
-                        elevation=2
+                        elevation=3,
+                        surface_tint_color=primary_color_for_timeline
                     ),
-                    # Card Q1
                     ft.Card(
+                        ref=timeline_cards_refs["q1"]["card"],
                         content=ft.Container(
-                            content=ft.Column([
-                                ft.Row([
-                                    ft.Icon(ft.Icons.LOOKS_ONE, color="purple", size=20),
-                                    ft.Text("Q1", size=10, weight="bold", color="grey"),
-                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=4),
-                                ft.Text("--", size=16, weight="bold", color="purple", ref=q1_avg_card, text_align=ft.TextAlign.CENTER),
-                            ], spacing=5, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                            padding=10,
-                            width=80,
-                            height=70,
+                            ref=timeline_cards_refs["q1"]["gradient"],
+                            content=ft.Stack([
+                                ft.Column([
+                                    ft.Row([
+                                        ft.Icon(ft.Icons.LOOKS_ONE, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q1"]["icon"]),
+                                        ft.Text("Q1", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                                    ft.Container(height=8),
+                                    ft.Row([
+                                        ft.Text("--", size=16, weight="bold", color=primary_color_for_timeline, ref=q1_avg_card),
+                                    ], alignment=ft.MainAxisAlignment.END),
+                                ], spacing=2, tight=True),
+                                ft.Container(
+                                    content=ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY, size=16, ref=q1_arrow_icon),
+                                    alignment=ft.alignment.top_right,
+                                    padding=ft.padding.all(5),
+                                )
+                            ]),
+                            padding=ft.padding.all(20),
+                            width=110,
+                            height=85,
+                            border_radius=12,
+                            gradient=ft.LinearGradient(
+                                begin=ft.alignment.top_left,
+                                end=ft.alignment.bottom_right,
+                                colors=[ft.Colors.with_opacity(0.1, primary_color_for_timeline), ft.Colors.with_opacity(0.05, primary_color_for_timeline)]
+                            )
                         ),
-                        elevation=2
+                        elevation=3,
+                        surface_tint_color=primary_color_for_timeline
                     ),
                     # Card Q2
                     ft.Card(
+                        ref=timeline_cards_refs["q2"]["card"],
                         content=ft.Container(
-                            content=ft.Column([
-                                ft.Row([
-                                    ft.Icon(ft.Icons.LOOKS_TWO, color="teal", size=20),
-                                    ft.Text("Q2", size=10, weight="bold", color="grey"),
-                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=4),
-                                ft.Text("--", size=16, weight="bold", color="teal", ref=q2_avg_card, text_align=ft.TextAlign.CENTER),
-                            ], spacing=5, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                            padding=10,
-                            width=80,
-                            height=70,
+                            ref=timeline_cards_refs["q2"]["gradient"],
+                            content=ft.Stack([
+                                ft.Column([
+                                    ft.Row([
+                                        ft.Icon(ft.Icons.LOOKS_TWO, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q2"]["icon"]),
+                                        ft.Text("Q2", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                                    ft.Container(height=8),
+                                    ft.Row([
+                                        ft.Text("--", size=16, weight="bold", color=primary_color_for_timeline, ref=q2_avg_card),
+                                    ], alignment=ft.MainAxisAlignment.END),
+                                ], spacing=2, tight=True),
+                                ft.Container(
+                                    content=ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY, size=16, ref=q2_arrow_icon),
+                                    alignment=ft.alignment.top_right,
+                                    padding=ft.padding.all(5),
+                                )
+                            ]),
+                            padding=ft.padding.all(20),
+                            width=110,
+                            height=85,
+                            border_radius=12,
+                            gradient=ft.LinearGradient(
+                                begin=ft.alignment.top_left,
+                                end=ft.alignment.bottom_right,
+                                colors=[ft.Colors.with_opacity(0.1, primary_color_for_timeline), ft.Colors.with_opacity(0.05, primary_color_for_timeline)]
+                            )
                         ),
-                        elevation=2
+                        elevation=3,
+                        surface_tint_color=primary_color_for_timeline
                     ),
                     # Card Q3
                     ft.Card(
+                        ref=timeline_cards_refs["q3"]["card"],
                         content=ft.Container(
-                            content=ft.Column([
-                                ft.Row([
-                                    ft.Icon(ft.Icons.LOOKS_3, color="indigo", size=20),
-                                    ft.Text("Q3", size=10, weight="bold", color="grey"),
-                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=4),
-                                ft.Text("--", size=16, weight="bold", color="indigo", ref=q3_avg_card, text_align=ft.TextAlign.CENTER),
-                            ], spacing=5, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                            padding=10,
-                            width=80,
-                            height=70,
+                            ref=timeline_cards_refs["q3"]["gradient"],
+                            content=ft.Stack([
+                                ft.Column([
+                                    ft.Row([
+                                        ft.Icon(ft.Icons.LOOKS_3, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q3"]["icon"]),
+                                        ft.Text("Q3", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                                    ft.Container(height=8),
+                                    ft.Row([
+                                        ft.Text("--", size=16, weight="bold", color=primary_color_for_timeline, ref=q3_avg_card),
+                                    ], alignment=ft.MainAxisAlignment.END),
+                                ], spacing=2, tight=True),
+                                ft.Container(
+                                    content=ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY, size=16, ref=q3_arrow_icon),
+                                    alignment=ft.alignment.top_right,
+                                    padding=ft.padding.all(5),
+                                )
+                            ]),
+                            padding=ft.padding.all(20),
+                            width=110,
+                            height=85,
+                            border_radius=12,
+                            gradient=ft.LinearGradient(
+                                begin=ft.alignment.top_left,
+                                end=ft.alignment.bottom_right,
+                                colors=[ft.Colors.with_opacity(0.1, primary_color_for_timeline), ft.Colors.with_opacity(0.05, primary_color_for_timeline)]
+                            )
                         ),
-                        elevation=2
+                        elevation=3,
+                        surface_tint_color=primary_color_for_timeline
                     ),
                     # Card Q4
                     ft.Card(
+                        ref=timeline_cards_refs["q4"]["card"],
                         content=ft.Container(
-                            content=ft.Column([
-                                ft.Row([
-                                    ft.Icon(ft.Icons.LOOKS_4, color="pink", size=20),
-                                    ft.Text("Q4", size=10, weight="bold", color="grey"),
-                                ], alignment=ft.MainAxisAlignment.CENTER, spacing=4),
-                                ft.Text("--", size=16, weight="bold", color="pink", ref=q4_avg_card, text_align=ft.TextAlign.CENTER),
-                            ], spacing=5, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                            padding=10,
-                            width=80,
-                            height=70,
+                            ref=timeline_cards_refs["q4"]["gradient"],
+                            content=ft.Stack([
+                                ft.Column([
+                                    ft.Row([
+                                        ft.Icon(ft.Icons.LOOKS_4, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q4"]["icon"]),
+                                        ft.Text("Q4", size=11, weight="bold", color=ft.Colors.GREY_600),
+                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
+                                    ft.Container(height=8),
+                                    ft.Row([
+                                        ft.Text("--", size=16, weight="bold", color=primary_color_for_timeline, ref=q4_avg_card),
+                                    ], alignment=ft.MainAxisAlignment.END),
+                                ], spacing=2, tight=True),
+                                ft.Container(
+                                    content=ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY, size=16, ref=q4_arrow_icon),
+                                    alignment=ft.alignment.top_right,
+                                    padding=ft.padding.all(5),
+                                )
+                            ]),
+                            padding=ft.padding.all(20),
+                            width=110,
+                            height=85,
+                            border_radius=12,
+                            gradient=ft.LinearGradient(
+                                begin=ft.alignment.top_left,
+                                end=ft.alignment.bottom_right,
+                                colors=[ft.Colors.with_opacity(0.1, primary_color_for_timeline), ft.Colors.with_opacity(0.05, primary_color_for_timeline)]
+                            )
                         ),
-                        elevation=2
+                        elevation=3,
+                        surface_tint_color=primary_color_for_timeline
                     ),
-                ], alignment=ft.MainAxisAlignment.CENTER, spacing=12, wrap=True),
+                ], alignment=ft.MainAxisAlignment.CENTER, spacing=15, wrap=True),
             ]),
             
+            ft.Container(height=15),
+            ft.Text("Métricas Adicionais no Gráfico:", size=14, weight="bold", text_align=ft.TextAlign.CENTER),
+            ft.Row(
+                controls=[
+                    ft.Checkbox(label="OTIF", value=False, ref=timeline_otif_check, on_change=on_timeline_vendor_change),
+                    ft.Checkbox(label="NIL", value=False, ref=timeline_nil_check, on_change=on_timeline_vendor_change),
+                    ft.Checkbox(label="Pickup", value=False, ref=timeline_pickup_check, on_change=on_timeline_vendor_change),
+                    ft.Checkbox(label="Package", value=False, ref=timeline_package_check, on_change=on_timeline_vendor_change),
+                ],
+                alignment=ft.MainAxisAlignment.START
+            ),
+
             ft.Container(height=20),
             
             # Abas para gráfico e tabela
