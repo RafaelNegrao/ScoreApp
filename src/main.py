@@ -1117,44 +1117,44 @@ class AddSupplierDialog(ft.AlertDialog):
                 label="Vendor Name*", 
                 width=250,
                 bgcolor=get_current_theme_colors(self.page).get('field_background'),
-                color=get_current_theme_colors(self.page).get('on_surface'),
-                border_color=get_current_theme_colors(self.page).get('outline')
+                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
             "supplier_name": ft.TextField(
                 label="Supplier Name", 
                 width=250,
-                bgcolor=get_current_theme_colors(self.page).get('field_background'),
-                color=get_current_theme_colors(self.page).get('on_surface'),
-                border_color=get_current_theme_colors(self.page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
             "supplier_category": ft.Container(
                 content=ft.Dropdown(
                     label="Supplier Category",
                     width=250,
-                    color=get_current_theme_colors(self.page).get('on_surface'),
-                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                     options=[
                         ft.dropdown.Option(v)
                         for v in (self.list_options.get('category') or ["", "Raw Materials", "Components", "Services", "Equipment"])
                     ],
                 ),
-                bgcolor=get_current_theme_colors(self.page).get('field_background'),
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
             ),
             
             # Informações de Contato
             "supplier_email": ft.TextField(
                 label="Email", 
                 width=250,
-                bgcolor=get_current_theme_colors(self.page).get('field_background'),
-                color=get_current_theme_colors(self.page).get('on_surface'),
-                border_color=get_current_theme_colors(self.page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
             "supplier_number": ft.TextField(
                 label="Número", 
                 width=250,
-                bgcolor=get_current_theme_colors(self.page).get('field_background'),
-                color=get_current_theme_colors(self.page).get('on_surface'),
-                border_color=get_current_theme_colors(self.page).get('outline')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
             
             # Configurações Organizacionais
@@ -1162,8 +1162,8 @@ class AddSupplierDialog(ft.AlertDialog):
                 content=ft.Dropdown(
                     label="BU (Business Unit)",
                     width=200,
-                    color=get_current_theme_colors(self.page).get('on_surface'),
-                    border_color=get_current_theme_colors(self.page).get('outline'),
+                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                     filled=False,
                     options=[ft.dropdown.Option(v) for v in (self.list_options.get('bu') or ["", "Operations", "Manufacturing", "Procurement", "Quality", "Logistics"]) ]
                 ),
@@ -1190,9 +1190,9 @@ class AddSupplierDialog(ft.AlertDialog):
                 content=ft.Dropdown(
                     label="Planner",
                     width=200,
-                    color=get_current_theme_colors(self.page).get('on_surface'),
-                    border_color=get_current_theme_colors(self.page).get('outline'),
-                    options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('planner') or []))]
+                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                    options=[ft.dropdown.Option(v) for v in ( [""] + (self.list_options.get('planner') or []) )]
                 ),
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
@@ -1201,9 +1201,9 @@ class AddSupplierDialog(ft.AlertDialog):
                 content=ft.Dropdown(
                     label="Continuity", 
                     width=200,
-                    color=get_current_theme_colors(self.page).get('on_surface'),
-                    border_color=get_current_theme_colors(self.page).get('outline'),
-                    options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('continuity') or []))]
+                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                    options=[ft.dropdown.Option(v) for v in ( [""] + (self.list_options.get('continuity') or []) )]
                 ),
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
@@ -1212,9 +1212,9 @@ class AddSupplierDialog(ft.AlertDialog):
                 content=ft.Dropdown(
                     label="Sourcing",
                     width=200,
-                    color=get_current_theme_colors(self.page).get('on_surface'),
-                    border_color=get_current_theme_colors(self.page).get('outline'),
-                    options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('sourcing') or []))]
+                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                    options=[ft.dropdown.Option(v) for v in ( [""] + (self.list_options.get('sourcing') or []) )]
                 ),
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
@@ -1223,9 +1223,9 @@ class AddSupplierDialog(ft.AlertDialog):
                 content=ft.Dropdown(
                     label="SQIE",
                     width=200,
-                    color=get_current_theme_colors(self.page).get('on_surface'),
-                    border_color=get_current_theme_colors(self.page).get('outline'),
-                    options=[ft.dropdown.Option(v) for v in ([""] + (self.list_options.get('sqie') or []))]
+                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                    options=[ft.dropdown.Option(v) for v in ( [""] + (self.list_options.get('sqie') or []) )]
                 ),
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
@@ -2439,6 +2439,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     show_favorites_only()
                     
             update_menu()
+            # Se a aba Risks foi selecionada, gerar os cards imediatamente (usa ano atual se dropdown vazio)
+            try:
+                if idx == 2:
+                    generate_risk_cards()
+            except Exception as ex:
+                print(f"Erro ao gerar cards ao abrir aba Risks: {ex}")
+            # Se estamos saindo da aba Risks, limpar os cards para liberar memória/estado
+            try:
+                if idx != 2 and risks_cards_container and risks_cards_container.current:
+                    risks_cards_container.current.content = ft.Text("Nenhum risco pesquisado")
+                    risks_cards_container.current.update()
+            except Exception as ex:
+                print(f"Aviso ao limpar cards da aba Risks: {ex}")
             page.update()
         return handler
 
