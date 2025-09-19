@@ -41,6 +41,8 @@ class ResponsiveAppManager:
         self.results_container = None
         self.is_maximized = False
         self.current_layout = "single"  # "single" ou "double"
+        self.menu_is_expanded_ref = None
+        self.update_menu_func = None
         
         # Configurar listener de redimensionamento
         self.page.on_resized = self.on_window_resize
@@ -50,6 +52,11 @@ class ResponsiveAppManager:
         """Inicializa as referências dos containers que serão gerenciados"""
         self.results_container = results_container
         # Layout será aplicado quando houver cards para mostrar
+    
+    def initialize_menu_controls(self, menu_is_expanded_ref, update_menu_func):
+        """Inicializa as referências para os controles do menu lateral"""
+        self.menu_is_expanded_ref = menu_is_expanded_ref
+        self.update_menu_func = update_menu_func
     
     def clear_results(self):
         """Limpa todos os resultados e reseta o estado"""
@@ -110,6 +117,19 @@ class ResponsiveAppManager:
         
         # Atualizar layout da aba Users se necessário
         self.update_users_layout(window_width)
+
+        # Gerenciar estado do menu lateral baseado na largura da tela e layout
+        if self.menu_is_expanded_ref and self.update_menu_func:
+            # Se a tela for pequena, fechar o menu se estiver aberto
+            if window_width < 1000 and self.menu_is_expanded_ref.current:
+                print(f"📱 Tela pequena ({window_width}px), fechando menu lateral.")
+                self.menu_is_expanded_ref.current = False
+                self.update_menu_func()
+            # Se o layout for duplo, reabrir o menu se estiver fechado
+            elif new_layout == "double" and not self.menu_is_expanded_ref.current:
+                print(f"📱 Layout duplo ativado ({window_width}px), reabrindo menu lateral.")
+                self.menu_is_expanded_ref.current = True
+                self.update_menu_func()
     
     def apply_responsive_layout(self):
         """Aplica o layout responsivo baseado no estado atual"""
@@ -2457,7 +2477,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # Dropdowns de mês e ano
     month_options = [ft.dropdown.Option(str(i).zfill(2), text=str(i)) for i in range(1, 13)]
-    year_options = [ft.dropdown.Option(str(y)) for y in range(2025, 2036)]
+    year_options = [ft.dropdown.Option("", "(Ano Atual)")] + [ft.dropdown.Option(str(y)) for y in range(2025, 2036)]
     selected_month = ft.Ref()
     selected_year = ft.Ref()
     selected_bu = ft.Ref()
@@ -2935,6 +2955,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         month_val = selected_month.current.value
         year_val = selected_year.current.value
+
+        # Se o ano for uma string vazia ("(Ano Atual)"), usar o ano atual
+        if year_val == "":
+            import datetime
+            year_val = str(datetime.date.today().year)
 
         # A função só executa se ambos, mês e ano, estiverem selecionados.
         if not month_val or not year_val:
@@ -4484,6 +4509,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         options=month_options, 
         ref=selected_month, 
         width=120, 
+        value=str(datetime.datetime.now().month).zfill(2), # Pré-selecionar mês atual
         on_change=on_month_year_change,
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -4495,6 +4521,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         options=year_options, 
         ref=selected_year, 
         width=120, 
+        value="", # Pré-selecionar "(Ano Atual)"
         on_change=on_month_year_change,
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -7627,7 +7654,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
             cursor = db_conn.cursor()
             
-            if year:
+            if year and year.strip():
                 query = """SELECT total_score FROM supplier_score_records_table 
                           WHERE supplier_id = ? AND year = ? AND total_score > 0"""
                 cursor.execute(query, (vendor_id, year))
@@ -7662,7 +7689,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
                 
             cursor = db_conn.cursor()
-            current_year = year if year else datetime.date.today().year
+            current_year = int(year) if year and year.strip() else datetime.date.today().year
             previous_year = current_year - 1
             
             # Definir meses de cada trimestre como lista ordenada
@@ -7846,7 +7873,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
 
             target_value = target_slider.value if target_slider and target_slider.value is not None else 5.0
-            analysis_year = int(year) if year and year.strip() else datetime.date.today().year
+            analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
 
             cursor = db_conn.cursor()
             query = "SELECT month, total_score, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
@@ -8018,7 +8045,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
             cursor = db_conn.cursor()
             
-            if year:
+            if year and year.strip():
                 query = """SELECT month, year, otif, nil, quality_pickup, quality_package, 
                           total_score, comment FROM supplier_score_records_table 
                           WHERE supplier_id = ? AND year = ? ORDER BY year DESC, month DESC"""
@@ -8043,27 +8070,31 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
             
             # Verificar largura da tela para layout responsivo
-            is_mobile = page.window.width < 700 if page.window else False
+            is_mobile = page.window.width < 1000 if page.window else False
             
             # Criar cabeçalho da tabela - responsivo
+            # Aumentar fontes e ajustar tamanhos para melhor leitura
+            header_font_size = 14 if not is_mobile else 13
+            row_font_size = 13 if not is_mobile else 12
+
             if is_mobile:
                 header_row = ft.Row([
-                    ft.Container(ft.Text("Período", weight="bold", size=11), width=80),
-                    ft.Container(ft.Text("OTIF", weight="bold", size=11), width=50),
-                    ft.Container(ft.Text("NIL", weight="bold", size=11), width=50),
-                    ft.Container(ft.Text("Total", weight="bold", size=11), width=50),
-                    ft.Container(ft.Text("Ações", weight="bold", size=11), width=100),
+                    ft.Container(ft.Text("Período", weight="bold", size=header_font_size), width=90),
+                    ft.Container(ft.Text("OTIF", weight="bold", size=header_font_size), width=60),
+                    ft.Container(ft.Text("NIL", weight="bold", size=header_font_size), width=60),
+                    ft.Container(ft.Text("Total", weight="bold", size=header_font_size), width=60),
+                    ft.Container(ft.Text("Ações", weight="bold", size=header_font_size), width=110),
                 ], scroll=ft.ScrollMode.AUTO)
             else:
                 header_row = ft.Row([
-                    ft.Container(ft.Text("Mês/Ano", weight="bold", size=12), width=80),
-                    ft.Container(ft.Text("OTIF", weight="bold", size=12), width=60),
-                    ft.Container(ft.Text("NIL", weight="bold", size=12), width=60),
-                    ft.Container(ft.Text("Pickup", weight="bold", size=12), width=60),
-                    ft.Container(ft.Text("Package", weight="bold", size=12), width=70),
-                    ft.Container(ft.Text("Total", weight="bold", size=12), width=60),
-                    ft.Container(ft.Text("Comentário", weight="bold", size=12), width=150),
-                    ft.Container(ft.Text("Ações", weight="bold", size=12), width=120),
+                    ft.Container(ft.Text("Mês/Ano", weight="bold", size=header_font_size), width=90),
+                    ft.Container(ft.Text("OTIF", weight="bold", size=header_font_size), width=70),
+                    ft.Container(ft.Text("NIL", weight="bold", size=header_font_size), width=70),
+                    ft.Container(ft.Text("Pickup", weight="bold", size=header_font_size), width=70),
+                    ft.Container(ft.Text("Package", weight="bold", size=header_font_size), width=80),
+                    ft.Container(ft.Text("Total", weight="bold", size=header_font_size), width=70),
+                    ft.Container(ft.Text("Comentário", weight="bold", size=header_font_size), expand=True),
+                    ft.Container(ft.Text("Ações", weight="bold", size=header_font_size), width=140),
                 ])
             
             # Criar linhas de dados
@@ -8147,7 +8178,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             ft.Row([
                                 ft.Container(ft.Text(f"P:{float(pickup):.1f}" if pickup is not None else "P:--", size=10, color="gray"), width=60),
                                 ft.Container(ft.Text(f"Pk:{float(package):.1f}" if package is not None else "Pk:--", size=10, color="gray"), width=60),
-                                ft.Container(ft.Text(comment or "--", size=9, color="gray"), expand=True),
+                                ft.Container(ft.Text(comment or "--", size=9, color="gray", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS), expand=True),
                             ]),
                         ], spacing=2),
                         bgcolor=bgcolor,
@@ -8157,14 +8188,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Layout completo para desktop
                     data_row = ft.Container(
                         content=ft.Row([
-                            ft.Container(ft.Text(f"{month_name}/{year_data}", size=11), width=80),
-                            ft.Container(ft.Text(f"{float(otif):.1f}" if otif is not None else "--", size=11), width=60),
-                            ft.Container(ft.Text(f"{float(nil):.1f}" if nil is not None else "--", size=11), width=60),
-                            ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup is not None else "--", size=11), width=60),
-                            ft.Container(ft.Text(f"{float(package):.1f}" if package is not None else "--", size=11), width=70),
-                            ft.Container(ft.Text(f"{float(total):.1f}" if total is not None else "--", size=11, weight="bold"), width=60),
-                            ft.Container(ft.Text(comment or "--", size=10), width=150),
-                            ft.Container(ft.Row([edit_btn, delete_btn], spacing=5), width=120),
+                                ft.Container(ft.Text(f"{month_name}/{year_data}", size=row_font_size), width=90),
+                                ft.Container(ft.Text(f"{float(otif):.1f}" if otif is not None else "--", size=row_font_size), width=70),
+                                ft.Container(ft.Text(f"{float(nil):.1f}" if nil is not None else "--", size=row_font_size), width=70),
+                                ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup is not None else "--", size=row_font_size), width=70),
+                                ft.Container(ft.Text(f"{float(package):.1f}" if package is not None else "--", size=row_font_size), width=80),
+                                ft.Container(ft.Text(f"{float(total):.1f}" if total is not None else "--", size=row_font_size, weight="bold"), width=70),
+                                ft.Container(ft.Text(comment or "--", size=row_font_size - 1, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS), expand=True),
+                                ft.Container(ft.Row([edit_btn, delete_btn], spacing=5), width=140),
                         ]),
                         bgcolor=bgcolor,
                         padding=5
@@ -8309,7 +8340,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             label="Ano",
                             ref=timeline_year_dropdown,
                             on_change=on_timeline_year_change,
-                            options=[ft.dropdown.Option("", "Todos")] + [ft.dropdown.Option(str(y)) for y in range(2024, 2040)],
+                            options=[ft.dropdown.Option("", "(Ano Atual)")] + [ft.dropdown.Option(str(y)) for y in range(2024, 2040)],
                             value="",
                             width=150,
                             bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
@@ -8661,7 +8692,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             year_val = None
             if risks_year_dropdown and risks_year_dropdown.current and risks_year_dropdown.current.value:
                 year_val = risks_year_dropdown.current.value
-            search_year = int(year_val) if year_val else datetime.date.today().year
+            # Se o valor não for um número (ex: "(Ano Atual)" ou vazio), usar o ano atual.
+            search_year = int(year_val) if year_val and year_val.strip().isdigit() else datetime.date.today().year
 
             meta = target_slider.value if target_slider and target_slider.value is not None else 5.0
 
@@ -8731,7 +8763,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         elif cur < prev:
                             return ft.Icon(ft.Icons.ARROW_DOWNWARD, color=ft.Colors.RED)
                     except Exception:
-                        pass
+                        # Qualquer erro ao converter, retornar ícone neutro
+                        return ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY)
+                    # Se chegou até aqui sem condição, retornar neutro
                     return ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY)
 
                 t2 = trend_icon(q2, q1)
@@ -8760,19 +8794,26 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         # a abordagem correta para versões mais antigas e garante a quebra de linha.
                         ft.Row(
                             controls=[
-                                ft.Column([ft.Text("Q1", size=11), ft.Text(f"{q1:.2f}" if q1 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
-                                t2,
-                                ft.Column([ft.Text("Q2", size=11), ft.Text(f"{q2:.2f}" if q2 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
-                                t3,
-                                ft.Column([ft.Text("Q3", size=11), ft.Text(f"{q3:.2f}" if q3 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
-                                t4,
-                                ft.Column([ft.Text("Q4", size=11), ft.Text(f"{q4:.2f}" if q4 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER),
+                                ft.Container(
+                                    content=ft.Column([ft.Text("Q1", size=11), ft.Text(f"{q1:.2f}" if q1 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
+                                    expand=True, alignment=ft.alignment.center
+                                ),
+                                ft.Container(
+                                    content=ft.Row([t2, ft.Column([ft.Text("Q2", size=11), ft.Text(f"{q2:.2f}" if q2 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER, spacing=2)], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                    expand=True, alignment=ft.alignment.center
+                                ),
+                                ft.Container(
+                                    content=ft.Row([t3, ft.Column([ft.Text("Q3", size=11), ft.Text(f"{q3:.2f}" if q3 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER, spacing=2)], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                    expand=True, alignment=ft.alignment.center
+                                ),
+                                ft.Container(
+                                    content=ft.Row([t4, ft.Column([ft.Text("Q4", size=11), ft.Text(f"{q4:.2f}" if q4 is not None else "--", size=14)], alignment=ft.CrossAxisAlignment.CENTER, spacing=2)], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                    expand=True, alignment=ft.alignment.center
+                                ),
                             ],
-                            alignment=ft.MainAxisAlignment.SPACE_EVENLY,
-                            wrap=True,
-                            spacing=16
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         )
-                    ], spacing=8), # Espaçamento interno do card reduzido
+                    ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.STRETCH), # Espaçamento interno do card reduzido
                     # Padding ajustado para um visual mais "justo"
                     padding=ft.padding.symmetric(vertical=12, horizontal=16),
                     border_radius=12,
@@ -8810,16 +8851,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # O GridView força todos os cards em uma mesma linha a terem a mesma altura,
             # o que pode criar um espaço vazio (a "borda exagerada") em cards com menos conteúdo.
             # Para que cada card "abrace" seu próprio conteúdo, usaremos um `ft.Row` com a
-            # propriedade `wrap=True`. Isso permite que os cards tenham alturas variáveis.
-            risks_cards_container.current.content = ft.Row(
-                # Envolvemos cada card em um Container com largura fixa para criar o efeito de colunas.
-                controls=[ft.Container(c, width=400) for c in cards],
-                wrap=True,
-                spacing=10,
-                run_spacing=10,
-                # Alinha os cards à esquerda dentro do container.
-                # Para centralizar, poderia usar ft.MainAxisAlignment.CENTER
-                alignment=ft.MainAxisAlignment.START,
+            # propriedade `wrap=True`. Isso permite que os cards tenham alturas variáveis. Adicionamos
+            # um Column com scroll para conter a Row.
+            risks_cards_container.current.content = ft.Column(
+                controls=[
+                    ft.Row(
+                        # Envolvemos cada card em um Container com largura fixa para criar o efeito de colunas.
+                        controls=[ft.Container(c, width=400) for c in cards],
+                        wrap=True,
+                        spacing=10,
+                        run_spacing=10,
+                        # Alinha os cards à esquerda dentro do container.
+                        alignment=ft.MainAxisAlignment.START,
+                    )
+                ],
+                scroll=ft.ScrollMode.AUTO,
+                expand=True
             )
             risks_cards_container.current.update()
 
@@ -8848,7 +8895,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     width=220,
                     value="",
                     on_change=generate_risk_cards,
-                    options=[ft.dropdown.Option("", "(vazio = ano atual)")] + [ft.dropdown.Option(str(y), str(y)) for y in range(2024, 2041)],
+                    options=[ft.dropdown.Option("", "(Ano Atual)")] + [ft.dropdown.Option(str(y), str(y)) for y in range(2024, 2041)],
                     hint_text="Ano"
                 ),
                 ft.Container(width=20),
@@ -8933,6 +8980,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     global responsive_app_manager
     responsive_app_manager = ResponsiveAppManager(page)
     responsive_app_manager.initialize_containers(results_list)
+    responsive_app_manager.initialize_menu_controls(menu_is_expanded, update_menu)
     responsive_app_manager.check_initial_window_state()  # Verificar estado inicial da janela
     print("📱 Gerenciador responsivo inicializado e estado inicial verificado")
 
