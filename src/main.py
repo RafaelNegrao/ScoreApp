@@ -54,7 +54,6 @@ def toast(message, color="green", restore_control=None):
         except Exception:
             pass
 
-# Redirecionar chamadas a `print(...)` para `toast(...)` para manter o comportamento pedido
 def _print_to_toast(*args, **kwargs):
     sep = kwargs.get('sep', ' ')
     msg = sep.join(map(str, args))
@@ -1946,6 +1945,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 refresh_list_ui(key)
             update_control_colors(page, theme_mode)
             update_timeline_search_container_colors(theme_mode)
+            # Atualizar cores específicas da aba Risks (ano/meta)
+            try:
+                update_risks_container_colors(theme_mode)
+            except Exception as _e:
+                print(f"Aviso: falha ao atualizar cores da aba Risks: {_e}")
         except Exception as e:
             print(f"⚠️ Error updating UI: {e}")
 
@@ -2021,6 +2025,57 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 update_control_colors(child, theme_name, depth + 1)
         elif hasattr(control, 'content') and control.content:
             update_control_colors(control.content, theme_name, depth + 1)
+
+    def update_risks_container_colors(theme_name):
+        """Atualiza as cores do header da aba Risks (ano e target)"""
+        try:
+            colors = get_current_theme_colors(theme_name)
+            # Atualizar container principal do header (border e bgcolor)
+            if risks_header_container and risks_header_container.current:
+                try:
+                    risks_header_container.current.bgcolor = colors.get('surface_variant')
+                    risks_header_container.current.border = ft.border.all(1.5, colors.get('outline'))
+                except Exception:
+                    pass
+
+            # Atualizar dropdown e texto alvo dentro do header
+            if risks_year_dropdown and risks_year_dropdown.current:
+                risks_year_dropdown.current.bgcolor = colors.get('field_background')
+                risks_year_dropdown.current.color = colors.get('on_surface')
+                risks_year_dropdown.current.border_color = colors.get('outline')
+
+            if target_display_container and target_display_container.current:
+                # target_display_container tem borda e bgcolor especiais
+                try:
+                    target_display_container.current.border = ft.border.all(1.5, ft.Colors.AMBER_700)
+                    target_display_container.current.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.AMBER_700)
+                except Exception:
+                    pass
+
+            # Fazer update nos controles referenciados e forçar redraw da página
+            if risks_header_container and risks_header_container.current:
+                try:
+                    risks_header_container.current.update()
+                except Exception:
+                    pass
+            if target_display_container and target_display_container.current:
+                try:
+                    target_display_container.current.update()
+                except Exception:
+                    pass
+            # Atualizar dropdown do ano se existir
+            if risks_year_dropdown and risks_year_dropdown.current:
+                try:
+                    risks_year_dropdown.current.update()
+                except Exception:
+                    pass
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        except Exception as e:
+            print(f"Erro ao atualizar cores da aba Risks: {e}")
 
     # ===== CARREGAMENTO INICIAL DO TEMA =====
     # Aplicar tema padrão ou salvo se disponível
@@ -2389,10 +2444,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as ex:
             print(f"⚠️ Error updating Timeline buttons: {ex}")
 
-        # Confirmação
-        page.snack_bar = ft.SnackBar(ft.Text(f"✅ Theme '{theme_mode}' applied and saved!"))
-        page.snack_bar.open = True
-        page.update()
+    # Confirmação via toast
+        toast(f"✅ Theme '{theme_mode}' applied and saved!", "green")
 
     def set_selected(idx):
         def handler(e):
@@ -4593,14 +4646,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ),
         ],
         spacing=15,
-        #bgcolor="#162FB9" if page.theme_mode == ft.ThemeMode.DARK and page.theme is not None else None,
     )
 
-    # Container dos campos de busca com referência para atualização de tema
-    # Tornar o container e seus campos de pesquisa visualmente integrados ao card
-    # OBS: usamos `card_background` para que o container de pesquisa e os campos
-    # PO/BU tenham exatamente o mesmo fundo do card. Para reverter, troque
-    # `.get('card_background')` para `.get('field_background')` neste bloco.
     score_form_container = ft.Container(
         content=score_form, 
         padding=15,
@@ -5144,9 +5191,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 refresh_list_ui(key)
                 update_all_comboboxes()
                 
-                page.snack_bar = ft.SnackBar(ft.Text("✅ Item atualizado com sucesso"))
-                page.snack_bar.open = True
-                page.update()
+                toast("✅ Item atualizado com sucesso", "green")
                 
             except Exception as ex:
                 import sqlite3 as _sqlite
@@ -5155,8 +5200,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     error_text.visible = True
                     edit_dialog.update()
                 else:
-                    page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao atualizar: {ex}"))
-                    page.snack_bar.open = True
+                    toast(f"❌ Erro ao atualizar: {ex}", "red")
                     page.update()
         
         def cancel_edit(e):
@@ -5260,9 +5304,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 if key in lists_controls and lists_controls[key]['selected_item']:
                     value = lists_controls[key]['selected_item']
                 else:
-                    page.snack_bar = ft.SnackBar(ft.Text("❌ Selecione um item da lista para excluir"))
-                    page.snack_bar.open = True
-                    page.update()
+                    toast("❌ Selecione um item da lista para excluir", "red")
+                    return
                     return
             
             # Mapear nomes amigáveis dos tipos de lista
@@ -5300,8 +5343,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Fechar dialog
                     page.close(dialog)
                     
-                    page.snack_bar = ft.SnackBar(ft.Text(f"✅ Item '{value}' removido de {list_type}"))
-                    page.snack_bar.open = True
+                    toast(f"✅ Item '{value}' removido de {list_type}", "green")
                     page.update()
                     
                 except Exception as ex:
@@ -5311,10 +5353,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # mostrar mensagem amigável
                     import sqlite3 as _sqlite
                     if isinstance(ex, _sqlite.IntegrityError):
-                        page.snack_bar = ft.SnackBar(ft.Text(f"❌ Não foi possível excluir '{value}': restrição de integridade."))
+                        toast(f"❌ Não foi possível excluir '{value}': restrição de integridade.", "red")
                     else:
-                        page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao deletar '{value}': {ex}"))
-                    page.snack_bar.open = True
+                        toast(f"❌ Erro ao deletar '{value}': {ex}", "red")
                     page.update()
                     print(f"Erro ao deletar {value} em {table}: {ex}")
             
@@ -5336,8 +5377,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             page.update()
             
         except Exception as ex:
-            page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao tentar excluir item: {ex}"))
-            page.snack_bar.open = True
+            toast(f"❌ Erro ao tentar excluir item: {ex}", "red")
             page.update()
             print(f"Erro geral no delete_alias_handler: {ex}")
 
@@ -5429,8 +5469,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             lists_controls['sqie']['feedback'].value = f"SQIE '{alias}' adicionado"
             lists_controls['sqie']['feedback'].color = 'green'
             lists_controls['sqie']['feedback'].visible = True
-            page.snack_bar = ft.SnackBar(ft.Text(f"✅ SQIE '{alias}' adicionado com sucesso"))
-            page.snack_bar.open = True
+            toast(f"✅ SQIE '{alias}' adicionado com sucesso", "green")
             page.update()
         except Exception as ex:
             import sqlite3 as _sqlite
@@ -5440,8 +5479,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 lists_controls['sqie']['feedback'].visible = True
                 page.update()
             else:
-                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao inserir sqie: {ex}"))
-                page.snack_bar.open = True
+                toast(f"❌ Erro ao inserir sqie: {ex}", "red")
                 page.update()
             print(f"Erro ao inserir sqie: {ex}")
         except Exception as ex:
@@ -5509,8 +5547,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 lists_controls[key]['feedback'].value = f"Item adicionado em {key}"
                 lists_controls[key]['feedback'].color = 'green'
                 lists_controls[key]['feedback'].visible = True
-                page.snack_bar = ft.SnackBar(ft.Text(f"✅ Item adicionado com sucesso em {key}"))
-                page.snack_bar.open = True
+                toast(f"✅ Item adicionado com sucesso em {key}", "green")
                 page.update()
         except Exception as ex:
             import sqlite3 as _sqlite
@@ -5521,10 +5558,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls[key]['feedback'].color = 'red'
                     lists_controls[key]['feedback'].visible = True
                     page.update()
-            else:
-                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao inserir item: {ex}"))
-                page.snack_bar.open = True
-                page.update()
+                else:
+                    toast(f"❌ Erro ao inserir item: {ex}", "red")
+                    page.update()
             print(f"Erro ao inserir item em {table}: {ex}")
             page.update()
         except Exception as ex:
@@ -5536,10 +5572,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls[key]['feedback'].color = 'red'
                     lists_controls[key]['feedback'].visible = True
                     page.update()
-            else:
-                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao inserir em {table}: {ex}"))
-                page.snack_bar.open = True
-                page.update()
+                else:
+                    toast(f"❌ Erro ao inserir em {table}: {ex}", "red")
+                    page.update()
             print(f"Erro ao inserir em {table}: {ex}")
         except Exception as ex:
             print(f"Erro ao inserir em {table}: {ex}")
@@ -6641,8 +6676,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         if not db_conn:
             print("❌ Erro: Conexão com banco não disponível")
-            page.snack_bar = ft.SnackBar(ft.Text("❌ Erro: Conexão com banco não disponível"))
-            page.snack_bar.open = True
+            toast("❌ Erro: Conexão com banco não disponível", "red")
             page.update()
             return
         
@@ -6688,8 +6722,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         except Exception as ex:
             print(f"❌ Erro ao atualizar critérios: {ex}")
-            page.snack_bar = ft.SnackBar(ft.Text("❌ Erro ao atualizar critérios!"))
-            page.snack_bar.open = True
+            toast("❌ Erro ao atualizar critérios!", "red")
             page.update()
 
     # Criar títulos fixos para Criteria (fora do scroll)
@@ -7096,13 +7129,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     if globals().get('selected_user') == w:
                                         clear_users_fields()
                                     refresh_users_list()
-                                    page.snack_bar = ft.SnackBar(ft.Text(f"✅ Usuário '{w}' removido com sucesso"))
-                                    page.snack_bar.open = True
+                                    toast(f"✅ Usuário '{w}' removido com sucesso", "green")
                                     page.update()
                                 except Exception as ex:
                                     page.close(dialog)
-                                    page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao excluir usuário: {ex}"))
-                                    page.snack_bar.open = True
+                                    toast(f"❌ Erro ao excluir usuário: {ex}", "red")
                                     page.update()
 
                             def cancel_delete(evt):
@@ -7119,8 +7150,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             page.open(dialog)
                             page.update()
                         except Exception as ex:
-                            page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao tentar excluir usuário: {ex}"))
-                            page.snack_bar.open = True
+                            toast(f"❌ Erro ao tentar excluir usuário: {ex}", "red")
                             page.update()
 
                     delete_btn = ft.TextButton(
@@ -7219,8 +7249,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         except Exception as ex:
             print(f"Erro ao selecionar usuário: {ex}")
-            page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao carregar usuário: {ex}"))
-            page.snack_bar.open = True
+            toast(f"❌ Erro ao carregar usuário: {ex}", "red")
             page.update()
 
     def clear_users_fields():
@@ -7307,8 +7336,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Valores para o banco: otif={otif}, nil={nil}, pickup={pickup}, package={package}")
             
             if not wwid or not password or not privilege:
-                page.snack_bar = ft.SnackBar(ft.Text("❌ Preencha WWID, Senha e Privilégio"))
-                page.snack_bar.open = True
+                toast("❌ Preencha WWID, Senha e Privilégio", "red")
                 page.update()
                 return
             
@@ -7329,7 +7357,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 """, (name, password, privilege, otif, nil, pickup, package, wwid))
                 
                 print(f"✅ Usuário {wwid} atualizado com sucesso!")
-                page.snack_bar = ft.SnackBar(ft.Text(f"✅ Usuário '{wwid}' atualizado com sucesso"))
+                toast(f"✅ Usuário '{wwid}' atualizado com sucesso", "green")
             else:
                 # Cria novo usuário
                 print(f"💾 Inserindo NOVO usuário {wwid} no banco de dados...")
@@ -7340,10 +7368,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 """, (wwid, name, password, privilege, otif, nil, pickup, package))
                 
                 print(f"✅ Usuário {wwid} inserido com sucesso!")
-                page.snack_bar = ft.SnackBar(ft.Text(f"✅ Usuário '{wwid}' criado com sucesso"))
+                toast(f"✅ Usuário '{wwid}' criado com sucesso", "green")
             
             db_conn.commit()
-            page.snack_bar.open = True
             page.update()
             
             print(f"Lista atualizada com {len(load_users_full())} usuários!")
@@ -7352,7 +7379,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         except Exception as ex:
             show_toast(f"❌ Erro ao salvar usuário: {ex}", "red")
-            page.snack_bar.open = True
             page.update()
             print(f"Erro ao adicionar/atualizar usuário: {ex}")
 
@@ -7364,15 +7390,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             
             if not wwid:
-                page.snack_bar = ft.SnackBar(ft.Text("❌ Digite um WWID para excluir"))
-                page.snack_bar.open = True
+                toast("❌ Digite um WWID para excluir", "red")
                 page.update()
                 return
             
             # Verificar se o usuário existe no banco
             if not check_user_exists(wwid):
-                page.snack_bar = ft.SnackBar(ft.Text(f"❌ Usuário '{wwid}' não encontrado"))
-                page.snack_bar.open = True
+                toast(f"❌ Usuário '{wwid}' não encontrado", "red")
                 page.update()
                 return
             
@@ -7392,16 +7416,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Atualizar lista
                     refresh_users_list()
                     
-                    page.snack_bar = ft.SnackBar(ft.Text(f"✅ Usuário '{wwid}' removido com sucesso"))
-                    page.snack_bar.open = True
+                    toast(f"✅ Usuário '{wwid}' removido com sucesso", "green")
                     page.update()
                     
                 except Exception as ex:
                     # Fechar dialog mesmo se der erro
                     page.close(dialog)
                     
-                    page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao excluir usuário: {ex}"))
-                    page.snack_bar.open = True
+                    toast(f"❌ Erro ao excluir usuário: {ex}", "red")
                     page.update()
                     print(f"Erro ao deletar usuário {wwid}: {ex}")
             
@@ -7423,8 +7445,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             page.update()
             
         except Exception as ex:
-            page.snack_bar = ft.SnackBar(ft.Text(f"❌ Erro ao tentar excluir usuário: {ex}"))
-            page.snack_bar.open = True
+            toast(f"❌ Erro ao tentar excluir usuário: {ex}", "red")
             page.update()
             print(f"Erro geral no delete_user: {ex}")
 
@@ -7559,6 +7580,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     risks_year_dropdown = ft.Ref[ft.Dropdown]()
     risks_cards_container = ft.Ref[ft.Container]()
     target_risks_text = ft.Ref[ft.Text]()
+    # Ref para o container que agrupa ano e target (para atualização de tema)
+    risks_header_container = ft.Ref[ft.Container]()
+    # Ref para o container do display de Target (borda/背景 especial)
+    target_display_container = ft.Ref[ft.Container]()
     
     # Referências para as abas de visualização
     timeline_chart_tab = ft.Ref[bool]()
@@ -8034,8 +8059,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
     def show_timeline_snackbar(message):
         """Mostra snackbar na timeline"""
-        page.snack_bar = ft.SnackBar(ft.Text(message))
-        page.snack_bar.open = True
+        # Substituído por toast para notificações consistentes
+        toast(message)
         page.update()
 
     def delete_timeline_record(month, year_data, vendor_id):
@@ -9028,7 +9053,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Divider(),
             # Campos ano e meta agrupados em container com cor do tema
             ft.Container(
-                content=ft.Row(
+                        content=ft.Row(
                     [
                         ft.Dropdown(
                             ref=risks_year_dropdown,
@@ -9044,6 +9069,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         ),
                         ft.Container(width=20),
                         ft.Container(
+                            ref=target_display_container,
                             content=ft.Row(
                                 [
                                     ft.Icon(ft.Icons.FLAG_CIRCLE_OUTLINED, color=ft.Colors.AMBER_700, size=20),
@@ -9067,6 +9093,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ),
                 padding=ft.padding.symmetric(horizontal=16, vertical=16),
                 margin=ft.margin.only(bottom=6),
+                ref=risks_header_container,
                 border=ft.border.all(1.5, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
                 border_radius=12,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
