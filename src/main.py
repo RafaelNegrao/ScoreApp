@@ -4,6 +4,7 @@ import random
 import string
 from db_manager import DBManager
 import threading
+import getpass
 
 # Configuração mínima de toasts (usada por redirect de `print` e por notificações)
 app_settings = {'toast_duration': 3}
@@ -2485,6 +2486,381 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as ex:
             print(f"Erro ao salvar critérios: {ex}")
             return False
+
+    # --- Início: Funções para Gerar Nota Cheia ---
+    
+    def generate_full_score_dialog():
+        """Abre diálogo para gerar notas cheias"""
+        # Refs para os controles do diálogo
+        month_dropdown_ref = ft.Ref()
+        year_dropdown_ref = ft.Ref()
+        generate_button_ref = ft.Ref()
+        cancel_button_ref = ft.Ref()
+        # controle de execução e cancelamento
+        import threading as _threading
+        cancel_event = _threading.Event()
+        running_flag = {'value': False}
+        include_inactive_ref = ft.Ref()
+        progress_bar_ref = ft.Ref()
+        progress_text_ref = ft.Ref()
+        
+        # Opções de mês
+        months = [
+            ft.dropdown.Option("1", "Janeiro"),
+            ft.dropdown.Option("2", "Fevereiro"),
+            ft.dropdown.Option("3", "Março"),
+            ft.dropdown.Option("4", "Abril"),
+            ft.dropdown.Option("5", "Maio"),
+            ft.dropdown.Option("6", "Junho"),
+            ft.dropdown.Option("7", "Julho"),
+            ft.dropdown.Option("8", "Agosto"),
+            ft.dropdown.Option("9", "Setembro"),
+            ft.dropdown.Option("10", "Outubro"),
+            ft.dropdown.Option("11", "Novembro"),
+            ft.dropdown.Option("12", "Dezembro"),
+        ]
+        
+        # Opções de ano (últimos 3 anos + ano atual)
+        current_year = datetime.datetime.now().year
+        years = [ft.dropdown.Option(str(year), str(year)) for year in range(current_year - 2, current_year + 1)]
+        
+        def close_dialog(e):
+            # Se estiver rodando, aciona cancelamento; caso contrário, fecha o diálogo normalmente
+            if running_flag['value']:
+                cancel_event.set()
+                try:
+                    progress_text_ref.current.visible = True
+                    progress_text_ref.current.value = "Cancelando..."
+                    progress_bar_ref.current.visible = True
+                    # opcional: indeterminate
+                    progress_bar_ref.current.value = None
+                    # desabilita botões para evitar cliques repetidos
+                    if cancel_button_ref.current:
+                        cancel_button_ref.current.disabled = True
+                    if generate_button_ref.current:
+                        generate_button_ref.current.disabled = True
+                    page.update()
+                except Exception:
+                    pass
+            else:
+                page.close(dialog)
+        
+        def start_generation(e):
+            month = month_dropdown_ref.current.value
+            year = year_dropdown_ref.current.value
+            include_inactive = bool(include_inactive_ref.current.value)
+            
+            if not month or not year:
+                show_toast("Mês e ano devem ser selecionados para gerar notas.", "red")
+                return
+            
+            # Validação para não gerar para meses futuros
+            now = datetime.datetime.now()
+            month_int = int(month)
+            year_int = int(year)
+            
+            if (year_int > now.year) or (year_int == now.year and month_int > now.month):
+                show_toast("Não é possível gerar notas para meses futuros.", "red")
+                return
+            
+            # Evitar reentrância e desabilitar botão Gerar
+            if running_flag['value']:
+                return
+            running_flag['value'] = True
+            try:
+                if generate_button_ref.current:
+                    generate_button_ref.current.disabled = True
+                if cancel_button_ref.current:
+                    cancel_button_ref.current.disabled = False
+                page.update()
+            except Exception:
+                pass
+
+            # Iniciar geração em thread separada
+            def run_generation():
+                try:
+                    generate_full_scores(
+                        month, year,
+                        include_inactive,
+                        cancel_event,
+                        progress_bar_ref,
+                        progress_text_ref,
+                        dialog,
+                        generate_button_ref,
+                        cancel_button_ref,
+                    )
+                except Exception as ex:
+                    page.run_thread(lambda: show_toast(f"Erro durante a geração: {str(ex)}", "red"))
+                finally:
+                    # reset estado ao finalizar (se o diálogo ainda estiver aberto)
+                    running_flag['value'] = False
+                    try:
+                        if generate_button_ref.current:
+                            generate_button_ref.current.disabled = False
+                        if cancel_button_ref.current:
+                            cancel_button_ref.current.disabled = False
+                        page.update()
+                    except Exception:
+                        pass
+            
+            _threading.Thread(target=run_generation, daemon=True).start()
+        
+        # Obter cores do tema atual
+        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+        
+        # Conteúdo do diálogo
+        dialog_content = ft.Column([
+            ft.Text(
+                "Gerar Nota Cheia", 
+                size=20, 
+                weight="bold",
+                color=theme_colors.get('on_surface')
+            ),
+            ft.Text(
+                "Selecione o mês e ano para gerar notas máximas para todos os fornecedores ativos:", 
+                size=14,
+                color=theme_colors.get('on_surface')
+            ),
+            ft.Divider(height=20, color=theme_colors.get('outline')),
+            
+            ft.Row([
+                ft.Dropdown(
+                    label="Mês",
+                    options=months,
+                    expand=True,
+                    ref=month_dropdown_ref,
+                    dense=True,
+                    color=theme_colors.get('on_surface'),
+                    border_color=theme_colors.get('outline'),
+                    **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
+                ),
+                ft.Dropdown(
+                    label="Ano", 
+                    options=years,
+                    expand=True,
+                    ref=year_dropdown_ref,
+                    dense=True,
+                    color=theme_colors.get('on_surface'),
+                    border_color=theme_colors.get('outline'),
+                    **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
+                ),
+            ], spacing=10),
+
+            # Switch para incluir fornecedores inativos
+            ft.Row([
+                ft.Switch(ref=include_inactive_ref, value=False, active_color=theme_colors.get('primary')),
+                ft.Text("Gerar score também para Inactives", color=theme_colors.get('on_surface'))
+            ], spacing=10),
+            
+            # Container para barra de progresso
+            ft.Container(
+                content=ft.Column([
+                    ft.Text(
+                        "", 
+                        ref=progress_text_ref, 
+                        size=12, 
+                        visible=False,
+                        color=theme_colors.get('on_surface')
+                    ),
+                    ft.ProgressBar(ref=progress_bar_ref, visible=False),
+                ], spacing=5),
+                padding=ft.padding.only(top=20)
+            ),
+            
+            ft.Divider(height=20, color=theme_colors.get('outline')),
+            ft.Row([
+                ft.TextButton(
+                    "Cancelar", 
+                    on_click=close_dialog,
+                    ref=cancel_button_ref,
+                    style=ft.ButtonStyle(
+                        color=theme_colors.get('on_surface')
+                    )
+                ),
+                ft.ElevatedButton(
+                    "Gerar", 
+                    on_click=start_generation, 
+                    bgcolor=theme_colors.get('primary'), 
+                    color=theme_colors.get('on_primary'),
+                    ref=generate_button_ref,
+                ),
+            ], alignment=ft.MainAxisAlignment.END, spacing=10)
+        ], width=450, spacing=10, tight=True)
+        
+        dialog = ft.AlertDialog(
+            content=dialog_content,
+            modal=True,
+        )
+        
+        page.open(dialog)
+    
+    def generate_full_scores(month, year, include_inactive, cancel_event, progress_bar_ref, progress_text_ref, dialog, generate_button_ref, cancel_button_ref):
+        """Gera notas cheias baseado na função fornecida pelo usuário"""
+        try:
+            # Mostrar progresso
+            progress_bar_ref.current.visible = True
+            progress_text_ref.current.visible = True
+            progress_text_ref.current.value = "Carregando critérios..."
+            page.update()
+            
+            # Carregar critérios da tabela criteria_table
+            criterios_raw = db_manager.query(
+                "SELECT criteria_category, value FROM criteria_table"
+            )
+            
+            criterio_map = {}
+            for row in criterios_raw:
+                # DBManager.query retorna dict(row)
+                nome = str(row.get('criteria_category') if isinstance(row, dict) else row[0]).strip().lower()
+                valor = float(row.get('value') if isinstance(row, dict) else row[1])
+                if "package" in nome:
+                    criterio_map["package"] = valor
+                elif "pick" in nome:
+                    criterio_map["pickup"] = valor  
+                elif "nil" in nome:
+                    criterio_map["nil"] = valor
+                elif "otif" in nome:
+                    criterio_map["otif"] = valor
+            
+            if not all(k in criterio_map for k in ["package", "pickup", "nil", "otif"]):
+                page.run_thread(lambda: show_toast("Um ou mais critérios de pontuação estão faltando na tabela de critérios.", "red"))
+                return
+            
+            progress_text_ref.current.value = "Carregando fornecedores..."
+            page.update()
+            
+            # Carregar fornecedores
+            fornecedores = db_manager.query(
+                "SELECT supplier_id, vendor_name, supplier_status FROM supplier_database_table"
+            )
+            
+            if not fornecedores:
+                page.run_thread(lambda: show_toast("Nenhum fornecedor encontrado no banco de dados.", "orange"))
+                return
+            
+            # Configurar barra de progresso
+            progress_bar_ref.current.value = 0
+            total_fornecedores = len(fornecedores)
+            page.update()
+            
+            user = getpass.getuser()
+            register_date = datetime.datetime.now()
+            registered_by = "NIL,OTIF,Package,Pickup"
+            nota_fixa = 10.0
+            
+            adicionados = 0
+            ignorados_inativos = 0
+            ignorados_existentes = 0
+            
+            for i, fornecedor in enumerate(fornecedores):
+                # Cancelamento cooperativo
+                if cancel_event.is_set():
+                    # Fechar diálogo e notificar
+                    page.close(dialog)
+                    page.run_thread(lambda: show_toast("Operação cancelada pelo usuário.", "orange"))
+                    return
+                # Atualizar progresso
+                progress = (i + 1) / total_fornecedores
+                progress_bar_ref.current.value = progress
+                progress_text_ref.current.value = f"Processando fornecedor {i + 1} de {total_fornecedores}..."
+                page.update()
+                
+                # fornecedores é lista de dicts
+                supplier_id = fornecedor.get('supplier_id') if isinstance(fornecedor, dict) else fornecedor[0]
+                supplier_name = fornecedor.get('vendor_name') if isinstance(fornecedor, dict) else fornecedor[1]
+                raw_status = fornecedor.get('supplier_status') if isinstance(fornecedor, dict) else fornecedor[2]
+                status = raw_status.strip() if raw_status else ""
+                status_lower = status.lower()
+                
+                # Filtrar fornecedores inativos (status deve ser "Active")
+                if not include_inactive and status_lower != "active":
+                    ignorados_inativos += 1
+                    continue
+                
+                # Verificar se já existe registro para este período
+                existe = db_manager.query(
+                    "SELECT 1 FROM supplier_score_records_table WHERE supplier_id = ? AND month = ? AND year = ?",
+                    (supplier_id, month, year)
+                )
+                if existe:
+                    ignorados_existentes += 1
+                    continue
+                
+                # Calcular total baseado nos critérios
+                total = (
+                    nota_fixa * criterio_map["otif"] +
+                    nota_fixa * criterio_map["nil"] +
+                    nota_fixa * criterio_map["package"] +
+                    nota_fixa * criterio_map["pickup"]
+                )
+                total = round(total, 2)
+                
+                # Inserir registro
+                query_insert = """
+                    INSERT INTO supplier_score_records_table (
+                        supplier_id, supplier_name, month, year,
+                        quality_package, quality_pickup, nil, otif,
+                        total_score, comment, register_date, changed_by, registered_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                params = (
+                    str(supplier_id),                 # supplier_id como texto (mantém compatibilidade)
+                    str(supplier_name),               # supplier_name texto
+                    str(month),                       # mês como texto
+                    str(year),                        # ano como texto
+                    float(nota_fixa),                 # quality_package (numérico)
+                    float(nota_fixa),                 # quality_pickup (numérico)
+                    float(nota_fixa),                 # nil (numérico)
+                    float(nota_fixa),                 # otif (numérico)
+                    float(total),                     # total_score (numérico)
+                    "Maximum score auto-generated.", # comment
+                    register_date.isoformat(),        # register_date (ISO string)
+                    str(user),                        # changed_by
+                    registered_by                     # registered_by
+                )
+                
+                try:
+                    db_manager.execute(query_insert, params)
+                    adicionados += 1
+                    print(f"Registro adicionado para {supplier_name} - {month}/{year}")
+                except Exception as insert_error:
+                    print(f"Erro ao inserir {supplier_name}: {insert_error}")
+                    continue
+            
+            # Exibir resultado no próprio diálogo (sem fechar)
+            summary = (
+                f"Geração de notas concluída!\n"
+                f"• Adicionadas: {adicionados}\n"
+                f"• Ignoradas (inativas): {ignorados_inativos}\n"
+                f"• Ignoradas (já existem): {ignorados_existentes}"
+            )
+            try:
+                progress_bar_ref.current.visible = False
+                progress_text_ref.current.visible = True
+                progress_text_ref.current.value = summary
+                # reabilitar Gerar; alterar Cancelar para Fechar
+                if generate_button_ref and generate_button_ref.current:
+                    generate_button_ref.current.disabled = False
+                if cancel_button_ref and cancel_button_ref.current:
+                    try:
+                        cancel_button_ref.current.text = "Fechar"
+                    except Exception:
+                        pass
+                page.update()
+            except Exception:
+                pass
+            
+            # Atualizar lista de resultados se estiver visível
+            page.run_thread(lambda: (
+                results_list.controls.clear(),
+                results_list.update()
+            ) if 'results_list' in globals() and results_list else None)
+            
+        except Exception as e:
+            err_msg = f"Erro durante a geração de notas: {e}"
+            page.run_thread(lambda msg=err_msg: show_toast(msg, "red"))
+    
+    # --- Fim: Funções para Gerar Nota Cheia ---
 
     def theme_changed(e):
         """Handle theme change from UI (radio button)"""
@@ -8266,10 +8642,31 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     score_view = ft.Column(
         [
+            # Header com botão de menu
+            ft.Container(
+                content=ft.Row([
+                    ft.PopupMenuButton(
+                        icon=ft.Icons.MORE_HORIZ,
+                        items=[
+                            ft.PopupMenuItem(
+                                text="Gerar nota cheia",
+                                icon=ft.Icons.STAR,
+                                on_click=lambda _: generate_full_score_dialog()
+                            )
+                        ],
+                        tooltip="Opções",
+                        icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
+                        shape=ft.RoundedRectangleBorder(radius=8)
+                    ),
+                    ft.Container(expand=True),  # Spacer para empurrar o menu para a esquerda
+                ], alignment=ft.MainAxisAlignment.START),
+                padding=ft.padding.only(left=20, right=20, top=10)
+            ),
             ft.Container(
                 content=score_view_content, 
                 alignment=ft.alignment.top_center, 
-                padding=ft.padding.only(top=20, left=20, right=20, bottom=10)
+                padding=ft.padding.only(top=10, left=20, right=20, bottom=10)
             ),
             ft.Divider(),
             results_list,
