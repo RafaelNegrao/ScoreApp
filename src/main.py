@@ -3,9 +3,13 @@ import datetime
 import sqlite3
 import random
 import string
+from db_manager import DBManager
 
 # Configuração mínima de toasts (usada por redirect de `print` e por notificações)
 app_settings = {'toast_duration': 3}
+
+# Instância global do DBManager
+db_manager = DBManager('db.db')
 
 def toast(message, color="green", restore_control=None):
     """Mostrar notificação toast de forma segura. Se `page` não estiver disponível,
@@ -779,27 +783,21 @@ def login_screen(page: ft.Page):
     def authenticate_user(wwid, password):
         """Verifica credenciais na tabela users_table"""
         try:
-            conn = sqlite3.connect('db.db')
-            cursor = conn.cursor()
-            
-            cursor.execute("""
+            result = db_manager.query_one("""
                 SELECT user_wwid, user_password, user_privilege, otif, nil, pickup, package 
                 FROM users_table 
                 WHERE user_wwid = ? AND user_password = ?
             """, (wwid, password))
             
-            result = cursor.fetchone()
-            conn.close()
-            
             if result:
                 return {
-                    'wwid': result[0],
-                    'password': result[1],
-                    'privilege': result[2],
-                    'otif': result[3] == '1' or result[3] == 1,
-                    'nil': result[4] == '1' or result[4] == 1,
-                    'pickup': result[5] == '1' or result[5] == 1,
-                    'package': result[6] == '1' or result[6] == 1
+                    'wwid': result['user_wwid'],
+                    'password': result['user_password'],
+                    'privilege': result['user_privilege'],
+                    'otif': result['otif'] == '1' or result['otif'] == 1,
+                    'nil': result['nil'] == '1' or result['nil'] == 1,
+                    'pickup': result['pickup'] == '1' or result['pickup'] == 1,
+                    'package': result['package'] == '1' or result['package'] == 1
                 }
             return None
             
@@ -810,14 +808,8 @@ def login_screen(page: ft.Page):
     def get_user_theme(wwid):
         """Busca tema do usuário na tabela theme_settings"""
         try:
-            conn = sqlite3.connect('db.db')
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT theme_mode FROM theme_settings WHERE user_wwid = ?", (wwid,))
-            result = cursor.fetchone()
-            conn.close()
-            
-            return result[0] if result else "white"
+            result = db_manager.query_one("SELECT theme_mode FROM theme_settings WHERE user_wwid = ?", (wwid,))
+            return result['theme_mode'] if result else "white"
             
         except Exception as e:
             print(f"Erro ao carregar tema: {e}")
@@ -1095,7 +1087,7 @@ class AddSupplierDialog(ft.AlertDialog):
                 label="Origem",
                 width=250,
                 value="",
-                options=[ft.dropdown.Option(v) for v in ["", "Nacional", "Importado"]],
+                options=[ft.dropdown.Option(v) for v in ["Nacional", "Importado"]],
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
@@ -1107,7 +1099,7 @@ class AddSupplierDialog(ft.AlertDialog):
                     border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                     options=[
                         ft.dropdown.Option(v)
-                        for v in (self.list_options.get('category') or ["", "Raw Materials", "Components", "Services", "Equipment"])
+                        for v in (self.list_options.get('category') or ["Raw Materials", "Components", "Services", "Equipment"])
                     ],
                 ),
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
@@ -1322,7 +1314,11 @@ class EditTimelineRecordDialog(ft.AlertDialog):
 
         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        month_name = months[int(month)-1] if 1 <= int(month) <= 12 else str(month)
+        try:
+            month_int = int(month)
+            month_name = months[month_int-1] if 1 <= month_int <= 12 else str(month)
+        except (ValueError, TypeError):
+            month_name = str(month)
 
         self.title = ft.Text(f"Editar Registro - {month_name}/{year}")
 
@@ -1511,16 +1507,12 @@ app_settings = {'toast_duration': 3}
 def load_app_settings(user_wwid=None):
     """Carrega as configurações gerais do aplicativo."""
     try:
-        conn = sqlite3.connect("db.db", check_same_thread=False)
-        cur = conn.cursor()
         if user_wwid:
-            cur.execute("SELECT toast_duration FROM app_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
+            result = db_manager.query_one("SELECT toast_duration FROM app_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
         else:
-            cur.execute("SELECT toast_duration FROM app_settings WHERE user_wwid = 'default' ORDER BY last_updated DESC LIMIT 1")
-        result = cur.fetchone()
-        conn.close()
+            result = db_manager.query_one("SELECT toast_duration FROM app_settings WHERE user_wwid = 'default' ORDER BY last_updated DESC LIMIT 1")
         if result:
-            return {'toast_duration': result[0]}
+            return {'toast_duration': result['toast_duration']}
         return {'toast_duration': 3}  # Valor padrão
     except Exception as ex:
         print(f"Erro ao carregar configurações do app: {ex}")
@@ -1529,24 +1521,19 @@ def load_app_settings(user_wwid=None):
 def save_app_settings(settings, user_wwid=None):
     """Salva as configurações gerais do aplicativo."""
     try:
-        conn = sqlite3.connect("db.db", check_same_thread=False)
-        cur = conn.cursor()
         user_id = user_wwid or 'default'
         
-        cur.execute("SELECT id FROM app_settings WHERE user_wwid = ?", (user_id,))
-        existing = cur.fetchone()
+        existing = db_manager.query_one("SELECT id FROM app_settings WHERE user_wwid = ?", (user_id,))
         
         if existing:
             # Atualizar configuração existente
-            cur.execute("UPDATE app_settings SET toast_duration = ?, last_updated = CURRENT_TIMESTAMP WHERE user_wwid = ?", 
+            db_manager.execute("UPDATE app_settings SET toast_duration = ?, last_updated = CURRENT_TIMESTAMP WHERE user_wwid = ?", 
                       (settings['toast_duration'], user_id))
         else:
             # Inserir nova configuração
-            cur.execute("INSERT INTO app_settings (user_wwid, toast_duration) VALUES (?, ?)", 
+            db_manager.execute("INSERT INTO app_settings (user_wwid, toast_duration) VALUES (?, ?)", 
                       (user_id, settings['toast_duration']))
         
-        conn.commit()
-        conn.close()
         return True
     except Exception as ex:
         print(f"Erro ao salvar configurações do app: {ex}")
@@ -1604,12 +1591,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Funções auxiliares para usuários (definidas antes da interface)
     def check_user_exists(wwid):
         """Verifica se um usuário existe no banco de dados pelo WWID."""
-        if not db_conn or not wwid or not wwid.strip():
+        if not wwid or not wwid.strip():
             return False
         try:
-            cur = db_conn.cursor()
-            cur.execute("SELECT 1 FROM users_table WHERE UPPER(user_wwid) = ?", (wwid.upper().strip(),))
-            return cur.fetchone() is not None
+            result = db_manager.query_one("SELECT 1 FROM users_table WHERE UPPER(user_wwid) = ?", (wwid.upper().strip(),))
+            return result is not None
         except Exception as ex:
             print(f"Erro ao verificar usuário: {ex}")
             return False
@@ -1779,17 +1765,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def load_user_data_by_wwid(wwid):
         """Carrega os dados de um usuário pelo WWID e preenche os campos."""
         try:
-            cur = db_conn.cursor()
-            cur.execute("""
+            result = db_manager.query_one("""
                 SELECT user_name, user_password, user_privilege,
                        otif, nil, pickup, package
                 FROM users_table 
                 WHERE UPPER(user_wwid) = ?
             """, (wwid.upper(),))
             
-            row = cur.fetchone()
-            if row:
-                name, password, privilege, otif, nil, pickup, package = row
+            if result:
+                name = result['user_name']
+                password = result['user_password']
+                privilege = result['user_privilege']
+                otif = result['otif']
+                nil = result['nil']
+                pickup = result['pickup']
+                package = result['package']
                 
                 print(f"🔄 Preenchimento automático para WWID {wwid}")
                 
@@ -1854,18 +1844,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def load_user_theme(user_wwid=None):
         """Carrega o tema salvo do usuário ou o tema padrão."""
         try:
-            if not db_conn:
-                return "light"
-            
-            cur = db_conn.cursor()
             if user_wwid:
-                cur.execute("SELECT theme_mode FROM theme_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
+                result = db_manager.query_one("SELECT theme_mode FROM theme_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
             else:
                 # Se não há usuário logado, pegar o último tema usado
-                cur.execute("SELECT theme_mode FROM theme_settings ORDER BY last_updated DESC LIMIT 1")
+                result = db_manager.query_one("SELECT theme_mode FROM theme_settings ORDER BY last_updated DESC LIMIT 1")
             
-            result = cur.fetchone()
-            return result[0] if result else "light"
+            return result['theme_mode'] if result else "light"
             
         except Exception as e:
             print(f"Erro ao carregar tema: {e}")
@@ -1874,28 +1859,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def save_user_theme(theme_mode, user_wwid=None):
         """Salva o tema do usuário no banco de dados."""
         try:
-            if not db_conn:
-                return
-            
-            cur = db_conn.cursor()
-            
             # Inserir ou atualizar tema
             if user_wwid:
                 # Verificar se já existe configuração para este usuário
-                cur.execute("SELECT id FROM theme_settings WHERE user_wwid = ?", (user_wwid,))
-                if cur.fetchone():
+                existing = db_manager.query_one("SELECT id FROM theme_settings WHERE user_wwid = ?", (user_wwid,))
+                if existing:
                     # Atualizar existente
-                    cur.execute("UPDATE theme_settings SET theme_mode = ?, last_updated = CURRENT_TIMESTAMP WHERE user_wwid = ?", 
+                    db_manager.execute("UPDATE theme_settings SET theme_mode = ?, last_updated = CURRENT_TIMESTAMP WHERE user_wwid = ?", 
                               (theme_mode, user_wwid))
                 else:
                     # Inserir novo
-                    cur.execute("INSERT INTO theme_settings (user_wwid, theme_mode) VALUES (?, ?)", 
+                    db_manager.execute("INSERT INTO theme_settings (user_wwid, theme_mode) VALUES (?, ?)", 
                               (user_wwid, theme_mode))
             else:
                 # Sem usuário específico, inserir como configuração geral
-                cur.execute("INSERT INTO theme_settings (theme_mode) VALUES (?)", (theme_mode,))
+                db_manager.execute("INSERT INTO theme_settings (theme_mode) VALUES (?)", (theme_mode,))
             
-            db_conn.commit()
             print(f"Tema '{theme_mode}' salvo com sucesso!")
             
         except Exception as e:
@@ -2090,11 +2069,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Verificar se o banco de dados existe
                 db_path = 'db.db'
                 if os.path.exists(db_path):
-                    temp_conn = sqlite3.connect(db_path)
-                    cursor = temp_conn.cursor()
-                    
                     # Criar tabela se não existir
-                    cursor.execute('''
+                    db_manager.execute('''
                         CREATE TABLE IF NOT EXISTS user_themes (
                             user_wwid TEXT PRIMARY KEY,
                             theme TEXT NOT NULL
@@ -2102,10 +2078,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ''')
                     
                     # Buscar tema do usuário
-                    cursor.execute("SELECT theme FROM user_themes WHERE user_wwid = ?", (current_user_wwid,))
-                    result = cursor.fetchone()
-                    saved_theme = result[0] if result else None
-                    temp_conn.close()
+                    result = db_manager.query_one("SELECT theme FROM user_themes WHERE user_wwid = ?", (current_user_wwid,))
+                    saved_theme = result['theme'] if result else None
                     
                     if saved_theme:
                         print(f"Tema encontrado no banco para usuário {current_user_wwid}: {saved_theme}")
@@ -2188,33 +2162,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def load_user_criteria(user_wwid=None):
         """Carrega os pesos dos critérios salvos no banco."""
-        if not db_conn:
-            return None
         try:
-            cur = db_conn.cursor()
-            
             # Primeiro tenta carregar da criteria_settings (configurações personalizadas)
             if user_wwid:
-                cur.execute("SELECT nil_weight, otif_weight, pickup_weight, package_weight, target_weight FROM criteria_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
-                result = cur.fetchone()
+                result = db_manager.query_one("SELECT nil_weight, otif_weight, pickup_weight, package_weight, target_weight FROM criteria_settings WHERE user_wwid = ? ORDER BY last_updated DESC LIMIT 1", (user_wwid,))
                 if result:
                     return {
-                        'NIL': result[0],
-                        'OTIF': result[1], 
-                        'Quality of Pick Up': result[2],
-                        'Quality-Supplier Package': result[3],
-                        'Target': result[4]
+                        'NIL': result['nil_weight'],
+                        'OTIF': result['otif_weight'], 
+                        'Quality of Pick Up': result['pickup_weight'],
+                        'Quality-Supplier Package': result['package_weight'],
+                        'Target': result['target_weight']
                     }
             
             # Se não encontrou configurações personalizadas, carrega da criteria_table original
             print("Carregando critérios da tabela criteria_table...")
-            cur.execute("SELECT criteria_category, value FROM criteria_table")
-            results = cur.fetchall()
+            results = db_manager.query("SELECT criteria_category, value FROM criteria_table")
             
             criteria_data = {}
             for row in results:
-                criteria_name = row[0]
-                value_str = row[1]
+                criteria_name = row['criteria_category']
+                value_str = row['value']
                 
                 try:
                     # Converter valor para float
@@ -2243,18 +2211,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def save_user_criteria(criteria_weights, user_wwid=None):
         """Salva os pesos dos critérios no banco."""
-        if not db_conn:
-            return False
         try:
-            cur = db_conn.cursor()
             if user_wwid:
                 # Verificar se já existe configuração para este usuário
-                cur.execute("SELECT id FROM criteria_settings WHERE user_wwid = ?", (user_wwid,))
-                existing = cur.fetchone()
+                existing = db_manager.query_one("SELECT id FROM criteria_settings WHERE user_wwid = ?", (user_wwid,))
                 
                 if existing:
                     # Atualizar configuração existente
-                    cur.execute("""UPDATE criteria_settings SET 
+                    db_manager.execute("""UPDATE criteria_settings SET 
                                    nil_weight = ?, otif_weight = ?, pickup_weight = ?, 
                                    package_weight = ?, target_weight = ?, 
                                    last_updated = CURRENT_TIMESTAMP 
@@ -2264,14 +2228,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                criteria_weights['Target'], user_wwid))
                 else:
                     # Inserir nova configuração
-                    cur.execute("""INSERT INTO criteria_settings 
+                    db_manager.execute("""INSERT INTO criteria_settings 
                                    (user_wwid, nil_weight, otif_weight, pickup_weight, package_weight, target_weight) 
                                    VALUES (?, ?, ?, ?, ?, ?)""", 
                               (user_wwid, criteria_weights['NIL'], criteria_weights['OTIF'], 
                                criteria_weights['Quality of Pick Up'], criteria_weights['Quality-Supplier Package'], 
                                criteria_weights['Target']))
                 
-                db_conn.commit()
                 return True
             return False
         except Exception as ex:
@@ -2526,8 +2489,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         print("Conexão com banco de dados estabelecida com sucesso!")
         
         # Criar tabela de favoritos se não existir
-        cursor = db_conn.cursor()
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS favorites_table (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_wwid TEXT NOT NULL,
@@ -2536,11 +2498,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 UNIQUE(user_wwid, supplier_id)
             )
         ''')
-        db_conn.commit()
         print("Tabela de favoritos verificada/criada com sucesso!")
 
         # Criar tabelas de listas usadas em comboboxes (se não existirem)
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS sqie_table (
                 sqie_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
@@ -2550,7 +2511,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 registered_by TEXT
             )
         ''')
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS continuity_table (
                 continuity_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
@@ -2560,7 +2521,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 registered_by TEXT
             )
         ''')
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS planner_table (
                 planner_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
@@ -2570,7 +2531,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 registered_by TEXT
             )
         ''')
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS sourcing_table (
                 sourcing_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
@@ -2580,7 +2541,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 registered_by TEXT
             )
         ''')
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS business_unit_table (
                 business_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 bu TEXT UNIQUE,
@@ -2588,7 +2549,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 registered_by TEXT
             )
         ''')
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS categories_table (
                 categories_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 category TEXT UNIQUE,
@@ -2598,7 +2559,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         ''')
         
         # Criar tabela de usuários
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS users_table (
                 user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_wwid TEXT UNIQUE NOT NULL,
@@ -2616,16 +2577,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Verificar se a coluna user_name existe, se não, adicionar
         try:
-            cursor.execute("ALTER TABLE users_table ADD COLUMN user_name TEXT")
+            db_manager.execute("ALTER TABLE users_table ADD COLUMN user_name TEXT")
             print("Coluna user_name adicionada à tabela users_table")
-        except sqlite3.OperationalError as e:
+        except Exception as e:
             if "duplicate column name" in str(e).lower():
                 pass  # Coluna já existe
             else:
                 print(f"Erro ao adicionar coluna user_name: {e}")
         
         # Criar tabela de configurações de tema
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS theme_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_wwid TEXT,
@@ -2635,7 +2596,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         ''')
 
         # Criar tabela de configurações de critérios
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS criteria_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_wwid TEXT,
@@ -2649,10 +2610,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         ''')
 
         # Criar tabela de configurações gerais do aplicativo
-        cursor.execute('''
+        db_manager.execute('''
             CREATE TABLE IF NOT EXISTS app_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_wwid TEXT,
+                setting_key TEXT,
+                setting_value TEXT,
                 toast_duration INTEGER DEFAULT 3,
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -2660,22 +2623,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Adicionar coluna target_weight se não existir (para bancos existentes)
         try:
-            cursor.execute("ALTER TABLE criteria_settings ADD COLUMN target_weight REAL DEFAULT 0.2")
+            db_manager.execute("ALTER TABLE criteria_settings ADD COLUMN target_weight REAL DEFAULT 0.2")
             print("Coluna target_weight adicionada à tabela criteria_settings")
-        except sqlite3.OperationalError as e:
+        except Exception as e:
             if "duplicate column name" not in str(e).lower():
                 print(f"Erro ao adicionar coluna target_weight: {e}")
         
         # Adicionar colunas para configurações gerais na tabela app_settings
         try:
-            cursor.execute("ALTER TABLE app_settings ADD COLUMN setting_key TEXT")
+            db_manager.execute("ALTER TABLE app_settings ADD COLUMN setting_key TEXT")
             print("Coluna setting_key adicionada à tabela app_settings")
-        except sqlite3.OperationalError as e:
+        except Exception as e:
             if "duplicate column name" not in str(e).lower():
                 print(f"Erro ao adicionar coluna setting_key: {e}")
         
         try:
-            cursor.execute("ALTER TABLE app_settings ADD COLUMN setting_value TEXT")
+            db_manager.execute("ALTER TABLE app_settings ADD COLUMN setting_value TEXT")
             print("Coluna setting_value adicionada à tabela app_settings")
         except sqlite3.OperationalError as e:
             if "duplicate column name" not in str(e).lower():
@@ -2689,20 +2652,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def save_score_control_type(control_type):
         """Salva o tipo de controle de score no banco de dados"""
-        if not db_conn:
-            return
         try:
-            cursor = db_conn.cursor()
             # Verificar se já existe uma configuração
-            cursor.execute("SELECT COUNT(*) FROM app_settings WHERE setting_key = 'score_control_type'")
-            exists = cursor.fetchone()[0] > 0
+            exists = db_manager.query_one("SELECT COUNT(*) as count FROM app_settings WHERE setting_key = 'score_control_type'")
             
-            if exists:
-                cursor.execute("UPDATE app_settings SET setting_value = ? WHERE setting_key = 'score_control_type'", (control_type,))
+            if exists and exists['count'] > 0:
+                db_manager.execute("UPDATE app_settings SET setting_value = ? WHERE setting_key = 'score_control_type'", (control_type,))
             else:
-                cursor.execute("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)", ('score_control_type', control_type))
+                db_manager.execute("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)", ('score_control_type', control_type))
             
-            db_conn.commit()
             print(f"Tipo de controle salvo no banco: {control_type}")
         except Exception as e:
             print(f"Erro ao salvar tipo de controle: {e}")
@@ -2710,50 +2668,37 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def load_score_control_type():
         """Carrega o tipo de controle de score do banco de dados"""
         global score_control_type
-        if not db_conn:
-            return "slider"
         try:
-            cursor = db_conn.cursor()
-            cursor.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'score_control_type'")
-            result = cursor.fetchone()
+            result = db_manager.query_one("SELECT setting_value FROM app_settings WHERE setting_key = 'score_control_type'")
             if result:
-                score_control_type = result[0]
+                score_control_type = result['setting_value']
                 print(f"Tipo de controle carregado do banco: {score_control_type}")
-                return result[0]
+                return result['setting_value']
         except Exception as e:
             print(f"Erro ao carregar tipo de controle: {e}")
         return "slider"
     
     def save_spinbox_increment(increment):
         """Salva o incremento do spinbox no banco de dados"""
-        if not db_conn:
-            return
         try:
-            cursor = db_conn.cursor()
             # Verificar se já existe uma configuração
-            cursor.execute("SELECT COUNT(*) FROM app_settings WHERE setting_key = 'spinbox_increment'")
-            exists = cursor.fetchone()[0] > 0
+            exists = db_manager.query_one("SELECT COUNT(*) as count FROM app_settings WHERE setting_key = 'spinbox_increment'")
             
-            if exists:
-                cursor.execute("UPDATE app_settings SET setting_value = ? WHERE setting_key = 'spinbox_increment'", (str(increment),))
+            if exists and exists['count'] > 0:
+                db_manager.execute("UPDATE app_settings SET setting_value = ? WHERE setting_key = 'spinbox_increment'", (str(increment),))
             else:
-                cursor.execute("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)", ('spinbox_increment', str(increment)))
+                db_manager.execute("INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)", ('spinbox_increment', str(increment)))
             
-            db_conn.commit()
             print(f"Incremento do spinbox salvo no banco: {increment}")
         except Exception as e:
             print(f"Erro ao salvar incremento do spinbox: {e}")
 
     def load_spinbox_increment():
         """Carrega o incremento do spinbox do banco de dados"""
-        if not db_conn:
-            return 0.1
         try:
-            cursor = db_conn.cursor()
-            cursor.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'spinbox_increment'")
-            result = cursor.fetchone()
-            if result and result[0] is not None and str(result[0]).strip() != "":
-                increment = float(result[0])
+            result = db_manager.query_one("SELECT setting_value FROM app_settings WHERE setting_key = 'spinbox_increment'")
+            if result and result['setting_value'] is not None and str(result['setting_value']).strip() != "":
+                increment = float(result['setting_value'])
                 print(f"Incremento do spinbox carregado do banco: {increment}")
                 return increment
         except Exception as e:
@@ -2842,22 +2787,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def load_list_options(table_name, column_name):
         """Retorna lista de tuplas (value, text) para popular Dropdowns."""
-        if not db_conn:
-            return []
         try:
-            cur = db_conn.cursor()
             if table_name in ("business_unit_table", "categories_table"):
                 # Tabelas que só têm uma coluna principal
-                cur.execute(f"SELECT {column_name} FROM {table_name} ORDER BY {column_name}")
-                rows = cur.fetchall()
-                options = [r[0] for r in rows if r[0]]  # Filtrar valores nulos/vazios
+                rows = db_manager.query(f"SELECT {column_name} FROM {table_name} ORDER BY {column_name}")
+                options = [r[column_name] for r in rows if r[column_name]]  # Filtrar valores nulos/vazios
                 return options if options else []  # Não retorna lista vazia se não há dados
             else:
                 # Para tabelas com name, alias, email (sqie, continuity, planner, sourcing)
                 # Usar apenas o campo 'name' como solicitado
-                cur.execute(f"SELECT name FROM {table_name} WHERE name IS NOT NULL AND name != '' ORDER BY name")
-                rows = cur.fetchall()
-                options = [r[0] for r in rows if r[0]]  # Filtrar valores nulos/vazios
+                rows = db_manager.query(f"SELECT name FROM {table_name} WHERE name IS NOT NULL AND name != '' ORDER BY name")
+                options = [r['name'] for r in rows if r['name']]  # Filtrar valores nulos/vazios
                 return options if options else []  # Não retorna lista vazia se não há dados
         except Exception as ex:
             print(f"Erro ao carregar opções de {table_name}: {ex}")
@@ -2865,18 +2805,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def load_list_items_full(table_name):
         """Retorna dados completos dos itens da lista com name, alias, email e ID único."""
-        if not db_conn:
-            return []
         try:
-            cur = db_conn.cursor()
             if table_name == "business_unit_table":
-                cur.execute(f"SELECT business_id, bu FROM {table_name} ORDER BY bu")
-                rows = cur.fetchall()
-                return [{"id": r[0], "display": r[1], "alias": r[1]} for r in rows]
+                rows = db_manager.query(f"SELECT business_id, bu FROM {table_name} ORDER BY bu")
+                return [{"id": r["business_id"], "display": r["bu"], "alias": r["bu"]} for r in rows]
             elif table_name == "categories_table":
-                cur.execute(f"SELECT categories_id, category FROM {table_name} ORDER BY category")
-                rows = cur.fetchall()
-                return [{"id": r[0], "display": r[1], "alias": r[1]} for r in rows]
+                rows = db_manager.query(f"SELECT categories_id, category FROM {table_name} ORDER BY category")
+                return [{"id": r["categories_id"], "display": r["category"], "alias": r["category"]} for r in rows]
             else:
                 # Para tabelas com name, alias, email - incluir ID da tabela
                 id_columns = {
@@ -2887,11 +2822,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 }
                 
                 id_col = id_columns.get(table_name, 'id')
-                cur.execute(f"SELECT {id_col}, name, alias, email FROM {table_name} ORDER BY alias")
-                rows = cur.fetchall()
+                rows = db_manager.query(f"SELECT {id_col}, name, alias, email FROM {table_name} ORDER BY alias")
                 items = []
                 for row in rows:
-                    row_id, name, alias, email = row
+                    row_id = row[id_col]
+                    name = row["name"]
+                    alias = row["alias"]
+                    email = row["email"]
                     # Criar texto de exibição com as informações completas
                     display_parts = []
                     if name and name.strip():
@@ -2916,22 +2853,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def insert_list_item(table_name, columns, values):
         """Insere item em tabela genérica passando colunas e valores."""
-        if not db_conn:
-            raise RuntimeError("DB não conectado")
-        cur = db_conn.cursor()
         placeholders = ','.join(['?'] * len(values))
         cols = ','.join(columns)
         q = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
-        cur.execute(q, values)
-        db_conn.commit()
+        db_manager.execute(q, values)
 
     def delete_list_item_by_alias(table_name, alias_column, alias):
-        if not db_conn:
-            raise RuntimeError("DB não conectado")
-        cur = db_conn.cursor()
         q = f"DELETE FROM {table_name} WHERE {alias_column} = ?"
-        cur.execute(q, (alias,))
-        db_conn.commit()
+        db_manager.execute(q, (alias,))
     
     def get_all_cards():
         """Retorna todos os cards, navegando pela estrutura responsiva se necessário"""
@@ -3033,24 +2962,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 continue
             
             try:
-                cursor = db_conn.cursor()
                 query = """
                     SELECT otif, quality_pickup, quality_package, nil, comment
                     FROM supplier_score_records_table
                     WHERE supplier_id = ? AND month = ? AND year = ?
                 """
-                cursor.execute(query, (supplier_id, int(month_val), int(year_val)))
-                score_record = cursor.fetchone()
+                score_record = db_manager.query_one(query, (supplier_id, int(month_val), int(year_val)))
 
                 if score_record:
                     # Mapeamento direto: OTIF, Pickup, Package, NIL, Comment
                     scores = {
-                        "OTIF": score_record[0] if score_record[0] is not None else 0.0,
-                        "Pickup": score_record[1] if score_record[1] is not None else 0.0,
-                        "Package": score_record[2] if score_record[2] is not None else 0.0,
-                        "NIL": score_record[3] if score_record[3] is not None else 0.0,
+                        "OTIF": score_record['otif'] if score_record['otif'] is not None else 0.0,
+                        "Pickup": score_record['quality_pickup'] if score_record['quality_pickup'] is not None else 0.0,
+                        "Package": score_record['quality_package'] if score_record['quality_package'] is not None else 0.0,
+                        "NIL": score_record['nil'] if score_record['nil'] is not None else 0.0,
                     }
-                    comment_value = score_record[4] if score_record[4] is not None else ""
+                    comment_value = score_record['comment'] if score_record['comment'] is not None else ""
                     
                     # Atualizar valores nos sliders (se existirem)
                     if score_sliders and score_texts:
@@ -3156,13 +3083,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def create_result_widget(record):
         """Cria um card de resultado para um registro do banco.
-        Tuple esperada: (supplier_id, vendor_name, BU, supplier_status, supplier_number)
+        Dicionário esperado com chaves: supplier_id, vendor_name, BU, supplier_status, supplier_number, supplier_name
         """
-        supplier_id = record[0] if len(record) > 0 else "?"
-        vendor_name = record[1] if len(record) > 1 else "?"
-        bu = record[2] if len(record) > 2 else "?"
-        status = record[3] if len(record) > 3 else "?"
-        supplier_number = record[4] if len(record) > 4 else "?"
+        supplier_id = record.get('supplier_id', '?')
+        vendor_name = record.get('vendor_name', '?')
+        bu = record.get('bu', '?')
+        status = record.get('supplier_status', '?')
+        supplier_number = record.get('supplier_number', '?')
+        supplier_name = record.get('supplier_name', '?')
 
         print(f"🏗️ CRIANDO CARD: {vendor_name} (ID: {supplier_id}) com TIPO: {score_control_type}")
         print(f"🔍 DEBUG PERMISSÕES NO CARD:")
@@ -3341,10 +3269,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             try:
                 # Verificar status atual do supplier - se Inactive, não permitir salvar
                 try:
-                    cursor_check = db_conn.cursor()
-                    cursor_check.execute("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
-                    row_status = cursor_check.fetchone()
-                    current_status = row_status[0] if row_status else None
+                    row_status = db_manager.query_one("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
+                    current_status = row_status['supplier_status'] if row_status else None
                     if current_status and str(current_status).strip().lower().startswith("inactive"):
                         # Restaurar botão e avisar
                         reset_button_state()
@@ -3353,15 +3279,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 except Exception as ex_status:
                     print(f"Aviso: falha ao verificar status do supplier antes de salvar: {ex_status}")
 
-                cursor = db_conn.cursor()
-                
                 # Buscar critérios atuais da tabela criteria_table
-                cursor.execute("SELECT criteria_category, value FROM criteria_table")
-                criteria_results = cursor.fetchall()
+                criteria_results = db_manager.query("SELECT criteria_category, value FROM criteria_table")
                 criteria_values = {}
                 for row in criteria_results:
-                    criteria_name = row[0]
-                    criteria_value = float(row[1])
+                    criteria_name = row['criteria_category']
+                    criteria_value = float(row['value'])
                     criteria_values[criteria_name] = criteria_value
                 
                 print(f"🎯 Critérios carregados para cálculo (spinbox): {criteria_values}")
@@ -3431,10 +3354,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     SELECT COUNT(*), registered_by FROM supplier_score_records_table 
                     WHERE supplier_id = ? AND month = ? AND year = ?
                 """
-                cursor.execute(check_query, (supplier_id, int(month_val), int(year_val)))
-                result = cursor.fetchone()
-                exists = result[0] > 0
-                current_registered_by = result[1] if exists and result[1] else ""
+                result = db_manager.query_one(check_query, (supplier_id, int(month_val), int(year_val)))
+                exists = result["COUNT(*)"] > 0
+                current_registered_by = result["registered_by"] if exists and result["registered_by"] else ""
                 
                 # Construir registered_by acumulativo - FUNÇÃO SPINBOX
                 saved_field_names = []
@@ -3470,7 +3392,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             WHERE supplier_id = ? AND month = ? AND year = ?
                         """
                         values.extend([supplier_id, int(month_val), int(year_val)])
-                        cursor.execute(update_query, values)
+                        db_manager.execute(update_query, values)
                 else:
                     # Inserir novo registro com campos zerados para campos sem permissão
                     insert_query = """
@@ -3478,7 +3400,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         (supplier_id, month, year, otif, quality_pickup, quality_package, nil, total_score, registered_by, register_date, changed_by, supplier_name, comment)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
-                    cursor.execute(insert_query, (
+                    db_manager.execute(insert_query, (
                         supplier_id, 
                         int(month_val), 
                         int(year_val), 
@@ -3498,10 +3420,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 # Rechecagem de status imediatamente antes do commit para evitar condição de corrida
                 try:
-                    cursor_check_final = db_conn.cursor()
-                    cursor_check_final.execute("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
-                    final_row_status = cursor_check_final.fetchone()
-                    final_status = final_row_status[0] if final_row_status else None
+                    final_row_status = db_manager.query_one("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
+                    final_status = final_row_status['supplier_status'] if final_row_status else None
                     print(f"🔁 Rechecagem final de status antes do commit (spinbox): {final_status}")
                     if final_status and str(final_status).strip().lower().startswith("inactive"):
                         # Não efetuar commit em caso de fornecedor inativo
@@ -3595,29 +3515,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
                 
             try:
-                cursor = db_conn.cursor()
-                
                 # Verificar se já está nos favoritos
                 check_query = "SELECT COUNT(*) FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
-                cursor.execute(check_query, (current_user_wwid, supplier_id))
-                is_favorited = cursor.fetchone()[0] > 0
+                result = db_manager.query_one(check_query, (current_user_wwid, supplier_id))
+                is_favorited = result['COUNT(*)'] > 0 if result else False
                 
                 if is_favorited:
                     # Remover dos favoritos
                     delete_query = "DELETE FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
-                    cursor.execute(delete_query, (current_user_wwid, supplier_id))
+                    db_manager.execute(delete_query, (current_user_wwid, supplier_id))
                     e.control.selected = False
                     show_toast(f"{vendor_name} removido dos favoritos", "orange")
                     print(f"Favorito removido: {vendor_name} (ID: {supplier_id})")
                 else:
                     # Adicionar aos favoritos
                     insert_query = "INSERT INTO favorites_table (user_wwid, supplier_id) VALUES (?, ?)"
-                    cursor.execute(insert_query, (current_user_wwid, supplier_id))
+                    db_manager.execute(insert_query, (current_user_wwid, supplier_id))
                     e.control.selected = True
                     show_toast(f"{vendor_name} adicionado aos favoritos", "green")
                     print(f"Favorito adicionado: {vendor_name} (ID: {supplier_id})")
-                
-                db_conn.commit()
                 
                 # Atualização segura do controle
                 try:
@@ -3757,12 +3673,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def create_result_widget(record):
         """Cria um card de resultado otimizado para um registro do banco."""
-        supplier_id = record[0] if len(record) > 0 else "?"
-        vendor_name = record[1] if len(record) > 1 else "?"
-        bu = record[2] if len(record) > 2 else "?"
-        status = record[3] if len(record) > 3 else "?"
-        supplier_number = record[4] if len(record) > 4 else "?"
-        supplier_origin = record[5] if len(record) > 5 else "N/A"
+        supplier_id = record.get('supplier_id', '?')
+        vendor_name = record.get('vendor_name', '?')
+        bu = record.get('BU', '?')
+        status = record.get('supplier_status', '?')
+        supplier_number = record.get('supplier_number', '?')
+        supplier_origin = record.get('supplier_name', 'N/A')
 
         print(f"Criando card para: {vendor_name} (ID: {supplier_id})")
         print(f"🔍 DEBUG PERMISSÕES NO CARD (SLIDER VERSION):")
@@ -3863,9 +3779,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             try:
                 cursor = db_conn.cursor()
                 check_query = "SELECT COUNT(*) FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
-                cursor.execute(check_query, (current_user_wwid, supplier_id))
-                return cursor.fetchone()[0] > 0
-            except sqlite3.Error:
+                result = db_manager.query_one(check_query, (current_user_wwid, supplier_id))
+                return result['COUNT(*)'] > 0 if result else False
+            except Exception:
                 return False
 
         # Definir estado inicial do favorito
@@ -3967,12 +3883,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 cursor = db_conn.cursor()
                 
                 # Buscar critérios atuais da tabela criteria_table
-                cursor.execute("SELECT criteria_category, value FROM criteria_table")
-                criteria_results = cursor.fetchall()
+                criteria_results = db_manager.query("SELECT criteria_category, value FROM criteria_table")
                 criteria_values = {}
                 for row in criteria_results:
-                    criteria_name = row[0]
-                    criteria_value = float(row[1])
+                    criteria_name = row['criteria_category']
+                    criteria_value = float(row['value'])
                     criteria_values[criteria_name] = criteria_value
                 
                 print(f"🎯 Critérios carregados para cálculo: {criteria_values}")
@@ -4042,13 +3957,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     SELECT COUNT(*), registered_by FROM supplier_score_records_table 
                     WHERE supplier_id = ? AND month = ? AND year = ?
                 """
-                cursor.execute(check_query, (supplier_id, int(month_val), int(year_val)))
-                result = cursor.fetchone()
-                exists = result[0] > 0
-                current_registered_by = result[1] if exists and result[1] else ""
+                result = db_manager.query_one(check_query, (supplier_id, int(month_val), int(year_val)))
+                exists = result['COUNT(*)'] > 0 if result else False
+                current_registered_by = result['registered_by'] if result and result['registered_by'] else ""
                 
                 # Construir registered_by acumulativo - FUNÇÃO SLIDER
                 saved_field_names = []
+                field_mapping = {"NIL": "nil", "OTIF": "otif", "PICKUP": "quality_pickup", "PACKAGE": "quality_package"}
                 field_mapping = {"NIL": "nil", "OTIF": "otif", "PICKUP": "quality_pickup", "PACKAGE": "quality_package"}
                 for field, db_field in field_mapping.items():
                     if db_field in values_to_save.keys():  # Se o campo foi salvo, adicionar
@@ -4074,7 +3989,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     if set_clauses:
                         update_query = f"UPDATE supplier_score_records_table SET {', '.join(set_clauses)} WHERE supplier_id = ? AND month = ? AND year = ?"
                         update_values.extend([supplier_id, int(month_val), int(year_val)])
-                        cursor.execute(update_query, update_values)
+                        db_manager.execute(update_query, update_values)
                 else:
                     # Inserir novo registro com campos zerados para campos sem permissão
                     insert_query = """
@@ -4082,7 +3997,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         (supplier_id, month, year, otif, quality_pickup, quality_package, nil, comment, total_score, registered_by, register_date, changed_by, supplier_name)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
-                    cursor.execute(insert_query, (
+                    db_manager.execute(insert_query, (
                         supplier_id, 
                         int(month_val), 
                         int(year_val), 
@@ -4097,16 +4012,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         current_user_name,
                         vendor_name
                     ))
-                
-                db_conn.commit()
             
                 
                 # Rechecagem de status imediatamente antes do commit para evitar condição de corrida
                 try:
-                    cursor_check_final = db_conn.cursor()
-                    cursor_check_final.execute("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
-                    final_row_status = cursor_check_final.fetchone()
-                    final_status = final_row_status[0] if final_row_status else None
+                    final_row_status = db_manager.query_one("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
+                    final_status = final_row_status['supplier_status'] if final_row_status else None
                     print(f"🔁 Rechecagem final de status antes do commit (slider): {final_status}")
                     if final_status and str(final_status).strip().lower().startswith("inactive"):
                         show_toast("❌ Não é possível salvar para fornecedores inativos.", "red", restore_control=save_button)
@@ -4180,22 +4091,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 show_toast("Erro: Usuário não autenticado.", "red")
                 return
                 
-            if not db_conn:
-                show_toast("Erro: Banco de dados não conectado.", "red")
-                return
-                
             try:
-                cursor = db_conn.cursor()
-                
                 # Verificar se já está nos favoritos
                 check_query = "SELECT COUNT(*) FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
-                cursor.execute(check_query, (current_user_wwid, supplier_id))
-                is_favorited = cursor.fetchone()[0] > 0
+                result = db_manager.query_one(check_query, (current_user_wwid, supplier_id))
+                is_favorited = result["COUNT(*)"] > 0
                 
                 if is_favorited:
                     # Remover dos favoritos
                     delete_query = "DELETE FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
-                    cursor.execute(delete_query, (current_user_wwid, supplier_id))
+                    db_manager.execute(delete_query, (current_user_wwid, supplier_id))
                     is_favorite.current = False
                     e.control.selected = False
                     show_toast(f"{vendor_name} removido dos favoritos", "orange")
@@ -4203,13 +4108,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 else:
                     # Adicionar aos favoritos
                     insert_query = "INSERT INTO favorites_table (user_wwid, supplier_id) VALUES (?, ?)"
-                    cursor.execute(insert_query, (current_user_wwid, supplier_id))
+                    db_manager.execute(insert_query, (current_user_wwid, supplier_id))
                     is_favorite.current = True
                     e.control.selected = True
                     show_toast(f"{vendor_name} adicionado aos favoritos", "green")
                     print(f"Favorito adicionado: {vendor_name} (ID: {supplier_id})")
-                
-                db_conn.commit()
                 
                 # Atualização segura do controle
                 try:
@@ -4222,7 +4125,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     print(f"Aviso: Erro ao atualizar controle, atualizando página: {update_error}")
                     page.update()
                 
-            except sqlite3.Error as db_error:
+            except Exception as db_error:
                 show_toast(f"Erro ao salvar favorito: {db_error}", "red")
                 print(f"Erro no banco de dados: {db_error}")
             except Exception as ex:
@@ -4391,7 +4294,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         try:
             base_query = """
-                SELECT supplier_id, vendor_name, BU, supplier_status, supplier_number, supplier_name
+                SELECT supplier_id, vendor_name, bu, supplier_status, supplier_number, supplier_name
                 FROM supplier_database_table 
             """
             where_clauses = []
@@ -4415,9 +4318,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Executando query: {query}")
             print(f"Parâmetros: {params}")
 
-            cursor = db_conn.cursor()
-            cursor.execute(query, params)
-            records = cursor.fetchall()
+            records = db_manager.query(query, params)
             
             print(f"Encontrados {len(records)} registros")
             
@@ -4432,7 +4333,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             else:
                 # Adicionar cada card individualmente
                 for i, record in enumerate(records):
-                    print(f"Criando card {i+1}/{len(records)}: {record[1]}")
+                    print(f"Criando card {i+1}/{len(records)}: {record.get('vendor_name', 'Unknown')}")
                     try:
                         card = create_result_widget(record)
                         if responsive_app_manager:
@@ -4440,7 +4341,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         else:
                             results_list.controls.append(card)
                     except Exception as card_error:
-                        print(f"Erro ao criar card para {record[1]}: {card_error}")
+                        print(f"Erro ao criar card para {record.get('vendor_name', 'Unknown')}: {card_error}")
                         continue
             
         except sqlite3.Error as db_error:
@@ -4505,7 +4406,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         try:
             # Buscar suppliers favoritos do usuário
             favorites_query = """
-                SELECT s.supplier_id, s.vendor_name, s.BU, s.supplier_status, s.supplier_number, s.supplier_name
+                SELECT s.supplier_id, s.vendor_name, s.bu, s.supplier_status, s.supplier_number, s.supplier_name
                 FROM supplier_database_table s 
                 INNER JOIN favorites_table f ON s.supplier_id = f.supplier_id
                 WHERE f.user_wwid = ?
@@ -4513,9 +4414,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             """
             
             print(f"Buscando favoritos para usuário: {current_user_wwid}")
-            cursor = db_conn.cursor()
-            cursor.execute(favorites_query, (current_user_wwid,))
-            records = cursor.fetchall()
+            records = db_manager.query(favorites_query, (current_user_wwid,))
             
             print(f"Encontrados {len(records)} favoritos")
             
@@ -4535,7 +4434,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             else:
                 # Adicionar cada card individualmente
                 for i, record in enumerate(records):
-                    print(f"Criando card favorito {i+1}/{len(records)}: {record[1]}")
+                    print(f"Criando card favorito {i+1}/{len(records)}: {record.get('vendor_name', 'Unknown')}")
                     try:
                         card = create_result_widget(record)
                         if responsive_app_manager:
@@ -4543,7 +4442,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         else:
                             results_list.controls.append(card)
                     except Exception as card_error:
-                        print(f"Erro ao criar card para {record[1]}: {card_error}")
+                        print(f"Erro ao criar card para {record.get('vendor_name', 'Unknown')}: {card_error}")
                         continue
             
         except sqlite3.Error as db_error:
@@ -4761,11 +4660,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # Salvar incremento padrão no banco se não existir
     try:
-        if db_conn:
-            cursor = db_conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM app_settings WHERE setting_key = 'spinbox_increment'")
-            if cursor.fetchone()[0] == 0:
-                save_spinbox_increment(0.1)  # Valor padrão
+        result = db_manager.query_one("SELECT COUNT(*) FROM app_settings WHERE setting_key = 'spinbox_increment'")
+        if result["COUNT(*)"] == 0:
+            save_spinbox_increment(0.1)  # Valor padrão
     except Exception as e:
         print(f"Erro ao verificar/salvar incremento padrão: {e}")
     
@@ -4790,13 +4687,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     else:
         # Se não há usuário logado, carregar tema padrão da tabela
         try:
-            if db_conn:
-                cursor = db_conn.cursor()
-                cursor.execute("SELECT theme_mode FROM theme_settings ORDER BY last_updated DESC LIMIT 1")
-                default_theme = cursor.fetchone()
-                if default_theme:
-                    theme_radio_group.value = default_theme[0]
-                    print(f"Tema padrão carregado: {default_theme[0]}")
+            default_theme = db_manager.query_one("SELECT theme_mode FROM theme_settings ORDER BY last_updated DESC LIMIT 1")
+            if default_theme:
+                theme_radio_group.value = default_theme["theme_mode"]
+                print(f"Tema padrão carregado: {default_theme['theme_mode']}")
         except Exception as e:
             print(f"Erro ao carregar tema padrão: {e}")
 
@@ -5175,12 +5069,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 table_name, id_column = table_map[key]
                 
                 # Atualizar no banco usando ID único
-                cursor = db_conn.cursor()
-                cursor.execute(
+                db_manager.execute(
                     f"UPDATE {table_name} SET name = ?, alias = ?, email = ? WHERE {id_column} = ?",
                     (new_name, new_alias, new_email, current_id)
                 )
-                db_conn.commit()
                 
                 # Atualizar seleção se ID mudou (usar novo ID)
                 if lists_controls[key]['selected_item'] == current_id:
@@ -5919,18 +5811,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def create_supplier_card(record, page):
         """Cria um card editável para um supplier."""
-        supplier_id = record[0] if len(record) > 0 else ""
-        vendor_name = record[1] if len(record) > 1 else ""
-        supplier_category = record[2] if len(record) > 2 else ""
-        bu = record[3] if len(record) > 3 else ""
-        supplier_name = record[4] if len(record) > 4 else ""
-        supplier_email = record[5] if len(record) > 5 else ""
-        supplier_number = record[6] if len(record) > 6 else ""
-        supplier_status = record[7] if len(record) > 7 else ""
-        planner = record[8] if len(record) > 8 else ""
-        continuity = record[9] if len(record) > 9 else ""
-        sourcing = record[10] if len(record) > 10 else ""
-        sqie = record[11] if len(record) > 11 else ""
+        supplier_id = record.get('supplier_id', '')
+        vendor_name = record.get('vendor_name', '')
+        supplier_category = record.get('supplier_category', '')
+        bu = record.get('bu', '')
+        supplier_name = record.get('supplier_name', '')
+        supplier_email = record.get('supplier_email', '')
+        supplier_number = record.get('supplier_number', '')
+        supplier_status = record.get('supplier_status', '')
+        planner = record.get('planner', '')
+        continuity = record.get('continuity', '')
+        sourcing = record.get('sourcing', '')
+        sqie = record.get('sqie', '')
 
         print(f"Criando card de supplier para: {vendor_name} (ID: {supplier_id})")
 
@@ -5977,7 +5869,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "supplier_origin": ft.Dropdown(
                 label="Origem",
                 value=supplier_name if supplier_name in ['Nacional', 'Importado'] else '',  # Preencher com valor do banco quando aplicável
-                options=[ft.dropdown.Option(v) for v in ["", "Nacional", "Importado"]],
+                options=[ft.dropdown.Option(v) for v in ["Nacional", "Importado"]],
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -6084,8 +5976,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 # Verificar se o supplier existe
                 check_query = "SELECT COUNT(*) FROM supplier_database_table WHERE supplier_id = ?"
-                cursor.execute(check_query, (supplier_id,))
-                exists = cursor.fetchone()[0] > 0
+                result = db_manager.query_one(check_query, (supplier_id,))
+                exists = result["COUNT(*)"] > 0
                 print(f"🔧 DEBUG: Supplier exists: {exists}")
                 
                 if exists:
@@ -6097,7 +5989,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             planner = ?, continuity = ?, sourcing = ?, sqie = ?
                         WHERE supplier_id = ?
                     """
-                    cursor.execute(update_query, (
+                    db_manager.execute(update_query, (
                         safe_strip(fields["vendor_name"].value),
                         safe_strip(fields["supplier_category"].value),
                         safe_strip(fields["bu"].value),
@@ -6121,7 +6013,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                          continuity, sourcing, sqie)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
-                    cursor.execute(insert_query, (
+                    db_manager.execute(insert_query, (
                         safe_strip(fields["vendor_name"].value),
                         safe_strip(fields["supplier_category"].value),
                         safe_strip(fields["bu"].value),
@@ -6147,8 +6039,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Atualizar supplier_name em supplier_score_records_table usando vendor_name
                 try:
                     update_score_query = "UPDATE supplier_score_records_table SET supplier_name = ? WHERE supplier_id = ?"
-                    cursor.execute(update_score_query, (safe_strip(fields["vendor_name"].value), supplier_id))
-                    db_conn.commit()
+                    db_manager.execute(update_score_query, (safe_strip(fields["vendor_name"].value), supplier_id))
                     print(f"🔧 DEBUG: Supplier name atualizado em supplier_score_records_table para vendor_name '{safe_strip(fields['vendor_name'].value)}'")
                 except Exception as ex_upd:
                     print(f"🔧 WARN: falha ao atualizar supplier_score_records_table: {ex_upd}")
@@ -6200,10 +6091,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         show_toast("❌ Erro: Banco de dados não conectado.", "red")
                         return
                     cursor = db_conn.cursor()
-                    cursor.execute("DELETE FROM supplier_score_records_table WHERE supplier_id = ?", (supplier_id,))
-                    cursor.execute("DELETE FROM favorites_table WHERE supplier_id = ?", (supplier_id,))
-                    cursor.execute("DELETE FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
-                    db_conn.commit()
+                    db_manager.execute("DELETE FROM supplier_score_records_table WHERE supplier_id = ?", (supplier_id,))
+                    db_manager.execute("DELETE FROM favorites_table WHERE supplier_id = ?", (supplier_id,))
+                    db_manager.execute("DELETE FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
                     if card in suppliers_results_list.controls:
                         suppliers_results_list.controls.remove(card)
                     show_toast(f"✅ Supplier {vendor_name} deletado com sucesso!", "green")
@@ -6364,7 +6254,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
 
-                cursor.execute(insert_query, (
+                db_manager.execute(insert_query, (
                     get_field_value(add_dialog.fields["vendor_name"]),
                     get_field_value(add_dialog.fields["supplier_category"]),
                     get_field_value(add_dialog.fields["bu"]),
@@ -6474,8 +6364,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             print(f"Executando query: {query}")
             print(f"Params: {params}")
-            cursor.execute(query, params)
-            records = cursor.fetchall()
+            records = db_manager.query(query, params)
             
             print(f"Encontrados {len(records)} suppliers")
             
@@ -6489,12 +6378,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 )
             else:
                 for i, record in enumerate(records):
-                    print(f"Criando card {i+1}/{len(records)}: {record[1]}")
+                    print(f"Criando card {i+1}/{len(records)}: {record.get('vendor_name', 'Unknown')}")
                     try:
                         card = create_supplier_card(record, page)
                         suppliers_results_list.controls.append(card)
                     except Exception as card_error:
-                        print(f"Erro ao criar card para {record[1]}: {card_error}")
+                        print(f"Erro ao criar card para {record.get('vendor_name', 'Unknown')}: {card_error}")
                         continue
             
         except sqlite3.Error as db_error:
@@ -6704,19 +6593,23 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             return
         
         try:
-            cur = db_conn.cursor()
             print("🔄 Iniciando atualização no banco de dados...")
             
-            # Atualizar cada critério na tabela criteria_table com 2 casas decimais
+            # Preparar dados para atualização em lote
+            update_data = []
             for criteria_name, value in criteria_values.items():
                 # Arredondar para 2 casas decimais antes de salvar
                 rounded_value = round(value, 2)
-                cur.execute("UPDATE criteria_table SET value = ? WHERE criteria_category = ?", 
-                          (str(rounded_value), criteria_name))
-                print(f"  ✅ Critério atualizado: {criteria_name} = {rounded_value}")
+                update_data.append((str(rounded_value), criteria_name))
+                print(f"  ✅ Critério preparado: {criteria_name} = {rounded_value}")
             
-            db_conn.commit()
-            print("✅ Commit realizado com sucesso!")
+            # Executar atualização em lote usando DBManager
+            if update_data:
+                db_manager.execute_many(
+                    "UPDATE criteria_table SET value = ? WHERE criteria_category = ?", 
+                    update_data
+                )
+                print("✅ Atualização em lote realizada com sucesso!")
             
             show_toast("✅ Critérios atualizados com sucesso!", "green")
             
@@ -7026,17 +6919,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             return []
         try:
             print("📋 Lista sendo atualizada...")
-            cur = db_conn.cursor()
-            cur.execute("""
+            rows = db_manager.query("""
                 SELECT user_wwid, user_name, user_password, user_privilege, 
                        otif, nil, pickup, package 
                 FROM users_table 
                 ORDER BY user_wwid
             """)
-            rows = cur.fetchall()
             users = []
             for row in rows:
-                wwid, name, password, privilege, otif, nil, pickup, package = row
+                wwid = row['user_wwid']
+                name = row['user_name']
+                password = row['user_password']
+                privilege = row['user_privilege']
+                otif = row['otif']
+                nil = row['nil']
+                pickup = row['pickup']
+                package = row['package']
                 
                 # Criar texto de exibição em duas linhas
                 name_display = name if name else "Nome não informado"
@@ -7121,9 +7019,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             # Diálogo de confirmação utilizando o componente já existente
                             def confirm_delete(evt):
                                 try:
-                                    cur = db_conn.cursor()
-                                    cur.execute("DELETE FROM users_table WHERE UPPER(user_wwid) = ?", (w.upper(),))
-                                    db_conn.commit()
+                                    db_manager.execute("DELETE FROM users_table WHERE UPPER(user_wwid) = ?", (w.upper(),))
                                     page.close(dialog)
                                     # Se o usuário selecionado foi excluído, limpar seleção e campos
                                     if globals().get('selected_user') == w:
@@ -7206,17 +7102,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             selected_user = wwid
             
             # Buscar dados do usuário
-            cur = db_conn.cursor()
-            cur.execute("""
+            row = db_manager.query_one("""
                 SELECT user_wwid, user_name, user_password, user_privilege,
                        otif, nil, pickup, package
                 FROM users_table 
                 WHERE user_wwid = ?
             """, (wwid,))
             
-            row = cur.fetchone()
             if row:
-                wwid_val, name, password, privilege, otif, nil, pickup, package = row
+                wwid_val = row['user_wwid']
+                name = row['user_name']
+                password = row['user_password']
+                privilege = row['user_privilege']
+                otif = row['otif']
+                nil = row['nil']
+                pickup = row['pickup']
+                package = row['package']
                 
                 print(f"Dados carregados do banco: WWID={wwid_val}, OTIF={otif} (tipo: {type(otif)}), NIL={nil} (tipo: {type(nil)}), Pickup={pickup} (tipo: {type(pickup)}), Package={package} (tipo: {type(package)})")
                 
@@ -7340,37 +7241,33 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 page.update()
                 return
             
-            cur = db_conn.cursor()
-            
             # Verifica se já existe o usuário
-            cur.execute("SELECT 1 FROM users_table WHERE UPPER(user_wwid) = ?", (wwid,))
-            resultado = cur.fetchone()
+            existing_user = db_manager.query_one("SELECT 1 FROM users_table WHERE UPPER(user_wwid) = ?", (wwid,))
             
-            if resultado:
-                # Atualiza usuário existente
-                print(f"🔄 Atualizando usuário EXISTENTE {wwid}...")
-                cur.execute("""
-                    UPDATE users_table
-                    SET user_name = ?, user_password = ?, user_privilege = ?, 
-                        otif = ?, nil = ?, pickup = ?, package = ?
-                    WHERE UPPER(user_wwid) = ?
-                """, (name, password, privilege, otif, nil, pickup, package, wwid))
-                
-                print(f"✅ Usuário {wwid} atualizado com sucesso!")
-                toast(f"✅ Usuário '{wwid}' atualizado com sucesso", "green")
-            else:
-                # Cria novo usuário
-                print(f"💾 Inserindo NOVO usuário {wwid} no banco de dados...")
-                cur.execute("""
-                    INSERT INTO users_table (user_wwid, user_name, user_password, user_privilege, 
-                                           otif, nil, pickup, package) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (wwid, name, password, privilege, otif, nil, pickup, package))
-                
-                print(f"✅ Usuário {wwid} inserido com sucesso!")
-                toast(f"✅ Usuário '{wwid}' criado com sucesso", "green")
-            
-            db_conn.commit()
+            with db_manager.transaction() as conn:
+                if existing_user:
+                    # Atualiza usuário existente
+                    print(f"🔄 Atualizando usuário EXISTENTE {wwid}...")
+                    db_manager.execute("""
+                        UPDATE users_table
+                        SET user_name = ?, user_password = ?, user_privilege = ?, 
+                            otif = ?, nil = ?, pickup = ?, package = ?
+                        WHERE UPPER(user_wwid) = ?
+                    """, (name, password, privilege, otif, nil, pickup, package, wwid))
+                    
+                    print(f"✅ Usuário {wwid} atualizado com sucesso!")
+                    toast(f"✅ Usuário '{wwid}' atualizado com sucesso", "green")
+                else:
+                    # Cria novo usuário
+                    print(f"💾 Inserindo NOVO usuário {wwid} no banco de dados...")
+                    db_manager.execute("""
+                        INSERT INTO users_table (user_wwid, user_name, user_password, user_privilege, 
+                                               otif, nil, pickup, package) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (wwid, name, password, privilege, otif, nil, pickup, package))
+                    
+                    print(f"✅ Usuário {wwid} inserido com sucesso!")
+                    toast(f"✅ Usuário '{wwid}' criado com sucesso", "green")
             page.update()
             
             print(f"Lista atualizada com {len(load_users_full())} usuários!")
@@ -7403,9 +7300,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Função para confirmar e executar a exclusão
             def confirm_delete_user(e):
                 try:
-                    cur = db_conn.cursor()
-                    cur.execute("DELETE FROM users_table WHERE UPPER(user_wwid) = ?", (wwid.upper(),))
-                    db_conn.commit()
+                    db_manager.execute("DELETE FROM users_table WHERE UPPER(user_wwid) = ?", (wwid.upper(),))
                     
                     # Fechar dialog
                     page.close(dialog)
@@ -7619,12 +7514,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if not db_conn:
                 return [ft.dropdown.Option("", "Nenhum supplier disponível")]
             
-            cursor = db_conn.cursor()
-            cursor.execute("SELECT supplier_id, vendor_name, BU FROM supplier_database_table ORDER BY vendor_name")
-            suppliers = cursor.fetchall()
+            suppliers = db_manager.query("SELECT supplier_id, vendor_name, bu FROM supplier_database_table ORDER BY vendor_name")
             
             options = [ft.dropdown.Option("", "Selecione um supplier")]
-            for supplier_id, vendor_name, bu in suppliers:
+            for supplier in suppliers:
+                supplier_id = supplier['supplier_id']
+                vendor_name = supplier['vendor_name']
+                bu = supplier['bu']
                 # Formato: "Supplier - BU"
                 bu_text = bu if bu else "N/A"
                 display_text = f"{vendor_name} - {bu_text}"
@@ -7642,13 +7538,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if not db_conn:
                 return [ft.dropdown.Option("", "Nenhuma BU disponível")]
             
-            cursor = db_conn.cursor()
-            cursor.execute("SELECT DISTINCT bu FROM business_unit_table WHERE bu IS NOT NULL AND bu != '' ORDER BY bu")
-            bus = cursor.fetchall()
+            bus = db_manager.query("SELECT DISTINCT bu FROM business_unit_table WHERE bu IS NOT NULL AND bu != '' ORDER BY bu")
             
             options = [ft.dropdown.Option("", "Todas as BUs")]
             for bu_row in bus:
-                bu = bu_row[0]
+                bu = bu_row['bu']
                 options.append(ft.dropdown.Option(str(bu), str(bu)))
                 
             return options
@@ -7690,13 +7584,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 overall_avg_card.current.value = "Error"
                 return
                 
-            cursor = db_conn.cursor()
             query = "SELECT total_score FROM supplier_score_records_table WHERE supplier_id = ? AND total_score > 0"
-            cursor.execute(query, (vendor_id,))
-            results = cursor.fetchall()
+            results = db_manager.query(query, (vendor_id,))
             
             if results:
-                scores = [float(row[0]) for row in results]
+                scores = [float(row['total_score']) for row in results]
                 avg = sum(scores) / len(scores)
                 overall_avg_card.current.value = f"{avg:.1f}"
             else:
@@ -7725,10 +7617,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 data = hoje - datetime.timedelta(days=30*i)  # Aproximação de mês
                 query = """SELECT total_score FROM supplier_score_records_table 
                           WHERE supplier_id = ? AND year = ? AND month = ? AND total_score > 0"""
-                cursor.execute(query, (vendor_id, data.year, data.month))
-                result = cursor.fetchone()
+                result = db_manager.query_one(query, (vendor_id, data.year, data.month))
                 if result:
-                    scores.append(float(result[0]))
+                    scores.append(float(result["total_score"]))
             
             if scores:
                 avg = sum(scores) / len(scores)
@@ -7752,18 +7643,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if year and year.strip():
                 query = """SELECT total_score FROM supplier_score_records_table 
                           WHERE supplier_id = ? AND year = ? AND total_score > 0"""
-                cursor.execute(query, (vendor_id, year))
+                results = db_manager.query(query, (vendor_id, year))
             else:
                 import datetime
                 current_year = datetime.date.today().year
                 query = """SELECT total_score FROM supplier_score_records_table 
                           WHERE supplier_id = ? AND year = ? AND total_score > 0"""
-                cursor.execute(query, (vendor_id, current_year))
-            
-            results = cursor.fetchall()
+                results = db_manager.query(query, (vendor_id, current_year))
             
             if results:
-                scores = [float(row[0]) for row in results]
+                scores = [float(row['total_score']) for row in results]
                 avg = sum(scores) / len(scores)
                 year_avg_card.current.value = f"{avg:.1f}"
             else:
@@ -7809,12 +7698,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                    WHERE supplier_id = ? AND year = ? AND month IN ({month_placeholders}) AND total_score > 0"""
                 
                 params_current = [vendor_id, current_year] + months
-                cursor.execute(query_current, params_current)
-                results_current = cursor.fetchall()
+                results_current = db_manager.query(query_current, params_current)
                 
                 avg_current = None
                 if results_current:
-                    scores = [float(row[0]) for row in results_current]
+                    scores = [float(row['total_score']) for row in results_current]
                     avg_current = sum(scores) / len(scores)
                     quarter_cards[i].current.value = f"{avg_current:.1f}"
                 else:
@@ -7832,10 +7720,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         query = f"""SELECT total_score FROM supplier_score_records_table
                                     WHERE supplier_id = ? AND year = ? AND month IN ({placeholders}) AND total_score > 0"""
                         params = [vendor_id, year_to_check] + months_to_check
-                        cursor.execute(query, params)
-                        res = cursor.fetchall()
+                        res = db_manager.query(query, params)
                         if res:
-                            scores = [float(r[0]) for r in res]
+                            scores = [float(r["total_score"]) for r in res]
                             return sum(scores) / len(scores)
                     return None
 
@@ -7970,19 +7857,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             target_value = target_slider.value if target_slider and target_slider.value is not None else 5.0
             analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
 
-            cursor = db_conn.cursor()
             query = "SELECT month, total_score, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
-            cursor.execute(query, (vendor_id, analysis_year))
-            results = cursor.fetchall()
+            results = db_manager.query(query, (vendor_id, analysis_year))
 
             monthly_data = {m: {} for m in range(1, 13)}
             for row in results:
-                month, total, otif, nil, pickup, package = row
-                monthly_data[int(month)] = {
-                    "total_score": float(total) if total is not None else None, "otif": float(otif) if otif is not None else None,
-                    "nil": float(nil) if nil is not None else None, "pickup": float(pickup) if pickup is not None else None,
-                    "package": float(package) if package is not None else None,
-                }
+                month = row['month']
+                total = row['total_score']
+                otif = row['otif']
+                nil = row['nil']
+                pickup = row['quality_pickup']
+                package = row['quality_package']
+                try:
+                    month_int = int(month)
+                    monthly_data[month_int] = {
+                        "total_score": float(total) if total is not None else None, "otif": float(otif) if otif is not None else None,
+                        "nil": float(nil) if nil is not None else None, "pickup": float(pickup) if pickup is not None else None,
+                        "package": float(package) if package is not None else None,
+                    }
+                except (ValueError, TypeError):
+                    print(f"⚠️ Dados inválidos ignorados: month='{month}'")
+                    continue
 
             if not any(data.get("total_score") is not None for data in monthly_data.values()):
                 timeline_chart_container.current.content = ft.Container(
@@ -8070,11 +7965,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 show_timeline_snackbar("❌ Erro: Banco de dados não conectado.")
                 return
                 
-            cursor = db_conn.cursor()
-            cursor.execute("""DELETE FROM supplier_score_records_table 
+            db_manager.execute("""DELETE FROM supplier_score_records_table 
                              WHERE supplier_id = ? AND month = ? AND year = ?""", 
                           (vendor_id, month, year_data))
-            db_conn.commit()
             
             # Atualizar a tabela
             year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
@@ -8114,12 +8007,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             register_date = current_date.strftime("%Y-%m-%d %H:%M:%S")
             registered_by = current_user_name if 'current_user_name' in globals() else None
 
-            cursor.execute("""UPDATE supplier_score_records_table
+            db_manager.execute("""UPDATE supplier_score_records_table
                              SET otif = ?, nil = ?, quality_pickup = ?, quality_package = ?,
                                  total_score = ?, comment = ?, registered_by = ?, register_date = ?, changed_by = ?
                              WHERE supplier_id = ? AND month = ? AND year = ?""",
                           (otif, nil, pickup, package, total_score, comment, registered_by, register_date, registered_by, vendor_id, month, year_data))
-            db_conn.commit()
 
             # Atualizar a tabela
             vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
@@ -8144,14 +8036,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 query = """SELECT month, year, otif, nil, quality_pickup, quality_package, 
                           total_score, comment FROM supplier_score_records_table 
                           WHERE supplier_id = ? AND year = ? ORDER BY year DESC, month DESC"""
-                cursor.execute(query, (vendor_id, year))
+                results = db_manager.query(query, (vendor_id, year))
             else:
                 query = """SELECT month, year, otif, nil, quality_pickup, quality_package, 
                           total_score, comment FROM supplier_score_records_table 
                           WHERE supplier_id = ? ORDER BY year DESC, month DESC"""
-                cursor.execute(query, (vendor_id,))
-                
-            results = cursor.fetchall()
+                results = db_manager.query(query, (vendor_id,))
             
             if not results:
                 timeline_table_container.current.content = ft.Container(
@@ -8198,8 +8088,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
                      
             for i, row in enumerate(results):
-                month, year_data, otif, nil, pickup, package, total, comment = row
-                month_name = months[int(month)-1] if 1 <= int(month) <= 12 else str(month)
+                month = row['month']
+                year_data = row['year']
+                otif = row['otif']
+                nil = row['nil']
+                pickup = row['quality_pickup']
+                package = row['quality_package']
+                total = row['total_score']
+                comment = row['comment']
+                try:
+                    month_int = int(month)
+                    month_name = months[month_int-1] if 1 <= month_int <= 12 else str(month)
+                except (ValueError, TypeError):
+                    month_name = str(month)
                 
                 bgcolor = "lightgray" if i % 2 == 0 else None
                 
@@ -8800,21 +8701,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Abordagem otimizada: buscar todos os scores do ano e processar em Python
             all_scores_query = """
                 SELECT
-                    s.supplier_id, s.vendor_name, s.BU, sr.month, sr.total_score
+                    s.supplier_id, s.vendor_name, s.bu, sr.month, sr.total_score
                 FROM supplier_database_table s
                 JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
                 WHERE sr.year = ? AND sr.total_score IS NOT NULL
                 ORDER BY s.supplier_id, sr.month
             """
-            cursor.execute(all_scores_query, (search_year,))
-            all_scores = cursor.fetchall()
+            all_scores = db_manager.query(all_scores_query, (search_year,))
 
             # Agrupar dados por fornecedor
             from collections import defaultdict
             supplier_data = defaultdict(lambda: {'scores': [], 'info': {}})
-            for sid, vname, bu, month, score in all_scores:
-                supplier_data[sid]['scores'].append((int(month), float(score)))
-                supplier_data[sid]['info'] = {'vendor_name': vname, 'bu': bu}
+            for row in all_scores:
+                sid = row['supplier_id']
+                vname = row['vendor_name']
+                bu = row['bu']
+                month = row['month']
+                score = row['total_score']
+
+                try:
+                    month_int = int(month)
+                    score_float = float(score)
+                    supplier_data[sid]['scores'].append((month_int, score_float))
+                    supplier_data[sid]['info'] = {'vendor_name': vname, 'bu': bu}
+                except (ValueError, TypeError) as e:
+                    print(f"⚠️ Dados inválidos ignorados para supplier {sid}: month='{month}', score='{score}' - {e}")
+                    continue
 
             print(f"Total de suppliers com dados no ano {search_year}: {len(supplier_data)}")
 

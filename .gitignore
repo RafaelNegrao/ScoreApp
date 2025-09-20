@@ -3,3 +3,6 @@ bd.bd
 db.db-shm
 db.db-wal
 *.bak
+__pycache__/
+storage/
+.pytest_cache/
