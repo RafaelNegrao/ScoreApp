@@ -6927,6 +6927,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             users_content.visible = idx == 3
             lists_content.visible = idx == 4
             log_content.visible = idx == 5
+            info_content.visible = idx == 6
             # Ao abrir a aba Log, garantir que os dados sejam carregados
             if idx == 5:
                 try:
@@ -6962,17 +6963,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             (ft.Icons.PEOPLE, "Users", 3),
             (ft.Icons.LIST, "Lists", 4),
             (ft.Icons.HISTORY, "Log", 5),
+            (ft.Icons.INFO_OUTLINED, "Info", 6),
         ]
         
         if privilege == "Super Admin":
             # Super Admin pode acessar tudo
             return all_tabs
         elif privilege == "Admin":
-            # Admin pode: Themes, Suppliers, Lists (sem Users, Criteria, Log)
-            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 1, 4]]
+            # Admin pode: Themes, Suppliers, Lists, Info (sem Users, Criteria, Log)
+            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 1, 4, 6]]
         else:  # User
-            # User pode apenas: Themes
-            return [(icon, name, idx) for icon, name, idx in all_tabs if idx == 0]
+            # User pode: Themes e Info
+            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 6]]
 
     def update_config_tabs():
         # Filtrar abas baseado no privilégio do usuário
@@ -9895,6 +9897,116 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         expand=True,  # Container principal expandir para ocupar espaço disponível
     )
 
+    # --- Conteúdo da aba Info ---
+    info_content = ft.Container(
+        content=ft.Column([
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.INFO_OUTLINED, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=24),
+                        ft.Text("Informações sobre o App", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ], spacing=10),
+                    ft.Divider(color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+                ]),
+                margin=ft.margin.only(bottom=20),
+            ),
+            
+            # Card com objetivo do app
+            ft.Card(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.TRACK_CHANGES, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=20),
+                            ft.Text("Objetivo do Sistema", size=18, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ], spacing=10),
+                        ft.Container(height=10),
+                        ft.Text(
+                            "Este sistema foi desenvolvido para consolidar e gerenciar as notas de avaliação dos fornecedores. "
+                            "O objetivo é facilitar a tomada de decisões estratégicas e melhorar "
+                            "o relacionamento com os fornecedores.",
+                            size=14,
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            text_align=ft.TextAlign.JUSTIFY,
+                        ),
+                    ]),
+                    padding=20,
+                ),
+                elevation=2,
+                margin=ft.margin.only(bottom=20),
+            ),
+            
+            # Card com informações de desenvolvimento
+            ft.Card(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.CODE, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=20),
+                            ft.Text("Informações de Desenvolvimento", size=18, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ], spacing=10),
+                        ft.Container(height=10),
+                        
+                        # Desenvolvedor
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Text("Desenvolvido por:", size=12, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                                ft.Text("Rafael Negrão de Souza - Supply Continuity Intern", size=14, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                                ft.Text("rafael.negrao.souza@cummins.com", size=12, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                                ft.Text("AN62H", size=12, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                            ], spacing=5),
+                            margin=ft.margin.only(bottom=15),
+                        ),
+                        
+                        ft.Divider(color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'), height=1),
+                        
+                        # Autor intelectual
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Text("Autor intelectual do projeto:", size=12, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                                ft.Text("Cleiton Bianchi dos Santos - Supply Continuity Manager", size=14, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                                ft.Text("Cleiton.Bianchi.Santos@cummins.com", size=12, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                                ft.Text("IV338", size=12, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                            ], spacing=5),
+                            margin=ft.margin.only(top=15),
+                        ),
+                    ]),
+                    padding=20,
+                ),
+                elevation=2,
+                margin=ft.margin.only(bottom=20),
+            ),
+            
+            # Card com funcionalidades principais
+            ft.Card(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.STAR_OUTLINE, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=20),
+                            ft.Text("Funcionalidades Principais", size=18, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ], spacing=10),
+                        ft.Container(height=10),
+                        
+                        # Lista de funcionalidades
+                        ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.CIRCLE, size=6, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                                ft.Text("Consolidação de notas de fornecedores por período", size=14, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                            ], spacing=10),
+                            ft.Row([
+                                ft.Icon(ft.Icons.CIRCLE, size=6, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                                ft.Text("Importação e exportação de dados via Excel", size=14, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                            ], spacing=10),
+                        ], spacing=8),
+                    ]),
+                    padding=20,
+                ),
+                elevation=2,
+            ),
+        ], scroll=ft.ScrollMode.AUTO),
+        padding=20,
+        visible=False,
+        expand=True,
+    )
+
 
     # Variável global para controlar paginação do log
     log_pagination = {
@@ -10224,7 +10336,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 criteria_content,
                 users_content,
                 lists_content,
-                log_content
+                log_content,
+                info_content
             ]),
             expand=True
         )
