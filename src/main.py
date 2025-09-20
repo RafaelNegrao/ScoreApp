@@ -1348,7 +1348,11 @@ class EditTimelineRecordDialog(ft.AlertDialog):
                 max=10,
                 divisions=100,
                 value=norm_value if norm_value is not None else 0,
-                width=120,
+                # Largura maior para melhor usabilidade na aba Score
+                width=230,
+                # Cores do slider: ativa segue a primária; inativa mais clara
+                active_color="primary",
+                inactive_color="surface_variant",
                 disabled=not has_permission
             )
 
@@ -1369,7 +1373,8 @@ class EditTimelineRecordDialog(ft.AlertDialog):
                 ft.Container(
                     content=score_text,
                     alignment=ft.alignment.center,
-                    width=120,
+                    # Acompanhar a largura do slider para manter alinhamento
+                    width=230,
                     margin=ft.margin.only(top=-15)
                 )
             ], spacing=0, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
@@ -2946,34 +2951,785 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # --- Início: Funções para Importar/Exportar Score ---
     
     def import_score_dialog():
-        """Abre diálogo para importar scores de arquivo"""
-        import_file_picker = ft.FilePicker(
-            on_result=lambda result: handle_import_file(result)
-        )
-        page.overlay.append(import_file_picker)
-        page.update()
+        """Interface completa para importar scores de arquivo Excel"""
+        import datetime
         
-        def handle_import_file(result):
+        # Referencias para os componentes
+        month_dropdown_ref = ft.Ref[ft.Dropdown]()
+        year_dropdown_ref = ft.Ref[ft.Dropdown]() 
+        file_display_ref = ft.Ref[ft.Column]()
+        import_button_ref = ft.Ref[ft.ElevatedButton]()
+        validation_status_ref = ft.Ref[ft.Row]()
+        message_display_ref = ft.Ref[ft.Column]()  # Para mostrar mensagens
+        progress_bar_ref = ft.Ref[ft.ProgressBar]()  # Barra de progresso
+        progress_text_ref = ft.Ref[ft.Text]()  # Texto de progresso
+        
+        # Estado da aplicação
+        selected_file = {"path": None, "name": None, "valid": False}
+        
+        # Preparar opções de mês e ano
+        months = [
+            ft.dropdown.Option("1", "Janeiro"),
+            ft.dropdown.Option("2", "Fevereiro"), 
+            ft.dropdown.Option("3", "Março"),
+            ft.dropdown.Option("4", "Abril"),
+            ft.dropdown.Option("5", "Maio"),
+            ft.dropdown.Option("6", "Junho"),
+            ft.dropdown.Option("7", "Julho"),
+            ft.dropdown.Option("8", "Agosto"),
+            ft.dropdown.Option("9", "Setembro"),
+            ft.dropdown.Option("10", "Outubro"),
+            ft.dropdown.Option("11", "Novembro"),
+            ft.dropdown.Option("12", "Dezembro")
+        ]
+        years = [ft.dropdown.Option(str(year)) for year in range(2024, 2041)]
+        
+        def close_dialog(e):
+            page.close(dialog)
+        
+        def check_form_validity():
+            """Verifica se mês/ano estão selecionados, arquivo válido e data não é futura"""
+            month_ok = month_dropdown_ref.current.value is not None
+            year_ok = year_dropdown_ref.current.value is not None
+            file_ok = selected_file["valid"]
+            date_ok = True
+            
+            # Verificar se a data não é futura (permite mês atual)
+            if month_ok and year_ok:
+                selected_month = int(month_dropdown_ref.current.value)
+                selected_year = int(year_dropdown_ref.current.value)
+                current_date = datetime.datetime.now()
+                
+                # Comparar apenas ano/mês (não dia específico)
+                current_year = current_date.year
+                current_month = current_date.month
+                
+                # Data é futura se ano > atual OU (ano = atual E mês > atual)
+                if selected_year > current_year or (selected_year == current_year and selected_month > current_month):
+                    date_ok = False
+            
+            # Habilitar/desabilitar botão de importar
+            if import_button_ref.current:
+                import_button_ref.current.disabled = not (month_ok and year_ok and file_ok and date_ok)
+                page.update()
+            
+            return date_ok
+        
+        def validate_excel_file(file_path):
+            """Valida se o arquivo Excel é válido (contém aba de validação)"""
+            try:
+                import openpyxl
+                import os
+                
+                if not os.path.exists(file_path):
+                    return False, "Arquivo não encontrado"
+                
+                # Abrir workbook
+                wb = openpyxl.load_workbook(file_path)
+                
+                # Verificar se existe a aba de validação oculta
+                if "ScoreApp_Validation" not in wb.sheetnames:
+                    return False, "Arquivo não foi gerado pelo ScoreApp"
+                
+                # Validar dados da aba de validação - apenas verificar o texto fixo
+                validation_ws = wb["ScoreApp_Validation"]
+                validation_text = validation_ws["A1"].value
+                
+                if validation_text != "SCOREAPP_VALIDATION_123456":
+                    return False, "Arquivo inválido - não foi gerado pelo ScoreApp"
+                
+                # Verificar se a aba "Import_score" existe
+                if "Import_score" not in wb.sheetnames:
+                    return False, "Aba 'Import_score' não encontrada"
+                
+                return True, "Arquivo válido"
+                
+            except Exception as e:
+                return False, f"Erro ao validar arquivo: {str(e)}"
+        
+        def handle_file_selection(result):
+            """Processa arquivo selecionado"""
             if result.files:
                 file_path = result.files[0].path
-                try:
-                    # Aqui você pode implementar a lógica de importação
-                    # Por exemplo, ler um CSV ou Excel com scores
-                    show_toast(f"Funcionalidade de importação será implementada. Arquivo selecionado: {file_path}", "blue")
-                except Exception as e:
-                    show_toast(f"Erro ao importar arquivo: {e}", "red")
+                file_name = result.files[0].name
+                
+                # Validar arquivo
+                is_valid, message = validate_excel_file(file_path)
+                
+                # Atualizar estado
+                selected_file["path"] = file_path
+                selected_file["name"] = file_name  
+                selected_file["valid"] = is_valid
+                
+                # Atualizar display do arquivo
+                if is_valid:
+                    status_color = "green"
+                    status_icon = ft.Icons.CHECK_CIRCLE
+                    status_text = "✅ Pronto para importar"
+                else:
+                    status_color = "red"
+                    status_icon = ft.Icons.ERROR
+                    status_text = f"❌ Arquivo incorreto: {message}"
+                
+                # Atualizar interface
+                file_display_ref.current.controls.clear()
+                file_display_ref.current.controls.extend([
+                    ft.Card(
+                        content=ft.Container(
+                            content=ft.Row([
+                                ft.Icon(ft.Icons.DESCRIPTION, color="blue", size=24),
+                                ft.Column([
+                                    ft.Text(file_name, weight="bold", size=14),
+                                    ft.Text(status_text, color=status_color, size=12)
+                                ], expand=True, spacing=2),
+                                ft.IconButton(
+                                    icon=ft.Icons.DELETE,
+                                    icon_color="red",
+                                    tooltip="Remover arquivo",
+                                    on_click=lambda _: remove_file()
+                                )
+                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            padding=15
+                        ),
+                        elevation=2
+                    )
+                ])
+                
+                validation_status_ref.current.controls.clear()
+                if not is_valid:
+                    validation_status_ref.current.controls.extend([
+                        ft.Icon(status_icon, color=status_color, size=20),
+                        ft.Text(status_text, color=status_color, size=12, weight="bold")
+                    ])
+                
+                check_form_validity()
+                page.update()
         
-        # Abrir o seletor de arquivo
-        import_file_picker.pick_files(
-            dialog_title="Selecione o arquivo de scores para importar",
-            allowed_extensions=["csv", "xlsx", "xls"]
+        def remove_file():
+            """Remove arquivo selecionado"""
+            selected_file["path"] = None
+            selected_file["name"] = None
+            selected_file["valid"] = False
+            
+            file_display_ref.current.controls.clear()
+            validation_status_ref.current.controls.clear()
+            
+            check_form_validity()
+            page.update()
+        
+        def select_file(e):
+            """Abre seletor de arquivo"""
+            import_file_picker = ft.FilePicker(on_result=handle_file_selection)
+            page.overlay.append(import_file_picker)
+            page.update()
+            
+            import_file_picker.pick_files(
+                dialog_title="Selecione o arquivo Excel para importar",
+                allowed_extensions=["xlsx"]
+            )
+        
+        def import_file(e):
+            """Executa importação do arquivo com barra de progresso"""
+            # Limpar mensagens anteriores
+            message_display_ref.current.controls.clear()
+            
+            if not selected_file["valid"]:
+                show_message("❌ Arquivo inválido para importação", "red")
+                return
+            
+            # Verificar se data não é futura
+            if not check_form_validity():
+                show_message("❌ Não é possível importar dados para datas futuras", "red")
+                return
+                
+            month = month_dropdown_ref.current.value
+            year = year_dropdown_ref.current.value
+            file_path = selected_file["path"]
+            
+            # Desabilitar botão durante importação
+            import_button_ref.current.disabled = True
+            
+            # Mostrar barra de progresso
+            progress_bar_ref.current.visible = True
+            progress_text_ref.current.visible = True
+            progress_text_ref.current.value = "Preparando importação..."
+            progress_bar_ref.current.value = 0
+            page.update()
+            
+            def run_import():
+                try:
+                    # Executar importação com CRUD e recálculo
+                    success, message = import_scores_from_excel_with_crud_with_progress(
+                        file_path, month, year, progress_bar_ref, progress_text_ref
+                    )
+                    
+                    # Atualizar interface na thread principal
+                    def update_ui():
+                        progress_bar_ref.current.visible = False
+                        progress_text_ref.current.visible = False
+                        import_button_ref.current.disabled = False
+                        
+                        if success:
+                            show_message(f"✅ {message}", "green")
+                            # Atualizar dados na tela se necessário
+                            try:
+                                load_all_lists_data()
+                            except:
+                                pass
+                        else:
+                            show_message(f"❌ {message}", "red")
+                    
+                    page.run_thread(update_ui)
+                    
+                except Exception as ex:
+                    def update_error():
+                        progress_bar_ref.current.visible = False
+                        progress_text_ref.current.visible = False
+                        import_button_ref.current.disabled = False
+                        show_message(f"❌ Erro na importação: {ex}", "red")
+                    
+                    page.run_thread(update_error)
+            
+            # Executar em thread separada
+            import threading
+            threading.Thread(target=run_import, daemon=True).start()
+        
+        def show_message(text, message_type):
+            """Mostra mensagem na janela de importação"""
+            message_display_ref.current.controls.clear()
+            
+            # Definir cores baseadas no tipo de mensagem
+            if message_type == "green":
+                text_color = "green"
+                bg_color = "#e8f5e8"  # Verde claro
+                border_color = "green"
+            elif message_type == "red":
+                text_color = "red"
+                bg_color = "#fdeaea"  # Vermelho claro
+                border_color = "red"
+            elif message_type == "blue":
+                text_color = "blue"
+                bg_color = "#e3f2fd"  # Azul claro
+                border_color = "blue"
+            else:
+                text_color = "black"
+                bg_color = "#f5f5f5"  # Cinza claro
+                border_color = "grey"
+            
+            message_display_ref.current.controls.append(
+                ft.Container(
+                    content=ft.Text(text, color=text_color, size=14, weight="bold"),
+                    padding=10,
+                    bgcolor=bg_color,
+                    border_radius=8,
+                    border=ft.border.all(1, border_color)
+                )
+            )
+            page.update()
+        
+        # Conteúdo do diálogo
+        dialog_content = ft.Column([
+            ft.Text("Importar Scores do Excel", size=18, weight="bold"),
+            ft.Divider(height=20),
+            
+            # Seleção de mês e ano
+            ft.Text("Período para Importação:", size=14, weight="bold"),
+            ft.Row([
+                ft.Dropdown(
+                    label="Mês",
+                    options=months,
+                    expand=True,
+                    ref=month_dropdown_ref,
+                    on_change=lambda _: check_form_validity()
+                ),
+                ft.Dropdown(
+                    label="Ano", 
+                    options=years,
+                    expand=True,
+                    ref=year_dropdown_ref,
+                    on_change=lambda _: check_form_validity()
+                ),
+            ], spacing=10),
+            
+            ft.Container(height=20),
+            
+            # Seleção de arquivo
+            ft.Text("Arquivo Excel:", size=14, weight="bold"),
+            ft.ElevatedButton(
+                "📁 Selecionar Arquivo Excel",
+                icon=ft.Icons.FOLDER_OPEN,
+                on_click=select_file
+            ),
+            
+            # Display do arquivo selecionado
+            ft.Column(ref=file_display_ref, spacing=10),
+            
+            # Status de validação
+            ft.Row(ref=validation_status_ref, spacing=10),
+            
+            # Barra de progresso
+            ft.Container(
+                content=ft.Column([
+                    ft.Text(
+                        "", 
+                        ref=progress_text_ref, 
+                        size=12, 
+                        visible=False,
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
+                    ),
+                    ft.ProgressBar(ref=progress_bar_ref, visible=False),
+                ], spacing=5),
+                padding=ft.padding.only(top=10)
+            ),
+            
+            # Area de mensagens
+            ft.Column(ref=message_display_ref, spacing=10),
+            
+            ft.Container(height=20),
+            ft.Divider(),
+            
+            # Botões
+            ft.Row([
+                ft.TextButton(
+                    "Fechar",
+                    on_click=close_dialog
+                ),
+                ft.ElevatedButton(
+                    "📥 Importar Arquivo",
+                    on_click=import_file,
+                    ref=import_button_ref,
+                    disabled=True,  # Inicialmente desabilitado
+                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_primary')
+                )
+            ], alignment=ft.MainAxisAlignment.END, spacing=10)
+        ], width=500, spacing=15, tight=True)
+        
+        dialog = ft.AlertDialog(
+            title=ft.Text("Importar Dados"),
+            content=dialog_content,
+            modal=True
         )
-    
-    def export_form_dialog():
-        """Abre diálogo para exportar formulário de scores"""
+        
+        page.open(dialog)
+
+    def import_scores_from_excel_with_crud_with_progress(file_path, month, year, progress_bar_ref, progress_text_ref):
+        """Importa scores do Excel com CRUD e recálculo de notas"""
+        try:
+            import openpyxl
+            from datetime import datetime
+            import os
+        except ImportError:
+            return False, "Biblioteca openpyxl não encontrada"
+
+        try:
+            # Verificar se o arquivo existe
+            if not os.path.exists(file_path):
+                return False, "Arquivo não encontrado"
+
+            # Atualizar progresso
+            if progress_text_ref and progress_text_ref.current:
+                page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Abrindo arquivo Excel...'))
+                page.run_thread(lambda: page.update())
+
+            # Abrir workbook
+            wb = openpyxl.load_workbook(file_path)
+            
+            # Verificar validação
+            if "ScoreApp_Validation" not in wb.sheetnames:
+                return False, "Arquivo não foi gerado pelo ScoreApp"
+                
+            validation_ws = wb["ScoreApp_Validation"]
+            validation_text = validation_ws["A1"].value
+            
+            if validation_text != "SCOREAPP_VALIDATION_123456":
+                return False, "Arquivo inválido"
+            
+            # Verificar aba Import_score
+            if "Import_score" not in wb.sheetnames:
+                return False, "Aba 'Import_score' não encontrada"
+                
+            ws = wb["Import_score"]
+            
+            # Ler headers para identificar as colunas
+            headers = []
+            col = 1
+            while True:
+                cell_value = ws.cell(row=1, column=col).value
+                if cell_value is None:
+                    break
+                headers.append(str(cell_value).strip())
+                col += 1
+            
+            # Mapear headers para índices
+            header_map = {header.lower(): idx for idx, header in enumerate(headers)}
+            
+            # Identificar colunas obrigatórias
+            required_cols = ["supplier id", "po", "bu", "supplier name"]
+            for req_col in required_cols:
+                if req_col not in header_map:
+                    return False, f"Coluna obrigatória '{req_col}' não encontrada"
+            
+            # Identificar colunas de notas (headers padrão do sistema) baseado nas permissões do usuário
+            score_columns = {}
+            standard_score_names = {
+                "otif": ["otif", "on time in full", "OTIF"],
+                "nil": ["nil", "zero defects", "NIL"],
+                "pickup": ["quality pickup", "pickup quality", "quality_pickup", "pickup", "Pickup"],
+                "package": ["quality package", "package quality", "quality_package", "package", "Package"]
+            }
+            
+            # Só mapear as colunas que o usuário tem permissão para acessar
+            for score_type, possible_names in standard_score_names.items():
+                # Verificar se o usuário tem permissão para esta nota
+                if current_user_permissions.get(score_type, False):
+                    for possible_name in possible_names:
+                        if possible_name in header_map:
+                            score_columns[score_type] = header_map[possible_name]
+                            break
+            
+            print(f"🔍 DEBUG: Colunas de notas mapeadas baseadas nas permissões: {score_columns}")
+            print(f"🔍 DEBUG: Permissões do usuário: {current_user_permissions}")
+            
+            # Verificar se o usuário tem pelo menos uma permissão de nota
+            if not score_columns:
+                return False, "Usuário não tem permissão para importar nenhuma coluna de nota"
+            
+            # Obter critérios do banco - mesmo formato da geração de notas
+            if progress_text_ref and progress_text_ref.current:
+                page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Carregando critérios...'))
+                page.run_thread(lambda: page.update())
+            
+            criterios_raw = db_manager.query("SELECT criteria_category, value FROM criteria_table")
+            criterio_map = {}
+            for row in criterios_raw:
+                nome = str(row.get('criteria_category') if isinstance(row, dict) else row[0]).strip().lower()
+                valor = float(row.get('value') if isinstance(row, dict) else row[1])
+                if "package" in nome:
+                    criterio_map["package"] = valor
+                elif "pick" in nome:
+                    criterio_map["pickup"] = valor  
+                elif "nil" in nome:
+                    criterio_map["nil"] = valor
+                elif "otif" in nome:
+                    criterio_map["otif"] = valor
+            
+            processed_count = 0
+            updated_count = 0
+            created_count = 0
+            
+            # Calcular total de linhas para progresso
+            total_rows = ws.max_row - 1  # -1 porque linha 1 é header
+            
+            # Processar cada linha de dados
+            for row_num in range(2, ws.max_row + 1):
+                # Atualizar progresso
+                current_progress = (row_num - 2) / total_rows if total_rows > 0 else 0
+                if progress_bar_ref and progress_bar_ref.current:
+                    page.run_thread(lambda p=current_progress: setattr(progress_bar_ref.current, 'value', p))
+                if progress_text_ref and progress_text_ref.current:
+                    page.run_thread(lambda r=row_num-1, t=total_rows: setattr(progress_text_ref.current, 'value', f'Processando registro {r} de {t}...'))
+                page.run_thread(lambda: page.update())
+                
+                try:
+                    # Ler dados básicos
+                    supplier_id_cell = ws.cell(row=row_num, column=header_map["supplier id"] + 1)
+                    po_cell = ws.cell(row=row_num, column=header_map["po"] + 1)
+                    bu_cell = ws.cell(row=row_num, column=header_map["bu"] + 1)
+                    supplier_name_cell = ws.cell(row=row_num, column=header_map["supplier name"] + 1)
+                    
+                    if not supplier_id_cell.value:
+                        continue
+                        
+                    supplier_id = str(supplier_id_cell.value).strip()
+                    po = str(po_cell.value).strip() if po_cell.value else ""
+                    bu = str(bu_cell.value).strip() if bu_cell.value else ""
+                    supplier_name = str(supplier_name_cell.value).strip() if supplier_name_cell.value else ""
+                    
+                    # Ler notas do Excel - apenas para as colunas que existem no arquivo
+                    excel_scores = {}
+                    
+                    # Só processar as colunas que realmente existem no Excel
+                    for score_type, col_idx in score_columns.items():
+                        cell_value = ws.cell(row=row_num, column=col_idx + 1).value
+                        
+                        # Se a célula tem valor ou está vazia, processar
+                        if cell_value is not None and str(cell_value).strip():
+                            try:
+                                score_value = float(cell_value)
+                                if 0.0 <= score_value <= 10.0:
+                                    excel_scores[score_type] = score_value
+                                else:
+                                    excel_scores[score_type] = None  # Valores fora do range = null
+                            except (ValueError, TypeError):
+                                excel_scores[score_type] = None  # Valores inválidos = null
+                        else:
+                            excel_scores[score_type] = None  # Células vazias = null
+                    
+                    # Verificar se existe registro no banco
+                    existing_record = db_manager.query(
+                        "SELECT * FROM supplier_score_records_table WHERE supplier_id = ? AND month = ? AND year = ?",
+                        [supplier_id, month, year]
+                    )
+                    
+                    if existing_record:
+                        # Atualizar registro existente
+                        record = existing_record[0]
+                        current_scores = {
+                            "otif": record.get('otif') if isinstance(record, dict) else record[8],
+                            "nil": record.get('nil') if isinstance(record, dict) else record[7],
+                            "pickup": record.get('quality_pickup') if isinstance(record, dict) else record[6],
+                            "package": record.get('quality_package') if isinstance(record, dict) else record[5]
+                        }
+                        
+                        # Obter registered_by atual
+                        current_registered_by = record.get('registered_by') if isinstance(record, dict) else record[12]
+                        current_registered_list = current_registered_by.split(',') if current_registered_by else []
+                        
+                        # Mesclar notas - apenas sobrescrever as que têm valor real no Excel
+                        final_scores = current_scores.copy()
+                        updated_fields = []
+                        
+                        # Só atualizar as notas que têm colunas correspondentes no Excel E têm valor não nulo
+                        for score_type, col_idx in score_columns.items():
+                            # Se a coluna existe no Excel E tem valor (não é None/vazio), usar o valor do Excel
+                            if score_type in excel_scores and excel_scores[score_type] is not None:
+                                final_scores[score_type] = excel_scores[score_type]
+                                updated_fields.append(score_type)
+                            # Se a coluna não existe no Excel OU está vazia, manter o valor atual do banco
+                        
+                        # Recalcular total_score usando TODAS as notas (atualizadas + preservadas)
+                        total_score = 0.0
+                        for score_type, score_value in final_scores.items():
+                            if score_value is not None and score_type in criterio_map:
+                                try:
+                                    score_float = float(score_value)
+                                    criterio_float = float(criterio_map[score_type])
+                                    total_score += score_float * criterio_float
+                                except (ValueError, TypeError):
+                                    print(f"⚠️ Erro ao converter valores para float: score_value={score_value}, criterio={criterio_map[score_type]}")
+                                    continue
+                        
+                        # Criar comentário específico sobre quais notas foram importadas (apenas as que realmente mudaram)
+                        import_comment_parts = []
+                        for score_type in updated_fields:
+                            score_value = excel_scores[score_type]
+                            # Como chegou até aqui, sabemos que score_value não é None
+                            import_comment_parts.append(f"{score_type.upper()} score generated by Excel import")
+                        
+                        import_comment = "; ".join(import_comment_parts) if import_comment_parts else "Updated by Excel import"
+                        
+                        # Atualizar registered_by apenas com as notas que foram importadas
+                        new_registered_list = current_registered_list.copy()
+                        score_name_map = {
+                            "otif": "OTIF",
+                            "nil": "NIL", 
+                            "pickup": "Pickup",
+                            "package": "Package"
+                        }
+                        
+                        for score_type in updated_fields:
+                            score_name = score_name_map.get(score_type, score_type.upper())
+                            if score_name not in new_registered_list:
+                                new_registered_list.append(score_name)
+                        
+                        new_registered_by = ",".join(new_registered_list) if new_registered_list else "Excel Import"
+                        
+                        # Atualizar no banco - mesma estrutura da geração de notas
+                        db_manager.execute(
+                            """UPDATE supplier_score_records_table 
+                               SET quality_package = ?, quality_pickup = ?, nil = ?, otif = ?, 
+                                   total_score = ?, comment = ?, changed_by = ?, register_date = ?, registered_by = ?
+                               WHERE supplier_id = ? AND month = ? AND year = ?""",
+                            [final_scores["package"], final_scores["pickup"], 
+                             final_scores["nil"], final_scores["otif"], total_score, 
+                             import_comment, current_user_name or "Import", datetime.now().isoformat(),
+                             new_registered_by, supplier_id, month, year]
+                        )
+                        updated_count += 1
+                        
+                    else:
+                        # Criar novo registro - apenas com as notas que têm valor no Excel
+                        final_scores = {
+                            "otif": excel_scores.get("otif") if "otif" in score_columns and excel_scores.get("otif") is not None else None,
+                            "nil": excel_scores.get("nil") if "nil" in score_columns and excel_scores.get("nil") is not None else None,
+                            "pickup": excel_scores.get("pickup") if "pickup" in score_columns and excel_scores.get("pickup") is not None else None,
+                            "package": excel_scores.get("package") if "package" in score_columns and excel_scores.get("package") is not None else None
+                        }
+                        
+                        # Calcular total_score apenas com as notas que não são None
+                        total_score = 0.0
+                        for score_type, score_value in final_scores.items():
+                            if score_value is not None and score_type in criterio_map:
+                                try:
+                                    score_float = float(score_value)
+                                    criterio_float = float(criterio_map[score_type])
+                                    total_score += score_float * criterio_float
+                                except (ValueError, TypeError):
+                                    print(f"⚠️ Erro ao converter valores para float: score_value={score_value}, criterio={criterio_map[score_type]}")
+                                    continue
+                        
+                        # Criar comentário para novo registro - apenas para notas que realmente têm valor
+                        new_import_comment_parts = []
+                        for score_type in ["otif", "nil", "pickup", "package"]:
+                            if score_type in score_columns and excel_scores.get(score_type) is not None:
+                                new_import_comment_parts.append(f"{score_type.upper()} score generated by Excel import")
+                        
+                        new_import_comment = "; ".join(new_import_comment_parts) if new_import_comment_parts else "Created by Excel import"
+                        
+                        # Criar registered_by apenas com as notas que foram importadas
+                        new_registered_list = []
+                        score_name_map = {
+                            "otif": "OTIF",
+                            "nil": "NIL",
+                            "pickup": "Pickup", 
+                            "package": "Package"
+                        }
+                        
+                        for score_type in ["otif", "nil", "pickup", "package"]:
+                            if score_type in score_columns and excel_scores.get(score_type) is not None:
+                                score_name = score_name_map.get(score_type, score_type.upper())
+                                new_registered_list.append(score_name)
+                        
+                        new_registered_by = ",".join(new_registered_list) if new_registered_list else "Excel Import"
+                        
+                        # Inserir no banco - mesma query da geração de notas
+                        query_insert = """
+                            INSERT INTO supplier_score_records_table (
+                                supplier_id, supplier_name, month, year,
+                                quality_package, quality_pickup, nil, otif,
+                                total_score, comment, register_date, changed_by, registered_by
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """
+                        
+                        params = (
+                            str(supplier_id),
+                            str(supplier_name),
+                            str(month),
+                            str(year),
+                            final_scores["package"],
+                            final_scores["pickup"],
+                            final_scores["nil"],
+                            final_scores["otif"],
+                            total_score,
+                            new_import_comment,
+                            datetime.now().isoformat(),
+                            current_user_name or "Import",
+                            new_registered_by
+                        )
+                        
+                        db_manager.execute(query_insert, params)
+                        created_count += 1
+                    
+                    processed_count += 1
+                    
+                except Exception as row_error:
+                    print(f"⚠️ Erro na linha {row_num}: {row_error}")
+                    continue
+            
+            # Finalizar progresso
+            if progress_bar_ref and progress_bar_ref.current:
+                page.run_thread(lambda: setattr(progress_bar_ref.current, 'value', 1.0))
+            if progress_text_ref and progress_text_ref.current:
+                page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Importação concluída!'))
+            page.run_thread(lambda: page.update())
+            
+            if processed_count == 0:
+                return False, "Nenhum dado válido encontrado no arquivo"
+            
+            message = f"Importação concluída: {processed_count} registros processados"
+            if created_count > 0:
+                message += f", {created_count} criados"
+            if updated_count > 0:
+                message += f", {updated_count} atualizados"
+                
+            return True, message
+            
+        except Exception as e:
+            return False, f"Erro durante importação: {str(e)}"
+
+    def import_scores_from_excel(file_path):
+        """Importa scores do arquivo Excel protegido"""
+        try:
+            import openpyxl
+            from datetime import datetime
+            import os
+        except ImportError:
+            show_toast("❌ Biblioteca openpyxl não encontrada. Instale com: pip install openpyxl", "red")
+            return
+
+        try:
+            # Verificar se o arquivo existe
+            if not os.path.exists(file_path):
+                show_toast("❌ Arquivo não encontrado.", "red")
+                return
+
+            # Abrir workbook
+            wb = openpyxl.load_workbook(file_path)
+            
+            # Verificar se existe a aba de validação oculta
+            if "ScoreApp_Validation" not in wb.sheetnames:
+                show_toast("❌ Arquivo inválido: não foi gerado pelo ScoreApp.", "red")
+                return
+                
+            # Validar dados da aba de validação - apenas verificar o texto fixo
+            validation_ws = wb["ScoreApp_Validation"]
+            try:
+                validation_text = validation_ws["A1"].value
+                
+                if validation_text != "SCOREAPP_VALIDATION_123456":
+                    show_toast("❌ Arquivo inválido: não foi gerado pelo ScoreApp.", "red")
+                    return
+                    
+            except Exception as e:
+                show_toast("❌ Erro ao validar arquivo: dados de validação corrompidos.", "red")
+                return
+            
+            # Verificar se a aba "Import_score" existe
+            if "Import_score" not in wb.sheetnames:
+                show_toast("❌ Aba 'Import_score' não encontrada no arquivo.", "red")
+                return
+                
+            ws = wb["Import_score"]
+            
+            # Verificar headers esperados (dinâmico baseado nas colunas)
+            expected_base_headers = ["Supplier ID", "PO", "Supplier Name"]
+            actual_headers = []
+            
+            # Ler todos os headers da primeira linha
+            col = 1
+            while True:
+                cell_value = ws.cell(row=1, column=col).value
+                if cell_value is None:
+                    break
+                actual_headers.append(cell_value)
+                col += 1
+            
+            print(f"🔍 DEBUG: Headers encontrados: {actual_headers}")
+            
+            # Verificar se pelo menos Supplier ID, PO e Supplier Name estão presentes
+            if len(actual_headers) < 3 or actual_headers[0] != "Supplier ID" or actual_headers[1] != "PO" or actual_headers[2] != "Supplier Name":
+                show_toast(f"❌ Headers incorretos. Esperados pelo menos: {expected_base_headers}", "red")
+                return
+            
+            # Mapear colunas de notas encontradas
+            note_columns = {}
+            for i, header in enumerate(actual_headers[3:], 4):  # Começar da coluna 4
+                if header in ["OTIF", "NIL", "Pickup", "Package"]:
+                    note_columns[header.lower()] = i
+                    
+            print(f"🔍 DEBUG: Colunas de notas mapeadas: {note_columns}")
+
+            # Solicitar mês e ano para importação
+            show_import_period_dialog(ws)
+            
+        except Exception as e:
+            show_toast(f"❌ Erro ao processar arquivo Excel: {str(e)}", "red")
+
+    def show_import_period_dialog(worksheet):
+        """Mostra diálogo para selecionar mês e ano da importação"""
         month_dropdown_ref = ft.Ref()
         year_dropdown_ref = ft.Ref()
-        format_dropdown_ref = ft.Ref()
         
         # Opções de mês
         months = [
@@ -2992,111 +3748,735 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.dropdown.Option("12", "Dezembro"),
         ]
         
-        # Opções de ano (2024 a 2040)
-        years = [ft.dropdown.Option("", "Selecione o ano...")] + [ft.dropdown.Option(str(year), str(year)) for year in range(2024, 2041)]
-        
-        # Formatos de exportação
-        formats = [
-            ft.dropdown.Option("csv", "CSV"),
-            ft.dropdown.Option("xlsx", "Excel"),
+        # Opções de ano
+        current_year = datetime.now().year
+        years = [ft.dropdown.Option("", "Selecione o ano...")] + [
+            ft.dropdown.Option(str(year), str(year)) for year in range(current_year-2, current_year+3)
         ]
+        
+        def close_dialog(e):
+            page.close(period_dialog)
+        
+        def confirm_import(e):
+            month = month_dropdown_ref.current.value if month_dropdown_ref.current else None
+            year = year_dropdown_ref.current.value if year_dropdown_ref.current else None
+            
+            if not month or not year:
+                show_toast("❌ Selecione o mês e ano para importação", "orange")
+                return
+            
+            try:
+                process_excel_import(worksheet, int(month), int(year))
+                close_dialog(e)
+            except Exception as ex:
+                show_toast(f"❌ Erro ao importar dados: {ex}", "red")
+        
+        # Conteúdo do diálogo
+        dialog_content = ft.Column([
+            ft.Text("Selecionar Período para Importação", size=18, weight="bold"),
+            ft.Container(height=20),
+            ft.Text("Selecione o mês e ano onde as notas serão importadas:", size=14),
+            ft.Container(height=10),
+            ft.Dropdown(
+                ref=month_dropdown_ref,
+                label="Mês",
+                options=months,
+                width=200,
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+            ),
+            ft.Container(height=10),
+            ft.Dropdown(
+                ref=year_dropdown_ref,
+                label="Ano",
+                options=years,
+                width=200,
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+            ),
+            ft.Container(height=30),
+            ft.Row([
+                ft.ElevatedButton(
+                    "Fechar",
+                    on_click=close_dialog,
+                    icon=ft.Icons.CANCEL,
+                    style=ft.ButtonStyle(
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('error'),
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_error')
+                    )
+                ),
+                ft.Container(width=10),
+                ft.ElevatedButton(
+                    "📥 Importar",
+                    on_click=confirm_import,
+                    icon=ft.Icons.UPLOAD,
+                    style=ft.ButtonStyle(
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_primary')
+                    )
+                )
+            ], alignment=ft.MainAxisAlignment.END)
+        ], width=300, spacing=15)
+        
+        # Criar e exibir diálogo
+        period_dialog = ft.AlertDialog(
+            title=ft.Text("Importar Dados"),
+            content=dialog_content,
+            modal=True
+        )
+        
+        page.open(period_dialog)
+
+    def process_excel_import(worksheet, month, year):
+        """Processa a importação das notas do Excel para o banco"""
+        try:
+            from datetime import datetime
+            
+            imported_count = 0
+            updated_count = 0
+            errors = []
+            register_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Mapear colunas de notas do worksheet
+            actual_headers = []
+            col = 1
+            while True:
+                cell_value = worksheet.cell(row=1, column=col).value
+                if cell_value is None:
+                    break
+                actual_headers.append(cell_value)
+                col += 1
+            
+            # Mapear colunas de notas encontradas
+            note_columns = {}
+            for i, header in enumerate(actual_headers[3:], 4):  # Começar da coluna 4
+                if header in ["OTIF", "NIL", "Pickup", "Package"]:
+                    note_columns[header.lower()] = i
+                    
+            print(f"🔍 DEBUG: Colunas de notas mapeadas na importação: {note_columns}")
+            
+            # Buscar critérios atuais
+            criteria = db_manager.query("SELECT * FROM criteria_table LIMIT 1")
+            if not criteria:
+                show_toast("❌ Critérios de pontuação não encontrados na tabela de critérios.", "red")
+                return
+                
+            criterio = criteria[0]
+            criterio_map = {
+                "otif": criterio.get('otif', 0) / 100,
+                "nil": criterio.get('nil', 0) / 100,
+                "package": criterio.get('package', 0) / 100,
+                "pickup": criterio.get('pickup', 0) / 100,
+            }
+            
+            # Processar cada linha do Excel (começando da linha 2)
+            row_num = 2
+            while True:
+                supplier_id_cell = worksheet.cell(row=row_num, column=1).value  # Supplier ID
+                po = worksheet.cell(row=row_num, column=2).value                # PO
+                supplier_name = worksheet.cell(row=row_num, column=3).value     # Supplier Name
+                
+                # Se não há Supplier ID, PO nem nome, assumir fim dos dados
+                if not supplier_id_cell and not po and not supplier_name:
+                    break
+                
+                # Ler notas das colunas encontradas (podem estar vazias)
+                scores = {}
+                for field, col_num in note_columns.items():
+                    value = worksheet.cell(row=row_num, column=col_num).value or 0
+                    try:
+                        scores[field] = float(value)
+                        if scores[field] < 0 or scores[field] > 10:
+                            errors.append(f"Linha {row_num}: {field} = {value} (deve estar entre 0 e 10)")
+                            scores[field] = 0
+                    except (ValueError, TypeError):
+                        scores[field] = 0
+                
+                # Preencher campos não encontrados com 0 (para compatibilidade com o banco)
+                otif = scores.get('otif', 0)
+                nil = scores.get('nil', 0) 
+                pickup = scores.get('pickup', 0)
+                package = scores.get('package', 0)
+                
+                # Buscar supplier_id pelo PO ou pelo supplier_id direto
+                supplier_query = None
+                
+                # Tentar primeiro pelo supplier_id se disponível
+                if supplier_id_cell:
+                    try:
+                        supplier_id_from_cell = int(supplier_id_cell)
+                        supplier_query = db_manager.query_one(
+                            "SELECT supplier_id, vendor_name FROM supplier_database_table WHERE supplier_id = ? AND supplier_status = 'Active'",
+                            (supplier_id_from_cell,)
+                        )
+                    except (ValueError, TypeError):
+                        pass
+                
+                # Se não encontrou pelo ID, tentar pelo PO
+                if not supplier_query and po:
+                    supplier_query = db_manager.query_one(
+                        "SELECT supplier_id, vendor_name FROM supplier_database_table WHERE supplier_number = ? AND supplier_status = 'Active'",
+                        (po,)
+                    )
+                
+                if not supplier_query:
+                    errors.append(f"Linha {row_num}: Supplier ID '{supplier_id_cell}' ou PO '{po}' não encontrado ou supplier inativo")
+                    row_num += 1
+                    continue
+                
+                supplier_id = supplier_query['supplier_id']
+                vendor_name = supplier_query['vendor_name']
+                
+                # Calcular total score
+                total_score = (
+                    scores['otif'] * criterio_map['otif'] +
+                    scores['nil'] * criterio_map['nil'] +
+                    scores['pickup'] * criterio_map['pickup'] +
+                    scores['package'] * criterio_map['package']
+                )
+                total_score = round(total_score, 2)
+                
+                # Verificar se registro já existe
+                existing = db_manager.query_one(
+                    "SELECT 1 FROM supplier_score_records_table WHERE supplier_id = ? AND month = ? AND year = ?",
+                    (supplier_id, month, year)
+                )
+                
+                if existing:
+                    # Atualizar registro existente
+                    update_query = """
+                        UPDATE supplier_score_records_table 
+                        SET otif = ?, nil = ?, quality_pickup = ?, quality_package = ?, 
+                            total_score = ?, changed_by = ?, supplier_name = ?
+                        WHERE supplier_id = ? AND month = ? AND year = ?
+                    """
+                    db_manager.execute(update_query, (
+                        scores['otif'], scores['nil'], scores['pickup'], scores['package'],
+                        total_score, current_user_name, vendor_name,
+                        supplier_id, month, year
+                    ))
+                    updated_count += 1
+                else:
+                    # Inserir novo registro
+                    insert_query = """
+                        INSERT INTO supplier_score_records_table 
+                        (supplier_id, month, year, otif, nil, quality_pickup, quality_package, 
+                         total_score, registered_by, register_date, changed_by, supplier_name, comment)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """
+                    db_manager.execute(insert_query, (
+                        supplier_id, month, year, scores['otif'], scores['nil'], 
+                        scores['pickup'], scores['package'], total_score,
+                        current_user_name, register_date, current_user_name, vendor_name, ""
+                    ))
+                    imported_count += 1
+                
+                row_num += 1
+            
+            # Mostrar resultado da importação
+            result_msg = f"✅ Importação concluída:\n"
+            if imported_count > 0:
+                result_msg += f"• {imported_count} registro(s) criado(s)\n"
+            if updated_count > 0:
+                result_msg += f"• {updated_count} registro(s) atualizado(s)\n"
+            if errors:
+                result_msg += f"• {len(errors)} erro(s) encontrado(s)"
+                
+            show_toast(result_msg, "green" if not errors else "orange")
+            
+            # Atualizar interface
+            load_scores()
+            
+            # Mostrar erros se houver
+            if errors:
+                error_msg = "⚠️ Erros encontrados:\n" + "\n".join(errors[:5])  # Mostrar apenas os primeiros 5 erros
+                if len(errors) > 5:
+                    error_msg += f"\n... e mais {len(errors) - 5} erro(s)"
+                show_toast(error_msg, "orange")
+                
+        except Exception as e:
+            show_toast(f"❌ Erro durante a importação: {str(e)}", "red")
+    
+    def export_suppliers_to_excel(with_existing_scores=False, month=None, year=None):
+        """Exporta suppliers ativos para Excel com proteção por senha e opcionalmente com notas existentes"""
+        print("🔄 DEBUG: Iniciando exportação...")
+        
+        try:
+            print("🔄 DEBUG: Tentando importar openpyxl...")
+            import openpyxl
+            from openpyxl.styles import Font, Alignment, PatternFill, Protection
+            from openpyxl.worksheet.datavalidation import DataValidation
+            import os
+            from datetime import datetime
+            print("✅ DEBUG: openpyxl importado com sucesso!")
+        except ImportError as e:
+            error_msg = f"❌ Biblioteca openpyxl não encontrada. Erro: {e}"
+            print(error_msg)
+            show_toast(error_msg, "red")
+            return
+        except Exception as e:
+            error_msg = f"❌ Erro ao importar bibliotecas: {e}"
+            print(error_msg)
+            show_toast(error_msg, "red")
+            return
+
+        try:
+            print("🔄 DEBUG: Executando query no banco...")
+            # Buscar suppliers ativos
+            base_query = """
+                SELECT supplier_id, supplier_number, bu, vendor_name 
+                FROM supplier_database_table 
+                WHERE supplier_status = 'Active'
+                ORDER BY vendor_name
+            """
+            suppliers = db_manager.query(base_query)
+            
+            if not suppliers:
+                error_msg = "❌ Nenhum supplier ativo encontrado."
+                print(error_msg)
+                show_toast(error_msg, "orange")
+                return
+
+            print(f"🔍 DEBUG: Encontrados {len(suppliers)} suppliers ativos")
+            
+            # Se solicitado, buscar notas existentes para o período
+            existing_scores = {}
+            if with_existing_scores and month and year:
+                print(f"🔄 DEBUG: Buscando notas existentes para {month}/{year}...")
+                scores_query = """
+                    SELECT supplier_id, quality_package, quality_pickup, nil, otif
+                    FROM supplier_score_records_table 
+                    WHERE month = ? AND year = ?
+                """
+                print(f"🔍 DEBUG: Executando query: {scores_query} com parâmetros: [{month}, {year}]")
+                scores_data = db_manager.query(scores_query, [month, year])
+                print(f"🔍 DEBUG: Query retornou {len(scores_data) if scores_data else 0} registros")
+                
+                if scores_data:
+                    for i, score_record in enumerate(scores_data):
+                        supplier_id = score_record.get('supplier_id') if isinstance(score_record, dict) else score_record[0]
+                        # IMPORTANTE: Converter supplier_id para string para garantir compatibilidade
+                        supplier_id_str = str(supplier_id)
+                        
+                        package_score = score_record.get('quality_package') if isinstance(score_record, dict) else score_record[1]
+                        pickup_score = score_record.get('quality_pickup') if isinstance(score_record, dict) else score_record[2]
+                        nil_score = score_record.get('nil') if isinstance(score_record, dict) else score_record[3]
+                        otif_score = score_record.get('otif') if isinstance(score_record, dict) else score_record[4]
+                        
+                        existing_scores[supplier_id_str] = {
+                            'package': package_score,
+                            'pickup': pickup_score, 
+                            'nil': nil_score,
+                            'otif': otif_score
+                        }
+                        
+                        # Debug para os primeiros 3 registros
+                        if i < 3:
+                            print(f"🔍 DEBUG: Registro {i+1} - Supplier: {supplier_id_str}, Package: {package_score}, Pickup: {pickup_score}, NIL: {nil_score}, OTIF: {otif_score}")
+                
+                print(f"🔍 DEBUG: Encontradas {len(existing_scores)} notas existentes para o período")
+                print(f"🔍 DEBUG: Primeiros suppliers com notas: {list(existing_scores.keys())[:5]}")
+            else:
+                print("🔍 DEBUG: Não foi solicitada exportação com notas existentes")
+
+            print("🔄 DEBUG: Criando workbook...")
+            # Criar workbook e worksheet
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Import_score"
+            
+            print("🔄 DEBUG: Criando aba de validação oculta...")
+            # Criar aba oculta para validação do sistema
+            validation_ws = wb.create_sheet("ScoreApp_Validation")
+            validation_ws.sheet_state = "hidden"  # Ocultar a aba
+            
+            # Adicionar apenas um texto simples de validação
+            validation_ws.cell(row=1, column=1, value="SCOREAPP_VALIDATION_123456")
+            
+            print("🔍 DEBUG: Aba de validação criada e oculta")
+            
+            print("🔄 DEBUG: Criando headers baseado nas permissões do usuário...")
+            # Headers baseado nas permissões do usuário
+            headers = ["Supplier ID", "PO", "BU", "Supplier Name"]
+            
+            # Mapear permissões para nomes das colunas
+            permission_columns = []
+            if current_user_permissions.get('otif', False):
+                headers.append("OTIF")
+                permission_columns.append("OTIF")
+            if current_user_permissions.get('nil', False):
+                headers.append("NIL") 
+                permission_columns.append("NIL")
+            if current_user_permissions.get('pickup', False):
+                headers.append("Pickup")
+                permission_columns.append("Pickup")
+            if current_user_permissions.get('package', False):
+                headers.append("Package")
+                permission_columns.append("Package")
+            
+            print(f"🔍 DEBUG: Colunas de notas permitidas: {permission_columns}")
+            
+            if not permission_columns:
+                error_msg = "❌ Usuário não tem permissão para nenhuma coluna de nota."
+                print(error_msg)
+                show_toast(error_msg, "orange")
+                return
+                
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col)
+                cell.value = header
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Adicionar instrução na célula ao lado dos headers
+            instruction_col = len(headers) + 2
+            instruction_cell = ws.cell(row=1, column=instruction_col)
+            if with_existing_scores:
+                # Mapear número do mês para nome
+                month_names = {
+                    "1": "JANEIRO", "2": "FEVEREIRO", "3": "MARÇO", "4": "ABRIL", 
+                    "5": "MAIO", "6": "JUNHO", "7": "JULHO", "8": "AGOSTO",
+                    "9": "SETEMBRO", "10": "OUTUBRO", "11": "NOVEMBRO", "12": "DEZEMBRO"
+                }
+                month_name = month_names.get(str(month), f"MÊS {month}")
+                
+                # Instrução principal
+                instruction_cell.value = f"DADOS COM NOTAS DE {month_name}/{year} - Preencha as notas de 0.0 a 10.0"
+                instruction_cell.font = Font(bold=True, italic=True, color="0066CC", size=12)
+                
+            else:
+                instruction_cell.value = "INSTRUÇÕES: Preencha as notas de 0.0 a 10.0"
+                instruction_cell.font = Font(bold=True, italic=True, color="0066CC")
+            
+            # Adicionar mais informações na linha 2
+            info_cell = ws.cell(row=2, column=instruction_col)
+            info_cell.font = Font(italic=True, color="666666", size=9)
+            
+            # Se for exportação com notas, adicionar informação adicional sobre os dados
+            if with_existing_scores:
+                info_cell.value = f"Arquivo gerado com notas existentes do período {month_name}/{year}"
+                info_cell.font = Font(italic=True, color="006600", size=10)  # Verde escuro
+                
+                # Adicionar data de referência destacada na linha 3 (abaixo da explicação)
+                date_ref_cell = ws.cell(row=3, column=instruction_col)
+                date_ref_cell.value = f"📅 PERÍODO: {month_name}/{year}"
+                date_ref_cell.font = Font(bold=True, color="FF0000", size=16)  # Vermelho, tamanho maior
+                date_ref_cell.alignment = Alignment(horizontal="left")
+                
+                # Adicionar fundo amarelo para destacar ainda mais
+                date_ref_cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+            
+            print("🔄 DEBUG: Preenchendo dados dos suppliers...")
+            # Preencher dados dos suppliers
+            for row, supplier in enumerate(suppliers, 2):
+                supplier_id_value = supplier.get('supplier_id') or ''
+                po_value = supplier.get('supplier_number') or ''
+                bu_value = supplier.get('bu') or ''
+                name_value = supplier.get('vendor_name') or ''
+                
+                ws.cell(row=row, column=1, value=supplier_id_value) # Supplier ID
+                ws.cell(row=row, column=2, value=po_value)          # PO (supplier_number)
+                ws.cell(row=row, column=3, value=bu_value)          # BU
+                ws.cell(row=row, column=4, value=name_value)        # Supplier Name (vendor_name)
+                
+                # IMPORTANTE: Converter supplier_id para string para garantir compatibilidade
+                supplier_id_str = str(supplier_id_value)
+                
+                # Preencher colunas de notas se solicitado e disponível
+                if with_existing_scores and supplier_id_str in existing_scores:
+                    scores = existing_scores[supplier_id_str]
+                    col_index = 5  # Primeira coluna de notas (coluna E)
+                    
+                    # Mapear permissões para tipos de score
+                    score_mapping = {
+                        'otif': 'otif',
+                        'nil': 'nil', 
+                        'pickup': 'pickup',
+                        'package': 'package'
+                    }
+                    
+                    # Iterar pelas permissões na ordem correta dos headers
+                    permission_order = ['otif', 'nil', 'pickup', 'package']
+                    
+                    for permission in permission_order:
+                        if current_user_permissions.get(permission, False):
+                            score_type = score_mapping[permission]
+                            score_value = scores.get(score_type)
+                            
+                            if score_value is not None:
+                                try:
+                                    float_value = float(score_value)
+                                    ws.cell(row=row, column=col_index, value=float_value)
+                                except (ValueError, TypeError) as e:
+                                    pass
+                            
+                            col_index += 1
+                
+            # Ajustar larguras das colunas dinamicamente
+            column_widths = [15, 15, 12, 30]  # Supplier ID, PO, BU, Supplier Name
+            for _ in permission_columns:
+                column_widths.append(12)  # Largura padrão para colunas de notas
+                
+            for col, width in enumerate(column_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = width
+            
+            print("🔄 DEBUG: Aplicando proteção e validação...")
+            # Proteger planilha com senha - bloquear colunas A, B, C, D e header
+            password = "30625629"
+            
+            # Desbloquear apenas as colunas de notas permitidas (começando da coluna 5)
+            notes_start_col = 5  # Primeira coluna de notas (depois de Supplier ID, PO, BU e Supplier Name)
+            notes_end_col = 4 + len(permission_columns)  # Última coluna de notas
+            
+            # Aplicar formatação e desbloquear células de notas
+            for row in range(2, len(suppliers) + 2):
+                for col in range(notes_start_col, notes_end_col + 1):
+                    cell = ws.cell(row=row, column=col)
+                    cell.protection = Protection(locked=False)
+                    # Formatação numérica com 1 casa decimal
+                    cell.number_format = '0.0'
+            
+            # Criar validação de dados para números de 0 a 10
+            if notes_start_col <= notes_end_col:
+                print("🔄 DEBUG: Aplicando validação de dados (0.0 a 10.0)...")
+                
+                # Definir o range das células de notas
+                start_col_letter = openpyxl.utils.get_column_letter(notes_start_col)
+                end_col_letter = openpyxl.utils.get_column_letter(notes_end_col)
+                notes_range = f"{start_col_letter}2:{end_col_letter}{len(suppliers) + 1}"
+                
+                # Criar validação de dados
+                data_validation = DataValidation(
+                    type="decimal",
+                    operator="between",
+                    formula1=0,
+                    formula2=10,
+                    allow_blank=True,
+                    showErrorMessage=True,
+                    errorTitle="Valor Inválido",
+                    error="Por favor, insira um número entre 0.0 e 10.0",
+                    showInputMessage=True,
+                    promptTitle="Nota do Supplier",
+                    prompt="Insira uma nota de 0.0 a 10.0"
+                )
+                
+                # Aplicar validação ao range de células
+                ws.add_data_validation(data_validation)
+                data_validation.add(notes_range)
+                
+                print(f"🔍 DEBUG: Validação aplicada ao range: {notes_range}")
+                
+                # Adicionar formatação condicional para destacar valores fora do range
+                from openpyxl.formatting.rule import CellIsRule
+                from openpyxl.styles import Font as ConditionalFont, PatternFill as ConditionalFill
+                
+                # Regra para valores inválidos (menores que 0 ou maiores que 10)
+                invalid_rule = CellIsRule(
+                    operator='notBetween',
+                    formula=[0, 10],
+                    fill=ConditionalFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid"),
+                    font=ConditionalFont(color="CC0000", bold=True)
+                )
+                
+                # Aplicar formatação condicional ao range de notas
+                ws.conditional_formatting.add(notes_range, invalid_rule)
+                print("🔍 DEBUG: Formatação condicional aplicada para valores inválidos")
+            
+            # Aplicar proteção da planilha
+            ws.protection.set_password(password)
+            ws.protection.sheet = True
+            ws.protection.formatCells = False
+            ws.protection.formatColumns = False
+            ws.protection.formatRows = False
+            ws.protection.insertColumns = False
+            ws.protection.insertRows = False
+            ws.protection.deleteColumns = False
+            ws.protection.deleteRows = False
+            
+            print("🔄 DEBUG: Salvando arquivo...")
+            # Salvar arquivo
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            if with_existing_scores:
+                filename = f"Export_score_with_data_{month}_{year}_{timestamp}.xlsx"
+                success_message = f"✅ Arquivo com notas de {month}/{year} exportado com sucesso!\n{filename}\nLocalização: Desktop"
+            else:
+                filename = f"Import_score_{timestamp}.xlsx"
+                success_message = f"✅ Arquivo exportado com sucesso!\n{filename}\nLocalização: Desktop"
+            
+            # Tentar salvar na área de trabalho do usuário
+            try:
+                import os
+                desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+                full_path = os.path.join(desktop_path, filename)
+                wb.save(full_path)
+                print(f"📁 DEBUG: Arquivo salvo em: {full_path}")
+                show_toast(success_message, "green")
+            except Exception as save_error:
+                print(f"❌ Erro ao salvar na Desktop: {save_error}")
+                # Fallback para pasta atual
+                try:
+                    wb.save(filename)
+                    print(f"📁 DEBUG: Arquivo salvo na pasta atual: {filename}")
+                    fallback_message = f"✅ Arquivo exportado: {filename}\n(salvo na pasta do aplicativo)"
+                    show_toast(fallback_message, "green")
+                except Exception as fallback_error:
+                    print(f"❌ Erro no fallback: {fallback_error}")
+                    raise fallback_error
+                    
+        except Exception as e:
+            error_msg = f"❌ Erro ao exportar: {str(e)}"
+            print(error_msg)
+            show_toast(error_msg, "red")
+
+    def export_form_dialog():
+        """Abre diálogo com opção para exportar suppliers ativos com ou sem notas existentes"""
+        
+        # Referencias para os controles
+        export_with_scores_switch_ref = ft.Ref[ft.Switch]()
+        month_dropdown_ref = ft.Ref[ft.Dropdown]()
+        year_dropdown_ref = ft.Ref[ft.Dropdown]()
+        period_container_ref = ft.Ref[ft.Container]()
+        
+        # Opções de mês e ano
+        months = [
+            ft.dropdown.Option("1", "Janeiro"),
+            ft.dropdown.Option("2", "Fevereiro"),
+            ft.dropdown.Option("3", "Março"),
+            ft.dropdown.Option("4", "Abril"),
+            ft.dropdown.Option("5", "Maio"),
+            ft.dropdown.Option("6", "Junho"),
+            ft.dropdown.Option("7", "Julho"),
+            ft.dropdown.Option("8", "Agosto"),
+            ft.dropdown.Option("9", "Setembro"),
+            ft.dropdown.Option("10", "Outubro"),
+            ft.dropdown.Option("11", "Novembro"),
+            ft.dropdown.Option("12", "Dezembro")
+        ]
+        years = [ft.dropdown.Option(str(year)) for year in range(2024, 2041)]
+        
+        def on_switch_change(e):
+            """Controla a visibilidade dos campos de mês e ano"""
+            show_period = export_with_scores_switch_ref.current.value
+            period_container_ref.current.visible = show_period
+            page.update()
         
         def close_dialog(e):
             page.close(dialog)
         
         def export_form(e):
-            month = month_dropdown_ref.current.value if month_dropdown_ref.current else None
-            year = year_dropdown_ref.current.value if year_dropdown_ref.current else None
-            format_type = format_dropdown_ref.current.value if format_dropdown_ref.current else "csv"
-            
-            if not month or not year:
-                show_toast("Selecione o mês e ano para exportação", "orange")
-                return
-            
             try:
-                # Aqui você pode implementar a lógica de exportação
-                # Por exemplo, gerar um arquivo CSV ou Excel com o formulário
-                show_toast(f"Funcionalidade de exportação será implementada. Formato: {format_type}, Período: {month}/{year}", "blue")
+                # Verificar se deve exportar com notas
+                export_with_scores = export_with_scores_switch_ref.current.value
+                
+                if export_with_scores:
+                    # Verificar se mês e ano foram selecionados
+                    selected_month = month_dropdown_ref.current.value
+                    selected_year = year_dropdown_ref.current.value
+                    
+                    if not selected_month or not selected_year:
+                        show_toast("❌ Selecione mês e ano para exportar com notas existentes", "red")
+                        return
+                    
+                    export_suppliers_to_excel(with_existing_scores=True, month=selected_month, year=selected_year)
+                else:
+                    export_suppliers_to_excel(with_existing_scores=False)
+                    
                 close_dialog(e)
             except Exception as ex:
-                show_toast(f"Erro ao exportar formulário: {ex}", "red")
+                show_toast(f"❌ Erro ao exportar: {ex}", "red")
         
         # Obter cores do tema atual
         theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
         
+        # Container para campos de período (inicialmente oculto)
+        period_container = ft.Container(
+            content=ft.Column([
+                ft.Text("Período das Notas:", size=14, weight="bold", color=theme_colors.get('on_surface')),
+                ft.Row([
+                    ft.Dropdown(
+                        label="Mês",
+                        options=months,
+                        expand=True,
+                        ref=month_dropdown_ref,
+                        color=theme_colors.get('on_surface'),
+                        border_color=theme_colors.get('outline'),
+                        **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
+                    ),
+                    ft.Dropdown(
+                        label="Ano",
+                        options=years,
+                        expand=True,
+                        ref=year_dropdown_ref,
+                        color=theme_colors.get('on_surface'),
+                        border_color=theme_colors.get('outline'),
+                        **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
+                    ),
+                ], spacing=10),
+            ], spacing=10),
+            visible=False,
+            ref=period_container_ref,
+            padding=ft.padding.symmetric(vertical=10)
+        )
+        
         # Conteúdo do diálogo
         dialog_content = ft.Column([
-            ft.Text(
-                "Exportar Formulário", 
-                size=20, 
-                weight="bold",
-                color=theme_colors.get('on_surface')
-            ),
-            ft.Text(
-                "Selecione o período e formato para exportar o formulário de scores:", 
-                size=14,
-                color=theme_colors.get('on_surface')
-            ),
-            ft.Divider(height=20, color=theme_colors.get('outline')),
+            ft.Text("Exportar Suppliers para Excel", size=18, weight="bold", color=theme_colors.get('on_surface')),
+            ft.Container(height=20),
+            ft.Text("Esta operação irá exportar todos os suppliers ativos em um arquivo Excel protegido.", 
+                   size=14, color=theme_colors.get('on_surface')),
+            ft.Text("• Colunas Supplier ID, PO, BU e Supplier Name: bloqueadas", size=12, color="orange"),
+            ft.Text("• Colunas de notas: abertas para preenchimento", size=12, color="green"),
             
+            ft.Container(height=20),
+            ft.Divider(color=theme_colors.get('outline')),
+            
+            # Switch para exportar com notas existentes
             ft.Row([
-                ft.Dropdown(
-                    label="Mês",
-                    options=months,
-                    expand=True,
-                    ref=month_dropdown_ref,
-                    dense=True,
-                    color=theme_colors.get('on_surface'),
-                    border_color=theme_colors.get('outline'),
-                    **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
+                ft.Switch(
+                    ref=export_with_scores_switch_ref,
+                    value=False,
+                    active_color=theme_colors.get('primary'),
+                    on_change=on_switch_change
                 ),
-                ft.Dropdown(
-                    label="Ano", 
-                    options=years,
-                    expand=True,
-                    ref=year_dropdown_ref,
-                    dense=True,
-                    color=theme_colors.get('on_surface'),
-                    border_color=theme_colors.get('outline'),
-                    **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
-                ),
-            ], spacing=10),
-
-            ft.Row([
-                ft.Dropdown(
-                    ref=format_dropdown_ref,
-                    label="Formato",
-                    options=formats,
-                    value="csv",
-                    expand=True,
-                    dense=True,
-                    color=theme_colors.get('on_surface'),
-                    border_color=theme_colors.get('outline'),
-                    **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
-                )
+                ft.Text("Exportar com notas existentes", size=14, weight="bold", color=theme_colors.get('on_surface'))
             ], spacing=10),
             
-            ft.Divider(height=20, color=theme_colors.get('outline')),
+            # Container para campos de período
+            period_container,
+            
+            ft.Container(height=20),
+            ft.Divider(color=theme_colors.get('outline')),
+            
             ft.Row([
-                ft.TextButton(
-                    "Cancelar", 
+                ft.ElevatedButton(
+                    "Fechar",
                     on_click=close_dialog,
+                    icon=ft.Icons.CANCEL,
                     style=ft.ButtonStyle(
-                        color=theme_colors.get('on_surface')
+                        bgcolor=theme_colors.get('error'),
+                        color=theme_colors.get('on_error')
                     )
                 ),
+                ft.Container(width=10),
                 ft.ElevatedButton(
-                    "Exportar", 
-                    on_click=export_form, 
+                    "📊 Exportar Excel",
+                    on_click=export_form,
                     icon=ft.Icons.DOWNLOAD,
-                    bgcolor=theme_colors.get('primary'), 
-                    color=theme_colors.get('on_primary'),
-                ),
-            ], alignment=ft.MainAxisAlignment.END, spacing=10)
-        ], width=450, spacing=10, tight=True)
+                    style=ft.ButtonStyle(
+                        bgcolor=theme_colors.get('primary'),
+                        color=theme_colors.get('on_primary')
+                    )
+                )
+            ], alignment=ft.MainAxisAlignment.END)
+        ], width=450, spacing=15, tight=True)
         
         # Criar e exibir diálogo
         dialog = ft.AlertDialog(
+            title=ft.Text("Exportar Dados", color=theme_colors.get('on_surface')),
             content=dialog_content,
             modal=True
         )
