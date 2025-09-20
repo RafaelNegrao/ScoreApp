@@ -1,9 +1,9 @@
 import flet as ft
 import datetime
-import sqlite3
 import random
 import string
 from db_manager import DBManager
+import threading
 
 # Configuração mínima de toasts (usada por redirect de `print` e por notificações)
 app_settings = {'toast_duration': 3}
@@ -11,59 +11,59 @@ app_settings = {'toast_duration': 3}
 # Instância global do DBManager
 db_manager = DBManager('db.db')
 
-def toast(message, color="green", restore_control=None):
-    """Mostrar notificação toast de forma segura. Se `page` não estiver disponível,
-    grava em stderr como fallback silencioso (para execução fora da UI).
-    """
-    pg = globals().get('page', None)
-    try:
-        if restore_control is not None:
-            try:
-                restore_control.disabled = False
-                if hasattr(restore_control, '_is_processing'):
-                    restore_control._is_processing = False
-            except Exception:
-                pass
+# def show_toast(message, color="green", restore_control=None):
+#     """Mostrar notificação show_toast de forma segura. Se `page` não estiver disponível,
+#     grava em stderr como fallback silencioso (para execução fora da UI).
+#     """
+#     pg = globals().get('page', None)
+#     try:
+#         if restore_control is not None:
+#             try:
+#                 restore_control.disabled = False
+#                 if hasattr(restore_control, '_is_processing'):
+#                     restore_control._is_processing = False
+#             except Exception:
+#                 pass
 
-        if pg is not None and hasattr(pg, 'overlay'):
-            try:
-                pg.overlay.append(
-                    ft.Container(
-                        content=ft.Text(str(message), color="white", weight="bold"),
-                        bgcolor=color,
-                        padding=10,
-                        border_radius=5,
-                        top=50,
-                        right=20,
-                        animate_opacity=300,
-                    )
-                )
-                pg.update()
-            except Exception:
-                try:
-                    import sys
-                    sys.stderr.write(str(message) + "\n")
-                except Exception:
-                    pass
-        else:
-            try:
-                import sys
-                sys.stderr.write(str(message) + "\n")
-            except Exception:
-                pass
-    except Exception:
-        try:
-            import sys
-            sys.stderr.write(str(message) + "\n")
-        except Exception:
-            pass
+#         if pg is not None and hasattr(pg, 'overlay'):
+#             try:
+#                 pg.overlay.append(
+#                     ft.Container(
+#                         content=ft.Text(str(message), color="white", weight="bold"),
+#                         bgcolor=color,
+#                         padding=10,
+#                         border_radius=5,
+#                         top=50,
+#                         right=20,
+#                         animate_opacity=300,
+#                     )
+#                 )
+#                 pg.update()
+#             except Exception:
+#                 try:
+#                     import sys
+#                     sys.stderr.write(str(message) + "\n")
+#                 except Exception:
+#                     pass
+#         else:
+#             try:
+#                 import sys
+#                 sys.stderr.write(str(message) + "\n")
+#             except Exception:
+#                 pass
+#     except Exception:
+#         try:
+#             import sys
+#             sys.stderr.write(str(message) + "\n")
+#         except Exception:
+#             pass
 
-def _print_to_toast(*args, **kwargs):
-    sep = kwargs.get('sep', ' ')
-    msg = sep.join(map(str, args))
-    toast(msg)
+# def _print_to_toast(*args, **kwargs):
+#     sep = kwargs.get('sep', ' ')
+#     msg = sep.join(map(str, args))
+#     show_toast(msg)
 
-print = _print_to_toast
+# print = _print_to_toast
 
 
 def load_spinbox_increment():
@@ -73,11 +73,11 @@ def load_spinbox_increment():
         return 0.1
 
 
-def show_timeline_snackbar(message: str):
-    try:
-        toast(message)
-    except Exception:
-        pass
+# def show_timeline_snackbar(message: str):
+#     try:
+#         show_toast(message)
+#     except Exception:
+#         pass
 
 # ===== CLASSE DE GERENCIAMENTO RESPONSIVO =====
 class ResponsiveAppManager:
@@ -1493,7 +1493,7 @@ class EditTimelineRecordDialog(ft.AlertDialog):
             # Chamar callback com os novos valores
             self.on_confirm_callback(self.record_data, otif, nil, pickup, package, comment)
         except Exception as ex:
-            show_timeline_snackbar(f"❌ Erro ao processar valores: {str(ex)}")
+           print(f"❌ Erro ao processar valores: {str(ex)}")
 
     def cancel(self, e):
         self.on_cancel_callback(e)
@@ -2105,17 +2105,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # ===== FIM DO CARREGAMENTO INICIAL DO TEMA =====
 
     def show_toast(message, color="green", restore_control=None):
-        """Mostra um toast com duração configurável.
+        """Mostra um show_toast com duração configurável.
 
         If `restore_control` is provided, the control will be re-enabled and its
-        processing flag cleared before showing the toast. This ensures error/warning
+        processing flag cleared before showing the show_toast. This ensures error/warning
         flows that call `show_toast` don't accidentally leave the originating
         control disabled.
         """
-        global app_settings
+        global app_settings, _active_toast, _active_toast_cancel_event
 
+        # Initialize globals used to track the active toast
         try:
-            # If a control is provided, make sure it's restored immediately
+            _active_toast
+        except NameError:
+            _active_toast = None
+        try:
+            _active_toast_cancel_event
+        except NameError:
+            _active_toast_cancel_event = None
+
+        # Restore control immediately if provided
+        try:
             if restore_control is not None:
                 try:
                     restore_control.disabled = False
@@ -2123,42 +2133,88 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         restore_control._is_processing = False
                     safe_update_control(restore_control, page)
                 except Exception as _:
-                    # If restoring the control fails, continue to show the toast
-                    print(f"Aviso: não foi possível restaurar controle antes do toast: {_}")
+                    print(f"Aviso: não foi possível restaurar controle antes do show_toast: {_}")
+        except Exception:
+            pass
 
-            page.overlay.append(
-                ft.Container(
-                    content=ft.Text(message, color="white", weight="bold"),
-                    bgcolor=color,
-                    padding=10,
-                    border_radius=5,
-                    top=50,
-                    right=20,
-                    animate_opacity=300,
-                )
+        # Remove any previous toast immediately and signal its remover to stop
+        try:
+            if _active_toast_cancel_event is not None:
+                try:
+                    _active_toast_cancel_event.set()
+                except Exception:
+                    pass
+
+            if getattr(page, 'overlay', None) and _active_toast in page.overlay:
+                try:
+                    page.overlay.remove(_active_toast)
+                except Exception:
+                    # fallback: pop last
+                    try:
+                        page.overlay.pop()
+                    except Exception:
+                        pass
+            page.update()
+        except Exception:
+            pass
+
+        # Normalize color - accept common names
+        color_map = {
+            'green': '#2E7D32',
+            'red': '#C62828',
+            'orange': '#EF6C00',
+            'blue': '#1565C0'
+        }
+        bgcolor = color_map.get(color, color)
+
+        # Create new toast container and add to overlay
+        try:
+            toast_container = ft.Container(
+                content=ft.Text(str(message), color="white", weight="bold"),
+                bgcolor=bgcolor,
+                padding=10,
+                border_radius=5,
+                top=50,
+                right=20,
+                animate_opacity=300,
             )
+
+            page.overlay.append(toast_container)
+            _active_toast = toast_container
             page.update()
         except Exception as ex:
-            # Never let a toast break the UI flow
-            print(f"Erro ao mostrar toast: {ex}")
+            print(f"Erro ao mostrar show_toast: {ex}")
 
-        # Remover toast após a duração configurada (mais robusto)
-        import threading
-        def remove_toast():
+        # Spawn a remover thread that can be cancelled via an Event
+        def remover(cancel_event):
             try:
                 import time
-                time.sleep(app_settings.get('toast_duration', 3))
+                duration = app_settings.get('toast_duration', 3)
+                # Wait in small increments to allow cancellation
+                waited = 0.0
+                step = 0.1
+                while waited < duration:
+                    if cancel_event.is_set():
+                        return
+                    time.sleep(step)
+                    waited += step
+
+                # time to remove the toast
                 try:
                     if getattr(page, 'overlay', None):
-                        if len(page.overlay) > 0:
-                            page.overlay.pop()
+                        if _active_toast in page.overlay:
+                            page.overlay.remove(_active_toast)
                             page.update()
                 except Exception as inner:
-                    print(f"Erro ao remover toast: {inner}")
+                    print(f"Erro ao remover show_toast: {inner}")
             except Exception as outer:
-                print(f"Erro na thread de toast: {outer}")
+                print(f"Erro na thread de show_toast: {outer}")
 
-        threading.Thread(target=remove_toast, daemon=True).start()
+        cancel_event = threading.Event()
+        _active_toast_cancel_event = cancel_event
+        threading.Thread(target=remover, args=(cancel_event,), daemon=True).start()
+
+    show_toast = show_toast
 
     def load_user_criteria(user_wwid=None):
         """Carrega os pesos dos critérios salvos no banco."""
@@ -2407,8 +2463,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as ex:
             print(f"⚠️ Error updating Timeline buttons: {ex}")
 
-    # Confirmação via toast
-        toast(f"✅ Theme '{theme_mode}' applied and saved!", "green")
+    # Confirmação via show_toast
+        show_toast(f"✅ Theme '{theme_mode}' applied and saved!", "green")
 
     def set_selected(idx):
         def handler(e):
@@ -2571,19 +2627,41 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 pickup INTEGER DEFAULT 0,
                 package INTEGER DEFAULT 0,
                 register_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                registered_by TEXT
+                registered_by TEXT,
+                last_updated_by TEXT,
+                last_updated_date TIMESTAMP
             )
         ''')
         
-        # Verificar se a coluna user_name existe, se não, adicionar
-        try:
-            db_manager.execute("ALTER TABLE users_table ADD COLUMN user_name TEXT")
-            print("Coluna user_name adicionada à tabela users_table")
-        except Exception as e:
-            if "duplicate column name" in str(e).lower():
-                pass  # Coluna já existe
-            else:
-                print(f"Erro ao adicionar coluna user_name: {e}")
+        # Helper: garante colunas existem em tabela, adicionando as que faltam
+        def ensure_columns(table_name, columns):
+            """Verifica colunas existentes usando PRAGMA table_info e adiciona colunas ausentes.
+
+            `columns` deve ser um dict {column_name: column_definition_sql_after_name},
+            por exemplo: {'user_name': 'TEXT', 'last_updated_date': 'TIMESTAMP'}
+            """
+            try:
+                # Obter colunas existentes
+                existing = db_manager.query(f"PRAGMA table_info({table_name})")
+                existing_names = {row['name'] for row in existing} if existing else set()
+                for col, definition in columns.items():
+                    if col not in existing_names:
+                        q = f"ALTER TABLE {table_name} ADD COLUMN {col} {definition}"
+                        try:
+                            db_manager.execute(q)
+                            print(f"Coluna {col} adicionada à tabela {table_name}")
+                        except Exception as e:
+                            print(f"Erro ao adicionar coluna {col} em {table_name}: {e}")
+            except Exception as e:
+                print(f"Erro ao garantir colunas para {table_name}: {e}")
+
+        # Garantir colunas na users_table
+        ensure_columns('users_table', {
+            'user_name': 'TEXT',
+            'last_updated_by': 'TEXT',
+            'last_updated_date': 'TIMESTAMP',
+            'registered_by': 'TEXT',
+        })
         
         # Criar tabela de configurações de tema
         db_manager.execute('''
@@ -2621,28 +2699,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             )
         ''')
         
-        # Adicionar coluna target_weight se não existir (para bancos existentes)
-        try:
-            db_manager.execute("ALTER TABLE criteria_settings ADD COLUMN target_weight REAL DEFAULT 0.2")
-            print("Coluna target_weight adicionada à tabela criteria_settings")
-        except Exception as e:
-            if "duplicate column name" not in str(e).lower():
-                print(f"Erro ao adicionar coluna target_weight: {e}")
-        
-        # Adicionar colunas para configurações gerais na tabela app_settings
-        try:
-            db_manager.execute("ALTER TABLE app_settings ADD COLUMN setting_key TEXT")
-            print("Coluna setting_key adicionada à tabela app_settings")
-        except Exception as e:
-            if "duplicate column name" not in str(e).lower():
-                print(f"Erro ao adicionar coluna setting_key: {e}")
-        
-        try:
-            db_manager.execute("ALTER TABLE app_settings ADD COLUMN setting_value TEXT")
-            print("Coluna setting_value adicionada à tabela app_settings")
-        except sqlite3.OperationalError as e:
-            if "duplicate column name" not in str(e).lower():
-                print(f"Erro ao adicionar coluna setting_value: {e}")
+        # Garantir colunas existentes em criteria_settings e app_settings
+        ensure_columns('criteria_settings', {
+            'target_weight': 'REAL DEFAULT 0.2'
+        })
+
+        ensure_columns('app_settings', {
+            'setting_key': 'TEXT',
+            'setting_value': 'TEXT'
+        })
         
         db_conn.commit()
         
@@ -4694,7 +4759,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             print(f"Erro ao carregar tema padrão: {e}")
 
-    # Controle de duração do toast
+    # Controle de duração do show_toast
     toast_duration_slider = ft.Slider(
         min=1,
         max=10,
@@ -4709,7 +4774,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         new_duration = int(e.control.value)
         app_settings['toast_duration'] = new_duration
         save_app_settings(app_settings)
-        show_toast(f"⚙️ Duração do toast alterada para {new_duration}s", "blue")
+        show_toast(f"⚙️ Duração do show_toast alterada para {new_duration}s", "blue")
     
     toast_duration_slider.on_change = update_toast_duration
     
@@ -4743,7 +4808,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Divider(),
             ft.Text("Configurações de Interface", size=16, weight="bold"),
             ft.Row([
-                ft.Text("Duração das notificações (toast):"),
+                ft.Text("Duração das notificações (show_toast):"),
                 toast_duration_slider,
             ], alignment=ft.MainAxisAlignment.START),
             ft.Row([
@@ -5083,7 +5148,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 refresh_list_ui(key)
                 update_all_comboboxes()
                 
-                toast("✅ Item atualizado com sucesso", "green")
+                show_toast("✅ Item atualizado com sucesso", "green")
                 
             except Exception as ex:
                 import sqlite3 as _sqlite
@@ -5092,7 +5157,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     error_text.visible = True
                     edit_dialog.update()
                 else:
-                    toast(f"❌ Erro ao atualizar: {ex}", "red")
+                    show_toast(f"❌ Erro ao atualizar: {ex}", "red")
                     page.update()
         
         def cancel_edit(e):
@@ -5196,7 +5261,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 if key in lists_controls and lists_controls[key]['selected_item']:
                     value = lists_controls[key]['selected_item']
                 else:
-                    toast("❌ Selecione um item da lista para excluir", "red")
+                    show_toast("❌ Selecione um item da lista para excluir", "red")
                     return
                     return
             
@@ -5235,7 +5300,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Fechar dialog
                     page.close(dialog)
                     
-                    toast(f"✅ Item '{value}' removido de {list_type}", "green")
+                    show_toast(f"✅ Item '{value}' removido de {list_type}", "green")
                     page.update()
                     
                 except Exception as ex:
@@ -5245,9 +5310,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # mostrar mensagem amigável
                     import sqlite3 as _sqlite
                     if isinstance(ex, _sqlite.IntegrityError):
-                        toast(f"❌ Não foi possível excluir '{value}': restrição de integridade.", "red")
+                        show_toast(f"❌ Não foi possível excluir '{value}': restrição de integridade.", "red")
                     else:
-                        toast(f"❌ Erro ao deletar '{value}': {ex}", "red")
+                        show_toast(f"❌ Erro ao deletar '{value}': {ex}", "red")
                     page.update()
                     print(f"Erro ao deletar {value} em {table}: {ex}")
             
@@ -5269,7 +5334,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             page.update()
             
         except Exception as ex:
-            toast(f"❌ Erro ao tentar excluir item: {ex}", "red")
+            show_toast(f"❌ Erro ao tentar excluir item: {ex}", "red")
             page.update()
             print(f"Erro geral no delete_alias_handler: {ex}")
 
@@ -5361,7 +5426,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             lists_controls['sqie']['feedback'].value = f"SQIE '{alias}' adicionado"
             lists_controls['sqie']['feedback'].color = 'green'
             lists_controls['sqie']['feedback'].visible = True
-            toast(f"✅ SQIE '{alias}' adicionado com sucesso", "green")
+            show_toast(f"✅ SQIE '{alias}' adicionado com sucesso", "green")
             page.update()
         except Exception as ex:
             import sqlite3 as _sqlite
@@ -5371,7 +5436,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 lists_controls['sqie']['feedback'].visible = True
                 page.update()
             else:
-                toast(f"❌ Erro ao inserir sqie: {ex}", "red")
+                show_toast(f"❌ Erro ao inserir sqie: {ex}", "red")
                 page.update()
             print(f"Erro ao inserir sqie: {ex}")
         except Exception as ex:
@@ -5439,7 +5504,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 lists_controls[key]['feedback'].value = f"Item adicionado em {key}"
                 lists_controls[key]['feedback'].color = 'green'
                 lists_controls[key]['feedback'].visible = True
-                toast(f"✅ Item adicionado com sucesso em {key}", "green")
+                show_toast(f"✅ Item adicionado com sucesso em {key}", "green")
                 page.update()
         except Exception as ex:
             import sqlite3 as _sqlite
@@ -5451,7 +5516,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls[key]['feedback'].visible = True
                     page.update()
                 else:
-                    toast(f"❌ Erro ao inserir item: {ex}", "red")
+                    show_toast(f"❌ Erro ao inserir item: {ex}", "red")
                     page.update()
             print(f"Erro ao inserir item em {table}: {ex}")
             page.update()
@@ -5465,7 +5530,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls[key]['feedback'].visible = True
                     page.update()
                 else:
-                    toast(f"❌ Erro ao inserir em {table}: {ex}", "red")
+                    show_toast(f"❌ Erro ao inserir em {table}: {ex}", "red")
                     page.update()
             print(f"Erro ao inserir em {table}: {ex}")
         except Exception as ex:
@@ -6517,7 +6582,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         )
         page.update()
         
-        # Remover toast após 3 segundos
+        # Remover show_toast após 3 segundos
         import threading
         def remove_auto_toast():
             import time
@@ -6565,7 +6630,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         if not db_conn:
             print("❌ Erro: Conexão com banco não disponível")
-            toast("❌ Erro: Conexão com banco não disponível", "red")
+            show_toast("❌ Erro: Conexão com banco não disponível", "red")
             page.update()
             return
         
@@ -6615,7 +6680,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         except Exception as ex:
             print(f"❌ Erro ao atualizar critérios: {ex}")
-            toast("❌ Erro ao atualizar critérios!", "red")
+            show_toast("❌ Erro ao atualizar critérios!", "red")
             page.update()
 
     # Criar títulos fixos para Criteria (fora do scroll)
@@ -6703,88 +6768,79 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     clear_btn_ref = ft.Ref()
     
     # Salvar as referências no dicionário users_controls
-    users_controls = {
-        'wwid': wwid_field_ref,
-        'name': name_field_ref, 
-        'password': password_field_ref,
-        'privilege': privilege_dropdown_ref,
-        'otif_check': otif_check_ref,
-        'nil_check': nil_check_ref,
-        'pickup_check': pickup_check_ref,
-        'package_check': package_check_ref,
-        'action_btn': action_btn_ref,
-        'clear_btn': clear_btn_ref
-    }
-    
+    users_controls = { 'wwid': wwid_field_ref, 'name': name_field_ref, 'password': password_field_ref, 'privilege': privilege_dropdown_ref, 'otif_check': otif_check_ref, 'nil_check': nil_check_ref, 'pickup_check': pickup_check_ref, 'package_check': package_check_ref, 'action_btn': action_btn_ref, 'clear_btn': clear_btn_ref }
     # Container do formulário de usuários com referência para atualização de tema
     users_form_container = ft.Container(
-        content=ft.Column([
-            # Linha 1: WWID e Nome
-            ft.Row([
-                ft.TextField(
-                    label="WWID",
-                    hint_text="Digite o WWID do usuário",
-                    prefix_icon=ft.Icons.BADGE,
-                    expand=True,
-                    border_radius=8,
-                    ref=wwid_field_ref,
-                    on_change=on_wwid_change,
-                    filled=False,  # Fundo transparente
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                ),
-                ft.TextField(
-                    label="Nome Completo",
-                    hint_text="Digite o nome do usuário",
-                    prefix_icon=ft.Icons.PERSON,
-                    expand=True,
-                    border_radius=8,
-                    ref=name_field_ref,
-                    filled=False,  # Fundo transparente
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                ),
-            ], spacing=10),
-            
-            # Linha 2: Senha e Privilégio
-            ft.Row([
-                ft.TextField(
-                    label="Senha",
-                    hint_text="Digite a senha do usuário",
-                    prefix_icon=ft.Icons.LOCK,
-                    password=True,
-                    can_reveal_password=True,
-                    expand=True,
-                    border_radius=8,
-                    ref=password_field_ref,
-                    filled=False,  # Fundo transparente
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                ),
-                ft.Dropdown(
-                    label="Nível de Privilégio",
-                    hint_text="Selecione o nível",
-                    options=[
-                        ft.dropdown.Option("User", "User"),
-                        ft.dropdown.Option("Admin", "Admin"),
-                        ft.dropdown.Option("Super Admin", "Super Admin"),
-                    ],
-                    expand=True,
-                    ref=privilege_dropdown_ref,
-                    bgcolor=None,  # Fundo transparente
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
-                    content_padding=ft.padding.symmetric(horizontal=12, vertical=16),
-                
-                ),
-            ], spacing=10),
-        ], spacing=15),
-        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-        padding=ft.padding.all(20),
-        border_radius=8,
-        border=ft.border.all(1, get_current_theme_colors(get_theme_name_from_page(page)).get('outline'))
+        content=ft.Container(
+            content=ft.Column([
+                # Linha 1: WWID e Nome
+                ft.Row([
+                    ft.TextField(
+                        label="WWID",
+                        hint_text="Digite o WWID do usuário",
+                        prefix_icon=ft.Icons.BADGE,
+                        expand=True,
+                        border_radius=8,
+                        ref=wwid_field_ref,
+                        on_change=on_wwid_change,
+                        filled=False,  # Fundo transparente
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                    ),
+                    ft.TextField(
+                        label="Nome Completo",
+                        hint_text="Digite o nome do usuário",
+                        prefix_icon=ft.Icons.PERSON,
+                        expand=True,
+                        border_radius=8,
+                        ref=name_field_ref,
+                        filled=False,  # Fundo transparente
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                    ),
+                ], spacing=10),
+
+                # Linha 2: Senha e Privilégio
+                ft.Row([
+                    ft.TextField(
+                        label="Senha",
+                        hint_text="Digite a senha do usuário",
+                        prefix_icon=ft.Icons.LOCK,
+                        password=True,
+                        can_reveal_password=True,
+                        expand=True,
+                        border_radius=8,
+                        ref=password_field_ref,
+                        filled=False,  # Fundo transparente
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                    ),
+                    ft.Dropdown(
+                        label="Nível de Privilégio",
+                        hint_text="Selecione o nível",
+                        options=[
+                            ft.dropdown.Option("User", "User"),
+                            ft.dropdown.Option("Admin", "Admin"),
+                            ft.dropdown.Option("Super Admin", "Super Admin"),
+                        ],
+                        expand=True,
+                        ref=privilege_dropdown_ref,
+                        bgcolor=None,  # Fundo transparente
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                        content_padding=ft.padding.symmetric(horizontal=12, vertical=16),
+                    ),
+                ], spacing=10),
+            ], spacing=15),
+            padding=15,
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
+            border_radius=8,
+            width=600,
+        ),
+        alignment=ft.alignment.center
     )
-    
+
+
     users_content = ft.Container(
         content=ft.Column([
             # Título fixo (fora do scroll)
@@ -6874,42 +6930,61 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def extract_users_refs():
         """Extrai as referências dos controles do users_content"""
         users_refs = {}
-        
-        # Navegar pela nova estrutura com scroll
-        scroll_container = users_content.content.controls[2].content  # ListView dentro do Container
-        
-        # O formulário está como um Container (form_outer_container) cujo content é um Column 
-        # contendo um Row (linha 1) e outro Row (linha 2). A variável users_form_container foi criada com esse formato.
-        form_outer_container = scroll_container.controls[1]  # Container do formulário
-        form_column = form_outer_container.content  # Column([...])
-        
-        # Linha 1: WWID e Nome
-        row1 = form_column.controls[0]
-        users_refs['wwid'] = row1.controls[0]
-        users_refs['name'] = row1.controls[1]
-        
-        # Linha 2: Senha e Privilégio
-        row2 = form_column.controls[1]
-        users_refs['password'] = row2.controls[0]
-        users_refs['privilege'] = row2.controls[1]
-        
-        # Checkboxes (fora do container com fundo)
-        permissions_column = scroll_container.controls[3]
-        checkboxes_row = permissions_column.controls[1]
-        users_refs['otif_check'] = checkboxes_row.controls[0]
-        users_refs['nil_check'] = checkboxes_row.controls[1]
-        users_refs['pickup_check'] = checkboxes_row.controls[2]
-        users_refs['package_check'] = checkboxes_row.controls[3]
-        
-        # Botões (fora do container com fundo)
-        buttons_container = scroll_container.controls[5]
-        buttons_row = buttons_container.content
-        users_refs['action_btn'] = buttons_row.controls[0]  # Botão Add/Update
-        users_refs['clear_btn'] = buttons_row.controls[1]
-        
-        # Lista de usuários - usar referência direta
-        users_refs['users_list'] = users_list_ref.current
-        
+        try:
+            # Preferir usar as refs já criadas no escopo em vez de navegar por índices
+            # Isso torna a extração resiliente a mudanças na estrutura do container
+            ref_map = {
+                'users_list': users_list_ref,
+                'wwid': wwid_field_ref,
+                'name': name_field_ref,
+                'password': password_field_ref,
+                'privilege': privilege_dropdown_ref,
+                'otif_check': otif_check_ref,
+                'nil_check': nil_check_ref,
+                'pickup_check': pickup_check_ref,
+                'package_check': package_check_ref,
+                'action_btn': action_btn_ref,
+                'clear_btn': clear_btn_ref,
+            }
+
+            for key, ref in ref_map.items():
+                try:
+                    if ref is None:
+                        continue
+                    # ft.Ref has attribute 'current'
+                    ctrl = ref.current if hasattr(ref, 'current') else ref
+                    if ctrl:
+                        users_refs[key] = ctrl
+                except Exception:
+                    # ignorar referências que não possam ser resolvidas
+                    continue
+
+            # Fallback: se alguma referência não foi encontrada pelas refs acima,
+            # tentar localizar a lista de usuários percorrendo a estrutura (mais lenta)
+            if 'users_list' not in users_refs:
+                try:
+                    # procurar por um ListView que contenha Cards (heurística simples)
+                    def find_users_list(control):
+                        if isinstance(control, ft.ListView) and getattr(control, 'ref', None) is users_list_ref:
+                            return control
+                        if hasattr(control, 'controls'):
+                            for c in control.controls:
+                                found = find_users_list(c)
+                                if found:
+                                    return found
+                        if hasattr(control, 'content') and control.content:
+                            return find_users_list(control.content)
+                        return None
+
+                    found = find_users_list(users_content)
+                    if found:
+                        users_refs['users_list'] = found
+                except Exception:
+                    pass
+
+        except Exception as ex:
+            print(f"Erro ao extrair refs de usuários (extract_users_refs): {ex}")
+
         return users_refs
 
     # Funções para gerenciamento de usuários
@@ -7025,11 +7100,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     if globals().get('selected_user') == w:
                                         clear_users_fields()
                                     refresh_users_list()
-                                    toast(f"✅ Usuário '{w}' removido com sucesso", "green")
+                                    show_toast(f"✅ Usuário '{w}' removido com sucesso", "green")
                                     page.update()
                                 except Exception as ex:
                                     page.close(dialog)
-                                    toast(f"❌ Erro ao excluir usuário: {ex}", "red")
+                                    show_toast(f"❌ Erro ao excluir usuário: {ex}", "red")
                                     page.update()
 
                             def cancel_delete(evt):
@@ -7046,7 +7121,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             page.open(dialog)
                             page.update()
                         except Exception as ex:
-                            toast(f"❌ Erro ao tentar excluir usuário: {ex}", "red")
+                            show_toast(f"❌ Erro ao tentar excluir usuário: {ex}", "red")
                             page.update()
 
                     delete_btn = ft.TextButton(
@@ -7150,7 +7225,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         except Exception as ex:
             print(f"Erro ao selecionar usuário: {ex}")
-            toast(f"❌ Erro ao carregar usuário: {ex}", "red")
+            show_toast(f"❌ Erro ao carregar usuário: {ex}", "red")
             page.update()
 
     def clear_users_fields():
@@ -7218,10 +7293,26 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as ex:
             print(f"Erro ao limpar campos: {ex}")
 
-    def add_or_update_user():
-        """Adiciona ou atualiza um usuário baseado na função original."""
+    def add_or_update_user(e):
+        """Adiciona ou atualiza um usuário baseado na função original.
+
+        Recebe o evento `e` do botão para poder manipular o estado do botão
+        (desabilitar/enabled) e passá-lo ao `show_toast` como `restore_control`.
+        """
         print("🔥 FUNÇÃO add_or_update_user CHAMADA!")
+        global current_user_wwid
+        save_button = e.control if e and hasattr(e, 'control') else None
+
+        # Marcar botão como processando e desabilitar para evitar cliques múltiplos
         try:
+            if save_button is not None:
+                try:
+                    save_button._is_processing = True
+                    save_button.disabled = True
+                    save_button.update()
+                except Exception:
+                    pass
+
             wwid = users_controls['wwid'].value.strip().upper() if users_controls['wwid'].value else ""
             name = users_controls['name'].value.strip() if users_controls['name'].value else ""
             password = users_controls['password'].value.strip() if users_controls['password'].value else ""
@@ -7237,7 +7328,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Valores para o banco: otif={otif}, nil={nil}, pickup={pickup}, package={package}")
             
             if not wwid or not password or not privilege:
-                toast("❌ Preencha WWID, Senha e Privilégio", "red")
+                show_toast("❌ Preencha WWID, Senha e Privilégio", "red", restore_control=save_button)
                 page.update()
                 return
             
@@ -7251,23 +7342,31 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     db_manager.execute("""
                         UPDATE users_table
                         SET user_name = ?, user_password = ?, user_privilege = ?, 
-                            otif = ?, nil = ?, pickup = ?, package = ?
+                            otif = ?, nil = ?, pickup = ?, package = ?,
+                            last_updated_by = ?, last_updated_date = CURRENT_TIMESTAMP
                         WHERE UPPER(user_wwid) = ?
-                    """, (name, password, privilege, otif, nil, pickup, package, wwid))
+                    """, (name, password, privilege, otif, nil, pickup, package, current_user_wwid, wwid))
                     
                     print(f"✅ Usuário {wwid} atualizado com sucesso!")
-                    toast(f"✅ Usuário '{wwid}' atualizado com sucesso", "green")
+                    show_toast(f"✅ Usuário '{wwid}' atualizado com sucesso", "green", restore_control=save_button)
                 else:
                     # Cria novo usuário
                     print(f"💾 Inserindo NOVO usuário {wwid} no banco de dados...")
                     db_manager.execute("""
                         INSERT INTO users_table (user_wwid, user_name, user_password, user_privilege, 
-                                               otif, nil, pickup, package) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (wwid, name, password, privilege, otif, nil, pickup, package))
+                                               otif, nil, pickup, package, registered_by) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (wwid, name, password, privilege, otif, nil, pickup, package, current_user_wwid))
                     
                     print(f"✅ Usuário {wwid} inserido com sucesso!")
-                    toast(f"✅ Usuário '{wwid}' criado com sucesso", "green")
+                    show_toast(f"✅ Usuário '{wwid}' criado com sucesso", "green", restore_control=save_button)
+                    # Limpar campos do formulário e atualizar lista imediatamente
+                    try:
+                        clear_users_fields()
+                        refresh_users_list()
+                        page.update()
+                    except Exception as _e:
+                        print(f"Aviso: falha ao limpar/atualizar lista após inserir usuário: {_e}")
             page.update()
             
             print(f"Lista atualizada com {len(load_users_full())} usuários!")
@@ -7276,8 +7375,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         except Exception as ex:
             show_toast(f"❌ Erro ao salvar usuário: {ex}", "red")
+            # Garantir que o botão seja restaurado se ocorrer erro
+            try:
+                if save_button is not None:
+                    save_button.disabled = False
+                    save_button._is_processing = False
+                    save_button.update()
+            except Exception:
+                pass
             page.update()
             print(f"Erro ao adicionar/atualizar usuário: {ex}")
+        finally:
+            # Certificar-se de limpar flag de processamento caso não tenha sido restaurada pelo show_toast
+            try:
+                if save_button is not None and getattr(save_button, '_is_processing', False):
+                    save_button._is_processing = False
+                    save_button.disabled = False
+                    save_button.update()
+            except Exception:
+                pass
 
     def delete_user():
         """Exclui o usuário baseado no WWID do campo de texto."""
@@ -7287,13 +7403,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             
             if not wwid:
-                toast("❌ Digite um WWID para excluir", "red")
+                show_toast("❌ Digite um WWID para excluir", "red")
                 page.update()
                 return
             
             # Verificar se o usuário existe no banco
             if not check_user_exists(wwid):
-                toast(f"❌ Usuário '{wwid}' não encontrado", "red")
+                show_toast(f"❌ Usuário '{wwid}' não encontrado", "red")
                 page.update()
                 return
             
@@ -7311,14 +7427,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Atualizar lista
                     refresh_users_list()
                     
-                    toast(f"✅ Usuário '{wwid}' removido com sucesso", "green")
+                    show_toast(f"✅ Usuário '{wwid}' removido com sucesso", "green")
                     page.update()
                     
                 except Exception as ex:
                     # Fechar dialog mesmo se der erro
                     page.close(dialog)
                     
-                    toast(f"❌ Erro ao excluir usuário: {ex}", "red")
+                    show_toast(f"❌ Erro ao excluir usuário: {ex}", "red")
                     page.update()
                     print(f"Erro ao deletar usuário {wwid}: {ex}")
             
@@ -7340,7 +7456,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             page.update()
             
         except Exception as ex:
-            toast(f"❌ Erro ao tentar excluir usuário: {ex}", "red")
+            show_toast(f"❌ Erro ao tentar excluir usuário: {ex}", "red")
             page.update()
             print(f"Erro geral no delete_user: {ex}")
 
@@ -7954,8 +8070,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
     def show_timeline_snackbar(message):
         """Mostra snackbar na timeline"""
-        # Substituído por toast para notificações consistentes
-        toast(message)
+        # Substituído por show_toast para notificações consistentes
+        show_toast(message)
         page.update()
 
     def delete_timeline_record(month, year_data, vendor_id):
@@ -9099,15 +9215,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     print("Extraindo referências dos controles de usuário...")
     try:
         users_controls.update(extract_users_refs())
-        print(f"Controles extraídos: {list(users_controls.keys())}")
     except Exception as ex:
         print(f"Erro ao extrair controles: {ex}")
     
     # Configurar eventos dos botões de usuário
     try:
         print("Configurando eventos dos botões...")
-        users_controls['action_btn'].on_click = lambda e: add_or_update_user()
-        users_controls['clear_btn'].on_click = lambda e: clear_users_fields()
+        # Passar diretamente o handler para que o evento seja recebido (usado para controlar o botão)
+        users_controls['action_btn'].on_click = add_or_update_user
+        users_controls['clear_btn'].on_click = clear_users_fields
         print("Eventos configurados com sucesso!")
     except Exception as ex:
         print(f"Erro ao configurar eventos: {ex}")
