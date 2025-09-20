@@ -10,6 +10,11 @@ class DBManager:
         self.table_whitelist = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
         self.column_whitelist = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
         self.log_table_name = 'log_table'
+        self.current_user_wwid = None  # Armazenar WWID do usuário atual
+
+    def set_current_user(self, wwid):
+        """Define o WWID do usuário atual para ser usado nos logs"""
+        self.current_user_wwid = wwid
 
     def _validate_name(self, name, pattern):
         if not pattern.match(name):
@@ -20,20 +25,26 @@ class DBManager:
         conn.row_factory = sqlite3.Row
         return conn
 
-    def _log_db_change(self, conn, event, user=None):
+    def _log_db_change(self, conn, event, user=None, wwid=None):
         """Insert a record into the log table. conn must be an open sqlite3.Connection.
 
-        Fields inserted: date (YYYY-MM-DD), time (HH:MM:SS), user, event
+        Fields inserted: date (YYYY-MM-DD), time (HH:MM:SS), user, wwid, event
         This function is safe to call only when the underlying operation did not touch the log table
         (caller should avoid logging if the SQL touches `self.log_table_name`).
         """
         try:
+            # Ensure WWID column exists
+            self._ensure_wwid_column(conn)
+            
             if user is None:
                 try:
                     import getpass
                     user = getpass.getuser()
                 except Exception:
                     user = 'unknown'
+
+            if wwid is None:
+                wwid = self.current_user_wwid or 'unknown'
 
             # Prepare fields
             from datetime import datetime
@@ -52,13 +63,29 @@ class DBManager:
                 except Exception:
                     event = str(event)
             insert_sql = (
-                f"INSERT INTO {self.log_table_name} (date, time, user, event) VALUES (?, ?, ?, ?)"
+                f"INSERT INTO {self.log_table_name} (date, time, user, wwid, event) VALUES (?, ?, ?, ?, ?)"
             )
             cursor = conn.cursor()
-            cursor.execute(insert_sql, (date_str, time_str, user, event))
+            cursor.execute(insert_sql, (date_str, time_str, user, wwid, event))
         except Exception:
             # Never let logging break the calling operation; record to app logger instead
             self.logger.exception('Failed to write DB log entry')
+
+    def _ensure_wwid_column(self, conn):
+        """Ensure WWID column exists in the log table."""
+        try:
+            cursor = conn.cursor()
+            # Check if WWID column exists
+            cursor.execute(f'PRAGMA table_info({self.log_table_name})')
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'wwid' not in columns:
+                self.logger.info("Adding WWID column to log table...")
+                cursor.execute(f'ALTER TABLE {self.log_table_name} ADD COLUMN wwid TEXT')
+                conn.commit()
+                self.logger.info("WWID column added successfully")
+        except Exception:
+            self.logger.exception('Failed to ensure WWID column exists')
 
     def _execute_with_retry(self, func, *args, **kwargs):
         max_retries = 5
@@ -248,12 +275,12 @@ class DBManager:
         return self._execute_with_retry(_query_one)
 
     @contextmanager
-    def transaction(self, event: str = None, user: str = None):
+    def transaction(self, event: str = None, user: str = None, wwid: str = None):
         """Context manager for transactions.
 
-        Optional `event` and `user` can be provided to write a single log entry after successful commit.
+        Optional `event`, `user`, and `wwid` can be provided to write a single log entry after successful commit.
         Example:
-            with db.transaction(event='Updated supplier X') as conn:
+            with db.transaction(event='Updated supplier X', user='John', wwid='AN123') as conn:
                 conn.execute(...)  # normal sqlite3 API
         """
         conn = self._get_connection()
@@ -267,7 +294,7 @@ class DBManager:
                 # in the connection's trace or similar isn't available; instead we assume caller won't log events
                 # for operations that themselves write to the log table.
                 try:
-                    self._log_db_change(conn, event=event, user=user)
+                    self._log_db_change(conn, event=event, user=user, wwid=wwid)
                     conn.commit()
                 except Exception:
                     pass

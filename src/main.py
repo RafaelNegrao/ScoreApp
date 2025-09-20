@@ -800,6 +800,9 @@ def login_screen(page: ft.Page):
             print(f"Permissões: {current_user_permissions}")
             print(f"Tema: {user_theme}")
 
+            # Definir usuário atual no DBManager para logs
+            db_manager.set_current_user(current_user_wwid)
+
             # Carregar aplicação principal (sem animação)
             page.controls.clear()
             page.title = "Score App"
@@ -1913,20 +1916,28 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         # Update all UI controls (always call, whether init or not)
         try:
-            refresh_users_list()
-            update_menu()
+            # Only call functions if they're defined (to avoid NameError during initialization)
+            if 'refresh_users_list' in globals():
+                refresh_users_list()
+            if 'update_menu' in globals():
+                update_menu()
             for key in ['planner', 'continuity', 'sourcing', 'sqie']:
-                refresh_list_ui(key)
-            update_control_colors(page, theme_mode)
-            update_timeline_search_container_colors(theme_mode)
+                if 'refresh_list_ui' in globals():
+                    refresh_list_ui(key)
+            if 'update_control_colors' in globals():
+                update_control_colors(page, theme_mode)
+            if 'update_timeline_search_container_colors' in globals():
+                update_timeline_search_container_colors(theme_mode)
             # Atualizar cores específicas da aba Risks (ano/meta)
             try:
-                update_risks_container_colors(theme_mode)
+                if 'update_risks_container_colors' in globals():
+                    update_risks_container_colors(theme_mode)
             except Exception as _e:
                 print(f"Aviso: falha ao atualizar cores da aba Risks: {_e}")
             # Atualizar conteúdo da aba Home
             try:
-                update_home_content()
+                if 'update_home_content' in globals():
+                    update_home_content()
             except Exception as _e:
                 print(f"Aviso: falha ao atualizar aba Home: {_e}")
         except Exception as e:
@@ -2491,6 +2502,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     def generate_full_score_dialog():
         """Abre diálogo para gerar notas cheias"""
+        global current_user_wwid
         # Refs para os controles do diálogo
         month_dropdown_ref = ft.Ref()
         year_dropdown_ref = ft.Ref()
@@ -2520,9 +2532,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.dropdown.Option("12", "Dezembro"),
         ]
         
-        # Opções de ano (últimos 3 anos + ano atual)
-        current_year = datetime.datetime.now().year
-        years = [ft.dropdown.Option(str(year), str(year)) for year in range(current_year - 2, current_year + 1)]
+        # Opções de ano (2024 a 2040)
+        years = [ft.dropdown.Option(str(year), str(year)) for year in range(2024, 2041)]
         
         def close_dialog(e):
             # Se estiver rodando, aciona cancelamento; caso contrário, fecha o diálogo normalmente
@@ -2551,7 +2562,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             include_inactive = bool(include_inactive_ref.current.value)
             
             if not month or not year:
-                show_toast("Mês e ano devem ser selecionados para gerar notas.", "red")
+                # Mostrar erro na própria janela
+                progress_bar_ref.current.visible = False
+                progress_text_ref.current.visible = True
+                progress_text_ref.current.value = "❌ Mês e ano devem ser selecionados para gerar notas."
+                progress_text_ref.current.color = ft.Colors.RED
+                page.update()
                 return
             
             # Validação para não gerar para meses futuros
@@ -2560,7 +2576,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             year_int = int(year)
             
             if (year_int > now.year) or (year_int == now.year and month_int > now.month):
-                show_toast("Não é possível gerar notas para meses futuros.", "red")
+                # Mostrar erro na própria janela
+                progress_bar_ref.current.visible = False
+                progress_text_ref.current.visible = True
+                progress_text_ref.current.value = "❌ Não é possível gerar notas para meses futuros."
+                progress_text_ref.current.color = ft.Colors.RED
+                page.update()
                 return
             
             # Evitar reentrância e desabilitar botão Gerar
@@ -2572,6 +2593,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     generate_button_ref.current.disabled = True
                 if cancel_button_ref.current:
                     cancel_button_ref.current.disabled = False
+                # Desabilitar dropdowns e switch durante execução
+                if month_dropdown_ref.current:
+                    month_dropdown_ref.current.disabled = True
+                if year_dropdown_ref.current:
+                    year_dropdown_ref.current.disabled = True
+                if include_inactive_ref.current:
+                    include_inactive_ref.current.disabled = True
                 page.update()
             except Exception:
                 pass
@@ -2588,6 +2616,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         dialog,
                         generate_button_ref,
                         cancel_button_ref,
+                        theme_colors,
+                        dialog_content,
+                        month_dropdown_ref,
+                        year_dropdown_ref,
+                        include_inactive_ref
                     )
                 except Exception as ex:
                     page.run_thread(lambda: show_toast(f"Erro durante a geração: {str(ex)}", "red"))
@@ -2599,6 +2632,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             generate_button_ref.current.disabled = False
                         if cancel_button_ref.current:
                             cancel_button_ref.current.disabled = False
+                        # Reabilitar dropdowns e switch
+                        if month_dropdown_ref.current:
+                            month_dropdown_ref.current.disabled = False
+                        if year_dropdown_ref.current:
+                            year_dropdown_ref.current.disabled = False
+                        if include_inactive_ref.current:
+                            include_inactive_ref.current.disabled = False
                         page.update()
                     except Exception:
                         pass
@@ -2694,7 +2734,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         page.open(dialog)
     
-    def generate_full_scores(month, year, include_inactive, cancel_event, progress_bar_ref, progress_text_ref, dialog, generate_button_ref, cancel_button_ref):
+    def generate_full_scores(month, year, include_inactive, cancel_event, progress_bar_ref, progress_text_ref, dialog, generate_button_ref, cancel_button_ref, theme_colors, dialog_content, month_dropdown_ref, year_dropdown_ref, include_inactive_ref):
         """Gera notas cheias baseado na função fornecida pelo usuário"""
         try:
             # Mostrar progresso
@@ -2828,27 +2868,68 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     continue
             
             # Exibir resultado no próprio diálogo (sem fechar)
-            summary = (
-                f"Geração de notas concluída!\n"
-                f"• Adicionadas: {adicionados}\n"
-                f"• Ignoradas (inativas): {ignorados_inativos}\n"
-                f"• Ignoradas (já existem): {ignorados_existentes}"
-            )
             try:
                 progress_bar_ref.current.visible = False
+                progress_text_ref.current.visible = False
+                
+                # Criar resumo estruturado e mostrar no lugar do progresso
+                summary_text = (
+                    f"✅ Geração de notas concluída!\n\n"
+                    f"📊 Adicionadas: {adicionados}\n"
+                    f"⚠️  Ignoradas (inativas): {ignorados_inativos}\n" 
+                    f"ℹ️  Ignoradas (já existem): {ignorados_existentes}"
+                )
+                
                 progress_text_ref.current.visible = True
-                progress_text_ref.current.value = summary
+                progress_text_ref.current.value = summary_text
+                progress_text_ref.current.size = 14
+                
                 # reabilitar Gerar; alterar Cancelar para Fechar
                 if generate_button_ref and generate_button_ref.current:
                     generate_button_ref.current.disabled = False
+                # Reabilitar dropdowns e switch
+                if month_dropdown_ref and month_dropdown_ref.current:
+                    month_dropdown_ref.current.disabled = False
+                if year_dropdown_ref and year_dropdown_ref.current:
+                    year_dropdown_ref.current.disabled = False  
+                if include_inactive_ref and include_inactive_ref.current:
+                    include_inactive_ref.current.disabled = False
                 if cancel_button_ref and cancel_button_ref.current:
                     try:
                         cancel_button_ref.current.text = "Fechar"
                     except Exception:
                         pass
                 page.update()
-            except Exception:
-                pass
+            except Exception as e:
+                # Fallback para texto simples se houver erro
+                summary = (
+                    f"Geração de notas concluída!\n"
+                    f"✅ Adicionadas: {adicionados}\n"
+                    f"⚠️ Ignoradas (inativas): {ignorados_inativos}\n"
+                    f"ℹ️ Ignoradas (já existem): {ignorados_existentes}"
+                )
+                try:
+                    progress_bar_ref.current.visible = False
+                    progress_text_ref.current.visible = True
+                    progress_text_ref.current.value = summary
+                    # reabilitar Gerar; alterar Cancelar para Fechar
+                    if generate_button_ref and generate_button_ref.current:
+                        generate_button_ref.current.disabled = False
+                    # Reabilitar dropdowns e switch
+                    if month_dropdown_ref and month_dropdown_ref.current:
+                        month_dropdown_ref.current.disabled = False
+                    if year_dropdown_ref and year_dropdown_ref.current:
+                        year_dropdown_ref.current.disabled = False  
+                    if include_inactive_ref and include_inactive_ref.current:
+                        include_inactive_ref.current.disabled = False
+                    if cancel_button_ref and cancel_button_ref.current:
+                        try:
+                            cancel_button_ref.current.text = "Fechar"
+                        except Exception:
+                            pass
+                    page.update()
+                except Exception:
+                    pass
             
             # Atualizar lista de resultados se estiver visível
             page.run_thread(lambda: (
@@ -3033,6 +3114,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def set_selected(idx):
         def handler(e):
+            # Verificar se o usuário tem acesso à aba
+            if not is_tab_accessible(idx, current_user_privilege or "User"):
+                # Mostrar toast de erro e retornar sem alterar a seleção
+                show_toast("Acesso negado para esta funcionalidade", ft.colors.RED)
+                return
+                
             selected_index.current = idx
             home_view.visible = idx == 0
             score_view.visible = idx == 1
@@ -3040,6 +3127,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             risks_view.visible = idx == 3
             email_view.visible = idx == 4
             configs_view.visible = idx == 5
+            
+            # Limpar campos da aba Log quando sair da aba Configs
+            if selected_index.current != 5 and idx != 5:
+                try:
+                    # Se estava na aba Configs e está saindo dela
+                    if selected_config_tab.current == 5:  # Se estava na sub-aba Log
+                        clear_log_fields()
+                except Exception as ex:
+                    print(f"Aviso: erro ao limpar campos da aba Log: {ex}")
             
             # Quando aba Score é selecionada e não há busca ativa, mostrar favoritos
             if idx == 1 and search_field_ref.current:  # Score agora é índice 1
@@ -3096,17 +3192,46 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         # A busca é chamada sempre que um dropdown muda. A função de busca verificará os valores.
         load_scores()
 
+    def get_user_accessible_tabs(privilege):
+        """Retorna lista de índices de abas que o usuário pode acessar baseado no privilégio"""
+        if privilege == "Super Admin":
+            # Super Admin pode acessar tudo
+            return [0, 1, 2, 3, 4, 5]  # Home, Score, Timeline, Risks, Email, Configs
+        elif privilege == "Admin":
+            # Admin pode: Home, Score, Timeline, Risks, Configs (sem Email)
+            return [0, 1, 2, 3, 5]  # Home, Score, Timeline, Risks, Configs
+        else:  # User
+            # User pode: Home, Timeline, Risks, Configs limitado
+            return [0, 2, 3, 5]  # Home, Timeline, Risks, Configs
+
+    def is_tab_accessible(tab_index, privilege):
+        """Verifica se uma aba específica é acessível para o privilégio do usuário"""
+        accessible_tabs = get_user_accessible_tabs(privilege)
+        return tab_index in accessible_tabs
+
     def update_menu():
         if menu_column_ref.current:
             show_text = menu_is_expanded.current
-            menu_column_ref.current.controls = [
-                menu_item("home_outlined", "Home", 0, show_text),
-                menu_item("score_outlined", "Score", 1, show_text),
-                menu_item("timeline_outlined", "Timeline", 2, show_text),
-                menu_item("warning_outlined", "Risks", 3, show_text),
-                menu_item("email_outlined", "Email", 4, show_text),
-                menu_item("settings_outlined", "Configs", 5, show_text),
+            
+            # Lista completa de itens de menu
+            all_menu_items = [
+                ("home_outlined", "Home", 0),
+                ("score_outlined", "Score", 1),
+                ("timeline_outlined", "Timeline", 2),
+                ("warning_outlined", "Risks", 3),
+                ("email_outlined", "Email", 4),
+                ("settings_outlined", "Configs", 5),
             ]
+            
+            # Filtrar itens baseado no privilégio do usuário
+            accessible_tabs = get_user_accessible_tabs(current_user_privilege or "User")
+            filtered_menu_items = [
+                menu_item(icon, text, idx, show_text) 
+                for icon, text, idx in all_menu_items 
+                if idx in accessible_tabs
+            ]
+            
+            menu_column_ref.current.controls = filtered_menu_items
             menu_column_ref.current.width = 160 if show_text else 40
             menu_column_ref.current.update()
 
@@ -5238,6 +5363,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def set_config_tab(idx):
         def handler(e):
+            # Verificar se o usuário tem acesso à aba de configuração
+            accessible_tabs = get_user_accessible_config_tabs(current_user_privilege or "User")
+            accessible_indices = [tab_idx for _, _, tab_idx in accessible_tabs]
+            
+            if idx not in accessible_indices:
+                show_toast("Acesso negado para esta configuração", ft.colors.RED)
+                return
+                
             # Limpar campos da aba Log quando sair dela (se estava na aba Log antes)
             if selected_config_tab.current == 5 and idx != 5:
                 try:
@@ -5278,14 +5411,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             animate=200,
         )
 
+    def get_user_accessible_config_tabs(privilege):
+        """Retorna lista de abas de configuração que o usuário pode acessar"""
+        all_tabs = [
+            (ft.Icons.PALETTE, "Themes", 0),
+            (ft.Icons.BUSINESS, "Suppliers", 1),
+            (ft.Icons.TUNE, "Criteria", 2),
+            (ft.Icons.PEOPLE, "Users", 3),
+            (ft.Icons.LIST, "Lists", 4),
+            (ft.Icons.HISTORY, "Log", 5),
+        ]
+        
+        if privilege == "Super Admin":
+            # Super Admin pode acessar tudo
+            return all_tabs
+        elif privilege == "Admin":
+            # Admin pode: Themes, Suppliers, Lists (sem Users, Criteria, Log)
+            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 1, 4]]
+        else:  # User
+            # User pode apenas: Themes
+            return [(icon, name, idx) for icon, name, idx in all_tabs if idx == 0]
+
     def update_config_tabs():
+        # Filtrar abas baseado no privilégio do usuário
+        accessible_tabs = get_user_accessible_config_tabs(current_user_privilege or "User")
         config_tabs_row.controls = [
-            config_tab_item(ft.Icons.PALETTE, "Themes", 0),
-            config_tab_item(ft.Icons.BUSINESS, "Suppliers", 1),
-            config_tab_item(ft.Icons.TUNE, "Criteria", 2),
-            config_tab_item(ft.Icons.PEOPLE, "Users", 3),
-            config_tab_item(ft.Icons.LIST, "Lists", 4),
-            config_tab_item(ft.Icons.HISTORY, "Log", 5),
+            config_tab_item(icon, name, idx) for icon, name, idx in accessible_tabs
         ]
         config_tabs_row.update()
 
@@ -8010,7 +8161,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Verifica se já existe o usuário
             existing_user = db_manager.query_one("SELECT 1 FROM users_table WHERE UPPER(user_wwid) = ?", (wwid,))
             
-            with db_manager.transaction() as conn:
+            with db_manager.transaction(
+                event=f"{'Atualização' if existing_user else 'Criação'} de usuário: {wwid}",
+                user=current_user_wwid,
+                wwid=current_user_wwid
+            ) as conn:
                 if existing_user:
                     # Atualiza usuário existente
                     print(f"🔄 Atualizando usuário EXISTENTE {wwid}...")
@@ -8137,17 +8292,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # Referências para os controles da aba Log
     log_user_filter_ref = ft.Ref()
-    # Lista e detalhes do log
-    log_list_ref = ft.Ref()
-    log_details_ref = ft.Ref()
+    # DataTable única para consolidar lista e detalhes
+    log_table_ref = ft.Ref()
 
     log_controls = {
         'user_filter': log_user_filter_ref,
-        'list': log_list_ref,
-        'details': log_details_ref,
+        'table': log_table_ref,
     }
 
-    # Conteúdo da sub-aba Log
+    # Conteúdo da sub-aba Log com largura maximizada
     log_content = ft.Container(
         content=ft.Column([
             ft.Text("Log de Atividades", size=20, weight="bold"),
@@ -8163,221 +8316,283 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ),
                 ft.ElevatedButton("Filtrar", icon=ft.Icons.FILTER_LIST, on_click=lambda e: load_log_entries(log_user_filter_ref.current.value if log_user_filter_ref and hasattr(log_user_filter_ref, 'current') else None)),
             ], spacing=10),
-            ft.Container(height=20),
-            # Lista de logs e painel de detalhes
-            ft.Row([
-                ft.Container(
-                    content=ft.Column([
-                        ft.Text("Entradas de Log", weight="bold"),
-                        ft.Container(height=8),
-                        # ListView para exibir os logs
-                        ft.ListView(controls=[], expand=True, spacing=5, ref=log_list_ref),
-                    ]),
-                    expand=True,
-                    padding=10,
-                    border=ft.border.all(1, "outline"),
-                    border_radius=8,
+            ft.Container(height=10),  # Espaçamento reduzido
+            # Tabela consolidada com largura total da tela
+            ft.Container(
+                content=ft.Column([
+                    ft.DataTable(
+                        ref=log_table_ref,
+                        columns=[
+                            ft.DataColumn(ft.Text("", weight="bold"), numeric=False),  # Ícone
+                            ft.DataColumn(ft.Text("Data/Hora", weight="bold"), numeric=False),
+                            ft.DataColumn(ft.Text("WWID", weight="bold"), numeric=False),  # Nova coluna WWID
+                            ft.DataColumn(ft.Text("Usuário", weight="bold"), numeric=False),
+                            ft.DataColumn(ft.Text("Detalhes", weight="bold"), numeric=False),
+                        ],
+                        rows=[],
+                        border=ft.border.all(1, "outline"),
+                        border_radius=8,
+                        heading_row_color=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
+                        data_row_color={"hovered": get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant')},
+                        column_spacing=10,  # Espaçamento reduzido
+                        horizontal_margin=5,  # Margem reduzida
+                        width=None,  # Permite que a tabela use toda largura disponível
+                    )
+                ], 
+                expand=True, 
+                scroll=ft.ScrollMode.ADAPTIVE
                 ),
-                ft.Container(width=20),
-                ft.Container(
-                    content=ft.Column([
-                        ft.Text("Detalhes", weight="bold"),
-                        ft.Container(height=8),
-                        ft.TextField(
-                            ref=log_details_ref,
-                            multiline=True,
-                            expand=True,
-                            read_only=True,
-                            border_color=None,
-                            filled=True,
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
-                        ),
-                    ]),
-                    width=420,
-                    padding=10,
-                    border=ft.border.all(1, "outline"),
-                    border_radius=8,
-                )
-            ], expand=True)
-        ], spacing=15),
-        padding=20,
-        visible=False
+                expand=True,
+                padding=2,  # Padding mínimo
+                border=ft.border.all(1, "outline"),
+                border_radius=8,
+            )
+        ], spacing=10),  # Espaçamento geral reduzido
+        padding=5,  # Padding do container principal minimizado  
+        visible=False,
+        expand=True,  # Container principal expandir para ocupar espaço disponível
     )
 
 
-    # Função para carregar entradas da tabela log_table e popular o ListView
-    def load_log_entries(wwid_filter=None):
+    # Variável global para controlar paginação do log
+    log_pagination = {
+        'current_offset': 0,
+        'page_size': 200,
+        'loading': False,
+        'has_more': True,
+        'current_filter': None
+    }
+
+    # Função para carregar entradas da tabela log_table e popular a DataTable com paginação
+    def load_log_entries(wwid_filter=None, append_mode=False):
         try:
-            # refs locais (definidos acima)
-            list_control = log_list_ref.current if log_list_ref and hasattr(log_list_ref, 'current') else None
-            details_control = log_details_ref.current if log_details_ref and hasattr(log_details_ref, 'current') else None
+            # Referência para a DataTable
+            table_control = log_table_ref.current if log_table_ref and hasattr(log_table_ref, 'current') else None
+            
+            if not table_control:
+                print("DataTable não encontrada")
+                return
+
+            # Evitar múltiplas requisições simultâneas
+            if log_pagination['loading']:
+                return
+                
+            log_pagination['loading'] = True
+
+            # Se não é append_mode, resetar paginação
+            if not append_mode:
+                log_pagination['current_offset'] = 0
+                log_pagination['has_more'] = True
+                log_pagination['current_filter'] = wwid_filter
+                table_control.rows.clear()
+            
+            # Se filtro mudou, resetar
+            if wwid_filter != log_pagination['current_filter']:
+                log_pagination['current_offset'] = 0
+                log_pagination['has_more'] = True  
+                log_pagination['current_filter'] = wwid_filter
+                if not append_mode:
+                    table_control.rows.clear()
 
             # preparar ícones por tipo
             def icon_for_event(event_text):
                 try:
                     if not event_text:
-                        return ft.Icon(ft.Icons.NOT_LISTED_LOCATION)
-                    # procurar prefixo [UPDATED], [EXCLUDED], [INCLUDED]
-                    if event_text.startswith('[UPDATED]'):
-                        return ft.Icon(ft.Icons.EDIT)
-                    if event_text.startswith('[EXCLUDED]'):
-                        return ft.Icon(ft.Icons.DELETE)
-                    if event_text.startswith('[INCLUDED]'):
-                        return ft.Icon(ft.Icons.ADD)
-                    # fallback para itens antigos sem prefixo
-                    return ft.Icon(ft.Icons.HISTORY)
-                except Exception:
-                    return ft.Icon(ft.Icons.HISTORY)
+                        return ft.Container()  # Sem ícone se não há evento
+                    
+                    # procurar prefixo [UPDATED], [EXCLUDED], [INCLUDED] (case insensitive)
+                    event_upper = event_text.upper()
+                    if event_upper.startswith('[UPDATED]'):
+                        return ft.Icon(ft.Icons.EDIT, size=16, color="#2196F3")  # Azul
+                    elif event_upper.startswith('[EXCLUDED]'):
+                        return ft.Icon(ft.Icons.DELETE, size=16, color="#F44336")  # Vermelho
+                    elif event_upper.startswith('[INCLUDED]'):
+                        return ft.Icon(ft.Icons.ADD, size=16, color="#4CAF50")  # Verde
+                    
+                    # Se não tem prefixo específico, não mostrar ícone
+                    return ft.Container()
+                except Exception as e:
+                    print(f"Erro ao processar ícone: {e}")
+                    return ft.Container()
 
-            # Buscar dados do DB, aplicando filtro por usuário/WWID quando fornecido
+            # Buscar dados do DB com LIMIT e OFFSET para paginação
             rows = []
             try:
-                base_q = f"SELECT log_id, date, time, user, event FROM {db_manager.log_table_name}"
+                base_q = f"SELECT log_id, date, time, user, wwid, event FROM {db_manager.log_table_name}"
                 if wwid_filter:
-                    # permitir pesquisa parcial (LIKE) ignorando case
-                    q = base_q + " WHERE UPPER(user) LIKE ? ORDER BY date DESC, time DESC"
-                    rows = db_manager.query(q, (f"%{wwid_filter.upper()}%",))
+                    # permitir pesquisa parcial (LIKE) em user, wwid E nos dados JSON do evento (para WWID)
+                    q = base_q + f" WHERE (UPPER(user) LIKE ? OR UPPER(wwid) LIKE ? OR UPPER(event) LIKE ?) ORDER BY date DESC, time DESC LIMIT {log_pagination['page_size']} OFFSET {log_pagination['current_offset']}"
+                    filter_param = f"%{wwid_filter.upper()}%"
+                    rows = db_manager.query(q, (filter_param, filter_param, filter_param))
                 else:
-                    q = base_q + " ORDER BY date DESC, time DESC"
+                    q = base_q + f" ORDER BY date DESC, time DESC LIMIT {log_pagination['page_size']} OFFSET {log_pagination['current_offset']}"
                     rows = db_manager.query(q)
+                    
+                # Verificar se há mais dados
+                if len(rows) < log_pagination['page_size']:
+                    log_pagination['has_more'] = False
+                else:
+                    log_pagination['has_more'] = True
+                    
             except Exception as e:
                 print(f"Erro ao ler log_table: {e}")
+                log_pagination['loading'] = False
+                return
 
-            # Limpar list
-            if list_control is not None:
-                list_control.controls.clear()
+            # Se não há linhas na primeira página, mostrar mensagem
+            if not rows and log_pagination['current_offset'] == 0:
+                table_control.rows.append(
+                    ft.DataRow(cells=[
+                        ft.DataCell(ft.Text("")),
+                        ft.DataCell(ft.Text("")),
+                        ft.DataCell(ft.Text("")),
+                        ft.DataCell(ft.Text("Nenhuma entrada de log encontrada.", italic=True)),
+                        ft.DataCell(ft.Text(""))
+                    ])
+                )
+                table_control.update()
+                log_pagination['loading'] = False
+                return
 
-            # manter referência ao item atualmente selecionado para realce
-            selected_item_container = {'current': None}
+            # Função para formatar texto de evento para exibição
+            def format_event_text(raw_text):
+                # Tenta parsear JSON para formatar legivelmente
+                try:
+                    import json
+                    parsed = json.loads(raw_text)
+                    # Se for dict ou list, formatar com separador "-"
+                    if isinstance(parsed, dict):
+                        lines = []
+                        for k, v in parsed.items():
+                            # Limpar valor de aspas e caracteres especiais
+                            clean_v = str(v).replace('"', '').replace("'", '').replace('\n', ' ')
+                            lines.append(f"{k}: {clean_v}")
+                        return " - ".join(lines)
+                    if isinstance(parsed, list):
+                        cleaned_list = [str(x).replace('"', '').replace("'", '').replace('\n', ' ') for x in parsed]
+                        return " - ".join(cleaned_list)
+                except Exception:
+                    # não JSON -> seguir para parsing simples
+                    pass
 
-            # Popular lista
+                # Limpar texto simples de caracteres especiais
+                try:
+                    # Remover aspas, quebras de linha e outros caracteres especiais
+                    cleaned_text = raw_text.replace('"', '').replace("'", '').replace('\n', ' ').replace('\\n', ' ')
+                    # Se há vírgulas, separar por elas e usar "-"
+                    if ',' in cleaned_text:
+                        parts = [p.strip() for p in cleaned_text.split(',') if p.strip()]
+                        return " - ".join(parts) if parts else cleaned_text
+                    return cleaned_text
+                except Exception:
+                    return raw_text
+
+            # Extrair WWID do registro (agora que temos coluna específica)
+            def extract_wwid(row):
+                # Com a nova coluna wwid, simplesmente retornar seu valor
+                if 'wwid' in row and row['wwid']:
+                    return str(row['wwid'])
+                # Fallback para compatibilidade com registros antigos
+                return row.get('user', '')
+
+            # Popular tabela com nova estrutura de colunas
             for r in rows:
                 event = r.get('event') or ''
                 date = r.get('date') or ''
                 time = r.get('time') or ''
                 user = r.get('user') or ''
-                # tentar extrair WWID (pode estar em coluna própria ou dentro do JSON do event)
-                def extract_wwid(row, event_text):
-                    # preferir colunas explícitas
-                    for k in ('wwid', 'user_wwid', 'registered_by', 'user'):
-                        if k in row and row.get(k):
-                            return str(row.get(k))
-                    # tentar parsear JSON
-                    try:
-                        import json
-                        parsed = json.loads(event_text)
-                        if isinstance(parsed, dict):
-                            for k in ('wwid', 'user_wwid', 'registered_by', 'user'):
-                                if k in parsed and parsed[k]:
-                                    return str(parsed[k])
-                    except Exception:
-                        pass
-                    return None
+                wwid = extract_wwid(r)  # Agora sem segundo parâmetro
 
-                wwid = extract_wwid(r, event)
-
-                # label simplificado (incluir WWID se encontrado)
-                label = f"{date} {time} — {user}"
-                subtitle = None
-                if wwid and wwid != user:
-                    subtitle = f"WWID: {wwid}"
-
-                icon = icon_for_event(event)
-
-                # criar linha clicável
-                def format_event_text(raw_text):
-                    # Tenta parsear JSON para formatar legivelmente
-                    try:
-                        import json
-                        parsed = json.loads(raw_text)
-                        # Se for dict ou list, formatar em múltiplas linhas com chave: valor
-                        if isinstance(parsed, dict):
-                            lines = []
-                            for k, v in parsed.items():
-                                lines.append(f"{k}: {v}")
-                            return "\n".join(lines)
-                        if isinstance(parsed, list):
-                            return "\n".join([str(x) for x in parsed])
-                    except Exception:
-                        # não JSON -> seguir para parsing simples
-                        pass
-
-                    # Remover aspas e quebrar por vírgula em linhas
-                    try:
-                        parts = [p.strip() for p in raw_text.split(',') if p.strip()]
-                        # remover aspas iniciais/finais
-                        cleaned = [p.strip('"\'') for p in parts]
-                        return "\n".join(cleaned) if cleaned else raw_text
-                    except Exception:
-                        return raw_text
-
-
-                def make_click_handler(detail_text, container):
-                    def _on_click(e):
-                        try:
-                            # formatar e mostrar detalhes
-                            formatted = format_event_text(detail_text)
-                            if details_control is not None:
-                                details_control.value = formatted
-                                details_control.update()
-
-                            # realce visual: aplicar bgcolor no container clicado e limpar o anterior
-                            try:
-                                prev = selected_item_container.get('current')
-                                if prev and hasattr(prev, 'bgcolor'):
-                                    prev.bgcolor = None
-                                    prev.update()
-                            except Exception:
-                                pass
-
-                            try:
-                                if container:
-                                    try:
-                                        # usar cor do tema atual (primary_container) se disponível
-                                        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
-                                        highlight = theme_colors.get('primary_container', '#e6f2ff')
-                                    except Exception:
-                                        highlight = '#e6f2ff'
-                                    container.bgcolor = highlight
-                                    container.update()
-                                    selected_item_container['current'] = container
-                            except Exception:
-                                pass
-
-                        except Exception as ex:
-                            print(f"Erro ao exibir detalhes do log: {ex}")
-                    return _on_click
-
-                item_row = ft.Container(
-                    content=ft.Row([
-                        icon,
-                        ft.Container(width=8),
-                        ft.Column([
-                            ft.Text(label, size=12),
-                            ft.Text(event if len(event) < 120 else (event[:117] + '...'), size=11, color="#666"),
-                            ft.Text(subtitle, size=11, color="#444") if subtitle else ft.Container()
-                        ], expand=True)
-                    ]),
-                    padding=8,
-                    border_radius=6,
-                    on_click=make_click_handler(event, None)  # será substituído abaixo com container
+                # Criar células da linha com nova estrutura
+                icon_widget = icon_for_event(event)
+                icon_cell = ft.DataCell(
+                    ft.Container(
+                        content=icon_widget,
+                        width=40,
+                        height=30,  # Altura mínima para garantir visibilidade
+                        alignment=ft.alignment.center
+                    )
+                )
+                
+                datetime_cell = ft.DataCell(
+                    ft.Container(
+                        content=ft.Text(f"{date}\\n{time}", size=11),
+                        width=120
+                    )
+                )
+                
+                # Nova coluna WWID separada
+                wwid_cell = ft.DataCell(
+                    ft.Container(
+                        content=ft.Text(wwid or "", size=11, overflow=ft.TextOverflow.ELLIPSIS),
+                        width=100
+                    )
+                )
+                
+                # Coluna usuário agora só mostra o nome do usuário
+                user_cell = ft.DataCell(
+                    ft.Container(
+                        content=ft.Text(user, size=11, overflow=ft.TextOverflow.ELLIPSIS),
+                        width=120
+                    )
+                )
+                
+                # Detalhes formatados do evento (ajustado)
+                details_formatted = format_event_text(event)
+                details_cell = ft.DataCell(
+                    ft.Container(
+                        content=ft.Text(
+                            details_formatted,
+                            size=10,
+                            max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS
+                        ),
+                        width=400,
+                        tooltip=details_formatted  # Tooltip mostra texto completo
+                    )
                 )
 
-                if list_control is not None:
-                    # ajustar handler para receber a referência do container (item_row)
-                    item_row.on_click = make_click_handler(event, item_row)
-                    list_control.controls.append(item_row)
+                # Adicionar linha à tabela com nova estrutura
+                table_control.rows.append(
+                    ft.DataRow(cells=[icon_cell, datetime_cell, wwid_cell, user_cell, details_cell])
+                )
 
-            if list_control is not None:
-                list_control.update()
+            # Atualizar tabela
+            table_control.update()
 
-            # se não há linhas, mostrar mensagem
-            if not rows and list_control is not None:
-                list_control.controls.append(ft.Text("Nenhuma entrada de log encontrada.", italic=True))
-                list_control.update()
+            # Incrementar offset para próxima página
+            log_pagination['current_offset'] += log_pagination['page_size']
+            
+            # Adicionar linha "Carregar mais" se há mais dados
+            if log_pagination['has_more']:
+                def load_more_handler(e):
+                    load_log_entries(wwid_filter, append_mode=True)
+                
+                load_more_row = ft.DataRow(cells=[
+                    ft.DataCell(ft.Text("")),
+                    ft.DataCell(ft.Text("")),
+                    ft.DataCell(ft.Text("")),
+                    ft.DataCell(
+                        ft.ElevatedButton(
+                            "Carregar mais...",
+                            icon=ft.Icons.EXPAND_MORE,
+                            on_click=load_more_handler,
+                            style=ft.ButtonStyle(
+                                bgcolor="#E3F2FD",
+                                color="#1976D2"
+                            )
+                        )
+                    ),
+                    ft.DataCell(ft.Text(""))
+                ])
+                table_control.rows.append(load_more_row)
+                table_control.update()
+
+            log_pagination['loading'] = False
 
         except Exception as e:
             print(f"Erro geral ao carregar logs: {e}")
+            log_pagination['loading'] = False
 
 
     # Hook: carregar log quando a aba for aberta
@@ -8394,24 +8609,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def clear_log_fields():
         """Limpa os campos da aba Log quando o usuário sair da aba"""
         try:
+            # Resetar paginação
+            log_pagination['current_offset'] = 0
+            log_pagination['has_more'] = True
+            log_pagination['current_filter'] = None
+            log_pagination['loading'] = False
+            
             # Limpar campo de filtro/pesquisa
             if log_user_filter_ref.current:
                 log_user_filter_ref.current.value = ""
                 log_user_filter_ref.current.update()
             
-            # Limpar lista de logs
-            if log_list_ref.current:
-                log_list_ref.current.controls.clear()
-                log_list_ref.current.update()
-            
-            # Limpar detalhes do log selecionado
-            if log_details_ref.current:
-                log_details_ref.current.content = ft.Text(
-                    "Selecione uma entrada da lista para ver os detalhes aqui.",
-                    size=14,
-                    color="grey"
-                )
-                log_details_ref.current.update()
+            # Limpar tabela de logs
+            if log_table_ref.current:
+                log_table_ref.current.rows.clear()
+                log_table_ref.current.update()
             
             print("🧹 Campos da aba Log limpos com sucesso")
             
@@ -9361,12 +9573,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 # Passar uma tupla com os valores na ordem esperada pelo diálogo
                 record_tuple = (month, year_data, otif, nil, pickup, package, total, comment)
+                
+                # Verificar se usuário pode editar (apenas Admin e Super Admin)
+                can_edit = current_user_privilege in ["Admin", "Super Admin"]
+                
                 edit_btn = ft.IconButton(
                     icon=ft.Icons.EDIT,
-                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                    tooltip="Editar registro",
+                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary') if can_edit else ft.colors.GREY_400,
+                    tooltip="Editar registro" if can_edit else "Sem permissão para editar",
                     icon_size=16,
-                    on_click=create_edit_handler(record_tuple)
+                    on_click=create_edit_handler(record_tuple) if can_edit else None,
+                    disabled=not can_edit
                 )
                 
                 # Função para deletar este registro específico
@@ -9390,10 +9607,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 delete_btn = ft.IconButton(
                     icon=ft.Icons.DELETE,
-                    icon_color="red",
-                    tooltip="Deletar registro",
+                    icon_color="red" if can_edit else ft.colors.GREY_400,
+                    tooltip="Deletar registro" if can_edit else "Sem permissão para deletar",
                     icon_size=16,
-                    on_click=create_delete_handler(month, year_data, vendor_id)
+                    on_click=create_delete_handler(month, year_data, vendor_id) if can_edit else None,
+                    disabled=not can_edit
                 )
                 
                 # Layout responsivo das linhas
@@ -10074,8 +10292,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 if timeline_year_dropdown and timeline_year_dropdown.current:
                                     timeline_year_dropdown.current.value = y
 
-                            # 3. Mudar para a aba Timeline (índice 1)
-                            set_selected(1)(None)
+                            # 3. Mudar para a aba Timeline (índice 2)
+                            set_selected(2)(None)
 
                             # 4. Atualizar as métricas e o conteúdo da aba Timeline
                             on_timeline_vendor_change(None)
@@ -10349,8 +10567,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     responsive_app_manager.check_initial_window_state()  # Verificar estado inicial da janela
     print("📱 Gerenciador responsivo inicializado e estado inicial verificado")
 
+    def update_interface_for_user_privileges():
+        """Atualiza a interface baseado nos privilégios do usuário atual"""
+        try:
+            # Atualizar menu principal (ocultar/mostrar abas)
+            update_menu()
+            
+            # Atualizar abas de configuração  
+            update_config_tabs()
+            
+            print(f"Interface atualizada para privilégio: {current_user_privilege}")
+            
+        except Exception as ex:
+            print(f"Erro ao atualizar interface para privilégios: {ex}")
+
     update_menu()
     update_config_tabs()  # Inicializar as abas de configuração
+    
+    # Atualizar interface baseado nos privilégios do usuário
+    update_interface_for_user_privileges()
     
     # Inicializar controles de usuário
     print("Extraindo referências dos controles de usuário...")
