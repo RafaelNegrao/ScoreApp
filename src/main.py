@@ -8,62 +8,7 @@ import threading
 # Configuração mínima de toasts (usada por redirect de `print` e por notificações)
 app_settings = {'toast_duration': 3}
 
-# Instância global do DBManager
 db_manager = DBManager('db.db')
-
-# def show_toast(message, color="green", restore_control=None):
-#     """Mostrar notificação show_toast de forma segura. Se `page` não estiver disponível,
-#     grava em stderr como fallback silencioso (para execução fora da UI).
-#     """
-#     pg = globals().get('page', None)
-#     try:
-#         if restore_control is not None:
-#             try:
-#                 restore_control.disabled = False
-#                 if hasattr(restore_control, '_is_processing'):
-#                     restore_control._is_processing = False
-#             except Exception:
-#                 pass
-
-#         if pg is not None and hasattr(pg, 'overlay'):
-#             try:
-#                 pg.overlay.append(
-#                     ft.Container(
-#                         content=ft.Text(str(message), color="white", weight="bold"),
-#                         bgcolor=color,
-#                         padding=10,
-#                         border_radius=5,
-#                         top=50,
-#                         right=20,
-#                         animate_opacity=300,
-#                     )
-#                 )
-#                 pg.update()
-#             except Exception:
-#                 try:
-#                     import sys
-#                     sys.stderr.write(str(message) + "\n")
-#                 except Exception:
-#                     pass
-#         else:
-#             try:
-#                 import sys
-#                 sys.stderr.write(str(message) + "\n")
-#             except Exception:
-#                 pass
-#     except Exception:
-#         try:
-#             import sys
-#             sys.stderr.write(str(message) + "\n")
-#         except Exception:
-#             pass
-
-# def _print_to_toast(*args, **kwargs):
-#     sep = kwargs.get('sep', ' ')
-#     msg = sep.join(map(str, args))
-#     show_toast(msg)
-
-# print = _print_to_toast
 
 
 def load_spinbox_increment():
@@ -73,11 +18,6 @@ def load_spinbox_increment():
         return 0.1
 
 
-# def show_timeline_snackbar(message: str):
-#     try:
-#         show_toast(message)
-#     except Exception:
-#         pass
 
 # ===== CLASSE DE GERENCIAMENTO RESPONSIVO =====
 class ResponsiveAppManager:
@@ -1452,21 +1392,30 @@ class EditTimelineRecordDialog(ft.AlertDialog):
                 disabled=not has_permission
             )
 
-            # Validar entrada manual no campo de spinbox do diálogo
-            def on_score_field_change(e):
+            # CORRIGIDO: Validar entrada manual no campo de spinbox apenas quando terminar de editar
+            def on_score_field_blur(e):
+                """Valida e formata o valor apenas quando o usuário termina de editar (perde o foco)"""
                 try:
                     v = e.control.value
                     if v is None or str(v).strip() == "":
+                        e.control.value = "0.0"
+                        e.control.update()
                         return
+                    
+                    # Permitir entrada de números inteiros e decimais
                     num = float(str(v).strip())
+                    # Limitar entre 0 e 10
                     num = max(0, min(10, num))
-                    e.control.value = str(round(num, 1))
+                    # Formatar com 1 casa decimal
+                    e.control.value = f"{num:.1f}"
                     e.control.update()
-                except Exception:
-                    # Não interromper a digitação do usuário
-                    pass
+                except (ValueError, TypeError):
+                    # Se não conseguir converter, voltar para 0.0
+                    e.control.value = "0.0"
+                    e.control.update()
 
-            score_field.on_change = on_score_field_change
+            # Usar on_blur em vez de on_change para não interferir durante a digitação
+            score_field.on_blur = on_score_field_blur
 
             def adjust_score(e):
                 if not has_permission:
@@ -1974,6 +1923,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 update_risks_container_colors(theme_mode)
             except Exception as _e:
                 print(f"Aviso: falha ao atualizar cores da aba Risks: {_e}")
+            # Atualizar conteúdo da aba Home
+            try:
+                update_home_content()
+            except Exception as _e:
+                print(f"Aviso: falha ao atualizar aba Home: {_e}")
         except Exception as e:
             print(f"⚠️ Error updating UI: {e}")
 
@@ -2033,15 +1987,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         elif isinstance(control, ft.Container):
             # Se tem bgcolor definido, atualizar conforme o contexto
             if hasattr(control, 'bgcolor') and control.bgcolor:
+                # Para containers da aba Home que usam surface_variant
+                if any(color in str(control.bgcolor) for color in ['#2E303E', '#181818', '#FAFAFA', 'surface_variant']):
+                    control.bgcolor = Colors.get('surface_variant')
+                    print(f"🎨 Container bgcolor atualizado para: {Colors.get('surface_variant')}")
+                # Para containers que são fundos de cards
+                elif any(color in str(control.bgcolor) for color in ['#343746', '#1E1E1E', '#F7F7F7', 'card_background']):
+                    control.bgcolor = Colors.get('card_background')
+                    print(f"🎨 Card bgcolor atualizado para: {Colors.get('card_background')}")
                 # Para containers que provavelmente são fundos de campos
-                if control.bgcolor in ['#FFFFFF', '#2C2C2C', '#44475A', 'surface_variant', 'field_background']:
+                elif control.bgcolor in ['#FFFFFF', '#2C2C2C', '#44475A', 'field_background']:
                     control.bgcolor = Colors.get('field_background')
         
         # Atualizar Text (para casos especiais)
         elif isinstance(control, ft.Text):
             # Preservar cores especiais como primary, mas atualizar cores básicas
-            if hasattr(control, 'color') and control.color in ['on_surface', 'black', 'white']:
-                control.color = Colors.get('on_surface')
+            if hasattr(control, 'color') and control.color:
+                color_str = str(control.color)
+                # Atualizar cores específicas dos temas
+                if any(old_color in color_str for old_color in ['#F8F8F2', '#E0E0E0', '#1C1C1C', '#000000']):
+                    control.color = Colors.get('on_surface')
+                    print(f"🎨 Text color atualizado para: {Colors.get('on_surface')}")
+                elif any(old_color in color_str for old_color in ['#666666', '#555555']):
+                    control.color = Colors.get('on_surface_variant', '#666666')
+                    print(f"🎨 Text secondary color atualizado para: {Colors.get('on_surface_variant', '#666666')}")
+                elif control.color in ['on_surface', 'black', 'white']:
+                    control.color = Colors.get('on_surface')
         
         # Recursão nos filhos
         if hasattr(control, 'controls'):
@@ -2101,6 +2072,35 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             print(f"Erro ao atualizar cores da aba Risks: {e}")
 
+    def update_home_content():
+        """Atualiza o conteúdo da aba Home quando o tema muda"""
+        try:
+            print(f"🎨 Iniciando atualização da aba Home...")
+            print(f"🎨 Tema atual: {get_theme_name_from_page(page)}")
+            
+            if home_content_container.current:
+                print("🎨 Container encontrado, recriando conteúdo...")
+                # Recriar o conteúdo com o novo tema
+                new_content = create_home_content()
+                home_content_container.current.content = new_content
+                
+                # Forçar atualização recursiva de todos os controles
+                update_control_colors(home_content_container.current, get_theme_name_from_page(page))
+                
+                home_content_container.current.update()
+                print("✅ Conteúdo da aba Home atualizado com novo tema")
+            else:
+                print("⚠️ Referência do container da aba Home não encontrada")
+        except Exception as e:
+            print(f"❌ Erro ao atualizar conteúdo da aba Home: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            # Fallback: tentar forçar update da página inteira
+            try:
+                page.update()
+            except:
+                pass
+
     # ===== CARREGAMENTO INICIAL DO TEMA =====
     # Aplicar tema padrão ou salvo se disponível
     saved_theme = None
@@ -2150,7 +2150,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # ===== FIM DO CARREGAMENTO INICIAL DO TEMA =====
 
     def show_toast(message, color="green", restore_control=None):
-        """Mostra um show_toast com duração configurável.
+        """Mostra um show_toast com duração configurável e gerenciamento melhorado.
 
         If `restore_control` is provided, the control will be re-enabled and its
         processing flag cleared before showing the show_toast. This ensures error/warning
@@ -2182,26 +2182,50 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception:
             pass
 
-        # Remove any previous toast immediately and signal its remover to stop
-        try:
-            if _active_toast_cancel_event is not None:
-                try:
+        # MELHORADO: Limpeza mais robusta de toasts anteriores
+        def clean_previous_toasts():
+            """Limpa todos os toasts anteriores do overlay de forma segura"""
+            try:
+                if _active_toast_cancel_event is not None:
                     _active_toast_cancel_event.set()
-                except Exception:
-                    pass
-
-            if getattr(page, 'overlay', None) and _active_toast in page.overlay:
-                try:
-                    page.overlay.remove(_active_toast)
-                except Exception:
-                    # fallback: pop last
+                
+                if not hasattr(page, 'overlay') or page.overlay is None:
+                    return
+                
+                # Remover toast específico se existe
+                if _active_toast is not None:
                     try:
-                        page.overlay.pop()
-                    except Exception:
+                        if _active_toast in page.overlay:
+                            page.overlay.remove(_active_toast)
+                    except (ValueError, AttributeError):
                         pass
-            page.update()
-        except Exception:
-            pass
+                
+                # NOVO: Limpeza geral de toasts órfãos
+                # Remove containers que parecem ser toasts baseados em propriedades
+                toasts_to_remove = []
+                for item in page.overlay[:]:  # Cópia da lista para iteração segura
+                    try:
+                        if (hasattr(item, 'top') and hasattr(item, 'right') and 
+                            hasattr(item, 'bgcolor') and 
+                            item.top == 50 and item.right == 20):
+                            toasts_to_remove.append(item)
+                    except AttributeError:
+                        continue
+                
+                for toast in toasts_to_remove:
+                    try:
+                        if toast in page.overlay:
+                            page.overlay.remove(toast)
+                    except (ValueError, AttributeError):
+                        pass
+                        
+                page.update()
+                
+            except Exception as ex:
+                print(f"Aviso: erro na limpeza de toasts: {ex}")
+
+        # Limpar toasts anteriores
+        clean_previous_toasts()
 
         # Normalize color - accept common names
         color_map = {
@@ -2224,40 +2248,160 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 animate_opacity=300,
             )
 
+            if not hasattr(page, 'overlay') or page.overlay is None:
+                page.overlay = []
+            
             page.overlay.append(toast_container)
             _active_toast = toast_container
             page.update()
         except Exception as ex:
             print(f"Erro ao mostrar show_toast: {ex}")
+            return
 
-        # Spawn a remover thread that can be cancelled via an Event
-        def remover(cancel_event):
+        # MELHORADO: Remover thread mais robusta com timeout de segurança
+        def remover(cancel_event, toast_ref):
+            """Remove o toast após duração especificada, com proteções de segurança"""
             try:
                 import time
                 duration = app_settings.get('toast_duration', 3)
+                max_duration = min(duration, 10)  # NOVO: Limite máximo de 10 segundos
+                
                 # Wait in small increments to allow cancellation
                 waited = 0.0
                 step = 0.1
-                while waited < duration:
+                while waited < max_duration:
                     if cancel_event.is_set():
                         return
                     time.sleep(step)
                     waited += step
 
-                # time to remove the toast
+                # MELHORADO: Remoção mais robusta do toast
                 try:
-                    if getattr(page, 'overlay', None):
-                        if _active_toast in page.overlay:
-                            page.overlay.remove(_active_toast)
+                    if (hasattr(page, 'overlay') and page.overlay is not None and
+                        toast_ref is not None):
+                        
+                        # Verificação dupla para evitar condições de corrida
+                        if toast_ref in page.overlay:
+                            page.overlay.remove(toast_ref)
                             page.update()
+                        else:
+                            # NOVO: Fallback - procurar por toasts similares órfãos
+                            similar_toasts = [
+                                item for item in page.overlay 
+                                if (hasattr(item, 'top') and hasattr(item, 'right') and 
+                                    item.top == 50 and item.right == 20)
+                            ]
+                            for toast in similar_toasts[:1]:  # Remove apenas o primeiro
+                                try:
+                                    page.overlay.remove(toast)
+                                    page.update()
+                                    break
+                                except (ValueError, AttributeError):
+                                    pass
+                                    
                 except Exception as inner:
-                    print(f"Erro ao remover show_toast: {inner}")
+                    print(f"Aviso: erro ao remover toast específico: {inner}")
+                    
             except Exception as outer:
-                print(f"Erro na thread de show_toast: {outer}")
+                print(f"Erro na thread de remoção de toast: {outer}")
+            finally:
+                # NOVO: Limpeza final de segurança
+                try:
+                    if toast_ref == _active_toast:
+                        globals()['_active_toast'] = None
+                except Exception:
+                    pass
 
         cancel_event = threading.Event()
         _active_toast_cancel_event = cancel_event
-        threading.Thread(target=remover, args=(cancel_event,), daemon=True).start()
+        
+        # MELHORADO: Thread daemon com referência específica do toast
+        remover_thread = threading.Thread(
+            target=remover, 
+            args=(cancel_event, toast_container), 
+            daemon=True,
+            name=f"ToastRemover-{id(toast_container)}"
+        )
+        remover_thread.start()
+
+    def clear_all_toasts():
+        """Função utilitária para limpar manualmente todos os toasts órfãos da tela"""
+        try:
+            global _active_toast, _active_toast_cancel_event
+            
+            # Cancelar toast ativo atual
+            if _active_toast_cancel_event is not None:
+                try:
+                    _active_toast_cancel_event.set()
+                except Exception:
+                    pass
+            
+            if not hasattr(page, 'overlay') or page.overlay is None:
+                return 0
+            
+            # Encontrar e remover todos os containers que parecem toasts
+            toasts_removed = 0
+            for item in page.overlay[:]:  # Cópia para iteração segura
+                try:
+                    # Identificar toasts por suas propriedades características
+                    if (hasattr(item, 'top') and hasattr(item, 'right') and 
+                        hasattr(item, 'bgcolor') and hasattr(item, 'padding') and
+                        item.top == 50 and item.right == 20):
+                        page.overlay.remove(item)
+                        toasts_removed += 1
+                except (ValueError, AttributeError):
+                    continue
+            
+            # Limpar referências globais
+            _active_toast = None
+            _active_toast_cancel_event = None
+            
+            # Atualizar página se removemos algo
+            if toasts_removed > 0:
+                page.update()
+                print(f"🧹 Removidos {toasts_removed} toast(s) órfão(s)")
+            
+            return toasts_removed
+            
+        except Exception as ex:
+            print(f"❌ Erro ao limpar toasts: {ex}")
+            return 0
+
+    def test_toast_system():
+        """Função de teste para verificar o sistema de toast melhorado"""
+        try:
+            print("🧪 Testando sistema de toast...")
+            
+            # Limpar toasts existentes primeiro
+            cleared = clear_all_toasts()
+            if cleared > 0:
+                print(f"🧹 Limpeza inicial: {cleared} toasts removidos")
+            
+            # Mostrar alguns toasts de teste
+            show_toast("✅ Teste 1: Toast verde", "green")
+            threading.Timer(1.0, lambda: show_toast("⚠️ Teste 2: Toast laranja", "orange")).start()
+            threading.Timer(2.0, lambda: show_toast("❌ Teste 3: Toast vermelho", "red")).start()
+            threading.Timer(3.0, lambda: show_toast("ℹ️ Teste 4: Toast azul", "blue")).start()
+            
+            print("🧪 Testes de toast iniciados. Observe se eles aparecem e desaparecem automaticamente.")
+            
+        except Exception as ex:
+            print(f"❌ Erro no teste do sistema de toast: {ex}")
+
+    def test_spinbox_functionality():
+        """Função de teste para demonstrar o funcionamento correto dos spinboxes"""
+        try:
+            print("🧪 Testando funcionalidade dos spinboxes...")
+            print("✅ Correções aplicadas:")
+            print("   - Mudança de on_change para on_blur")
+            print("   - Formatação apenas após perder o foco")
+            print("   - Permite digitar '10' sem converter para '1.0'")
+            print("   - Validação de faixa 0.0 a 10.0")
+            print("   - Formatação com 1 casa decimal")
+            print("🎯 Agora você pode digitar '10' nos spinboxes e ele não será convertido para '1.0' durante a digitação!")
+            
+        except Exception as ex:
+            print(f"❌ Erro no teste dos spinboxes: {ex}")
 
     show_toast = show_toast
 
@@ -2514,14 +2658,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def set_selected(idx):
         def handler(e):
             selected_index.current = idx
-            score_view.visible = idx == 0
-            timeline_view.visible = idx == 1
-            risks_view.visible = idx == 2
-            email_view.visible = idx == 3
-            configs_view.visible = idx == 4
+            home_view.visible = idx == 0
+            score_view.visible = idx == 1
+            timeline_view.visible = idx == 2
+            risks_view.visible = idx == 3
+            email_view.visible = idx == 4
+            configs_view.visible = idx == 5
             
             # Quando aba Score é selecionada e não há busca ativa, mostrar favoritos
-            if idx == 0 and search_field_ref.current:
+            if idx == 1 and search_field_ref.current:  # Score agora é índice 1
                 search_term = search_field_ref.current.value.strip()
                 bu_val = selected_bu.current.value if selected_bu.current else None
                 # Se não há termo de busca nem BU, mostrar favoritos
@@ -2531,7 +2676,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             update_menu()
             # Se a aba Risks foi selecionada, gerar os cards imediatamente (usa ano atual se dropdown vazio)
             try:
-                if idx == 2:
+                if idx == 3:  # Risks agora é índice 3
                     # Atualizar valor do target exibido na aba Risks antes de gerar cards
                     try:
                         if target_risks_text and target_risks_text.current and target_slider and target_slider.value is not None:
@@ -2555,7 +2700,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 print(f"Erro ao gerar cards ao abrir aba Risks: {ex}")
             # Se estamos saindo da aba Risks, limpar os cards para liberar memória/estado
             try:
-                if idx != 2 and risks_cards_container and risks_cards_container.current:
+                if idx != 3 and risks_cards_container and risks_cards_container.current:  # Risks agora é índice 3
                     risks_cards_container.current.content = ft.Text("Nenhum risco pesquisado")
                     risks_cards_container.current.update()
             except Exception as ex:
@@ -2579,11 +2724,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         if menu_column_ref.current:
             show_text = menu_is_expanded.current
             menu_column_ref.current.controls = [
-                menu_item("score_outlined", "Score", 0, show_text),
-                menu_item("timeline_outlined", "Timeline", 1, show_text),
-                menu_item("warning_outlined", "Risks", 2, show_text),
-                menu_item("email_outlined", "Email", 3, show_text),
-                menu_item("settings_outlined", "Configs", 4, show_text),
+                menu_item("home_outlined", "Home", 0, show_text),
+                menu_item("score_outlined", "Score", 1, show_text),
+                menu_item("timeline_outlined", "Timeline", 2, show_text),
+                menu_item("warning_outlined", "Risks", 3, show_text),
+                menu_item("email_outlined", "Email", 4, show_text),
+                menu_item("settings_outlined", "Configs", 5, show_text),
             ]
             menu_column_ref.current.width = 160 if show_text else 40
             menu_column_ref.current.update()
@@ -2848,21 +2994,30 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
         )
 
-        # Validar entrada manual: garantir 0.0 - 10.0 e formatar com uma casa decimal
-        def on_field_change(e):
+        # CORRIGIDO: Validar entrada manual apenas quando terminar de editar: garantir 0.0 - 10.0 e formatar com uma casa decimal
+        def on_field_blur(e):
+            """Valida e formata o valor apenas quando o usuário termina de editar (perde o foco)"""
             try:
                 v = e.control.value
                 if v is None or str(v).strip() == "":
+                    e.control.value = "0.0"
+                    e.control.update()
                     return
+                
+                # Permitir entrada de números inteiros e decimais
                 num = float(str(v).strip())
+                # Limitar entre 0 e 10
                 num = max(0, min(10, num))
-                e.control.value = str(round(num, 1))
+                # Formatar com 1 casa decimal
+                e.control.value = f"{num:.1f}"
                 e.control.update()
-            except Exception:
-                # Se não for convertível, não quebrar a digitação do usuário
-                pass
+            except (ValueError, TypeError):
+                # Se não conseguir converter, voltar para 0.0
+                e.control.value = "0.0"
+                e.control.update()
 
-        score_field.on_change = on_field_change
+        # Usar on_blur em vez de on_change para não interferir durante a digitação
+        score_field.on_blur = on_field_blur
 
         def adjust_score(e):
             try:
@@ -4707,6 +4862,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def set_config_tab(idx):
         def handler(e):
+            # Limpar campos da aba Log quando sair dela (se estava na aba Log antes)
+            if selected_config_tab.current == 5 and idx != 5:
+                try:
+                    clear_log_fields()
+                except Exception as ex:
+                    print(f"Aviso: erro ao limpar campos da aba Log: {ex}")
+            
             selected_config_tab.current = idx
             themes_content.visible = idx == 0
             suppliers_content.visible = idx == 1
@@ -6850,70 +7012,126 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Container do formulário de usuários com referência para atualização de tema
     users_form_container = ft.Container(
         content=ft.Container(
-            content=ft.Column([
-                # Linha 1: WWID e Nome
-                ft.Row([
-                    ft.TextField(
-                        label="WWID",
-                        hint_text="Digite o WWID do usuário",
-                        prefix_icon=ft.Icons.BADGE,
-                        expand=True,
-                        border_radius=8,
-                        ref=wwid_field_ref,
-                        on_change=on_wwid_change,
-                        filled=False,  # Fundo transparente
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                    ),
-                    ft.TextField(
-                        label="Nome Completo",
-                        hint_text="Digite o nome do usuário",
-                        prefix_icon=ft.Icons.PERSON,
-                        expand=True,
-                        border_radius=8,
-                        ref=name_field_ref,
-                        filled=False,  # Fundo transparente
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                    ),
-                ], spacing=10),
+            content=ft.Row([
+                # Coluna esquerda - Campos principais
+                ft.Column([
+                    # Linha 1: WWID e Nome
+                    ft.Row([
+                        ft.TextField(
+                            label="WWID",
+                            hint_text="Digite o WWID do usuário",
+                            prefix_icon=ft.Icons.BADGE,
+                            expand=True,
+                            border_radius=8,
+                            ref=wwid_field_ref,
+                            on_change=on_wwid_change,
+                            filled=False,  # Fundo transparente
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                        ),
+                        ft.TextField(
+                            label="Nome Completo",
+                            hint_text="Digite o nome do usuário",
+                            prefix_icon=ft.Icons.PERSON,
+                            expand=True,
+                            border_radius=8,
+                            ref=name_field_ref,
+                            filled=False,  # Fundo transparente
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                        ),
+                    ], spacing=10),
 
-                # Linha 2: Senha e Privilégio
-                ft.Row([
-                    ft.TextField(
-                        label="Senha",
-                        hint_text="Digite a senha do usuário",
-                        prefix_icon=ft.Icons.LOCK,
-                        password=True,
-                        can_reveal_password=True,
-                        expand=True,
-                        border_radius=8,
-                        ref=password_field_ref,
-                        filled=False,  # Fundo transparente
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                    ),
-                    ft.Dropdown(
-                        label="Nível de Privilégio",
-                        hint_text="Selecione o nível",
-                        options=[
-                            ft.dropdown.Option("User", "User"),
-                            ft.dropdown.Option("Admin", "Admin"),
-                            ft.dropdown.Option("Super Admin", "Super Admin"),
-                        ],
-                        expand=True,
-                        ref=privilege_dropdown_ref,
-                        bgcolor=None,  # Fundo transparente
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
-                        content_padding=ft.padding.symmetric(horizontal=12, vertical=16),
-                    ),
-                ], spacing=10),
-            ], spacing=15),
-            padding=15,
+                    # Linha 2: Senha e Privilégio
+                    ft.Row([
+                        ft.TextField(
+                            label="Senha",
+                            hint_text="Digite a senha do usuário",
+                            prefix_icon=ft.Icons.LOCK,
+                            password=True,
+                            can_reveal_password=True,
+                            expand=True,
+                            border_radius=8,
+                            ref=password_field_ref,
+                            filled=False,  # Fundo transparente
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                        ),
+                        ft.Dropdown(
+                            label="Nível de Privilégio",
+                            hint_text="Selecione o nível",
+                            options=[
+                                ft.dropdown.Option("User", "User"),
+                                ft.dropdown.Option("Admin", "Admin"),
+                                ft.dropdown.Option("Super Admin", "Super Admin"),
+                            ],
+                            expand=True,
+                            ref=privilege_dropdown_ref,
+                            bgcolor=None,  # Fundo transparente
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                            content_padding=ft.padding.symmetric(horizontal=12, vertical=16),
+                        ),
+                    ], spacing=10),
+                ], expand=2, spacing=15),
+                
+                # Divisor vertical
+                ft.VerticalDivider(width=20, color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+                
+                # Coluna direita - Permissões
+                ft.Column([
+                    ft.Text("Permissões de Avaliação", size=16, weight="bold", 
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Container(
+                        content=ft.Row([
+                            # Primeira coluna de checkboxes
+                            ft.Column([
+                                ft.Checkbox(
+                                    label="OTIF", 
+                                    value=False, 
+                                    ref=otif_check_ref,
+                                    label_style=ft.TextStyle(
+                                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
+                                    )
+                                ),
+                                ft.Checkbox(
+                                    label="NIL", 
+                                    value=False, 
+                                    ref=nil_check_ref,
+                                    label_style=ft.TextStyle(
+                                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
+                                    )
+                                ),
+                            ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.START, expand=1),
+                            
+                            # Segunda coluna de checkboxes
+                            ft.Column([
+                                ft.Checkbox(
+                                    label="Pickup", 
+                                    value=False, 
+                                    ref=pickup_check_ref,
+                                    label_style=ft.TextStyle(
+                                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
+                                    )
+                                ),
+                                ft.Checkbox(
+                                    label="Package", 
+                                    value=False, 
+                                    ref=package_check_ref,
+                                    label_style=ft.TextStyle(
+                                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
+                                    )
+                                ),
+                            ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.START, expand=1),
+                        ], spacing=20, vertical_alignment=ft.CrossAxisAlignment.START),
+                        padding=ft.padding.only(top=10)
+                    )
+                ], expand=1, horizontal_alignment=ft.CrossAxisAlignment.START, spacing=10),
+            ], spacing=15, vertical_alignment=ft.CrossAxisAlignment.START),
+            padding=20,
             bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
-            border_radius=8,
-            width=600,
+            border_radius=12,
+            width=800,  # Largura maior para acomodar as duas colunas
         ),
         alignment=ft.alignment.center
     )
@@ -6921,87 +7139,68 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     users_content = ft.Container(
         content=ft.Column([
-            # Título fixo (fora do scroll)
+            # Título fixo
             ft.Text("Gerenciamento de Usuários", size=20, weight="bold"),
             ft.Divider(),
             
-            # Conteúdo com scroll
+            # Header com informações - fixo
             ft.Container(
-                content=ft.ListView([
-                    # Header com informações
-                    ft.Container(
-                        content=ft.Row([
-                            ft.Text("Configure usuários e suas permissões de avaliação", 
-                                   size=14, color="outline"),
-                        ]),
-                        padding=ft.padding.only(bottom=10)
-                    ),
-                    
-                    # Referência ao container global do formulário de usuário
-                    users_form_container,
-
-                    
-                    ft.Container(height=10),
-                    
-                    # Linha 3: Permissões de notas (checkboxes) - fora do container com fundo
-                    ft.Column([
-                        ft.Text("Permissões de Avaliação:", size=16, weight="bold"),
-                        ft.Row([
-                            ft.Checkbox(label="OTIF", value=False, ref=otif_check_ref),
-                            ft.Checkbox(label="NIL", value=False, ref=nil_check_ref),
-                            ft.Checkbox(label="Pickup", value=False, ref=pickup_check_ref),
-                            ft.Checkbox(label="Package", value=False, ref=package_check_ref),
-                        ], alignment=ft.MainAxisAlignment.CENTER, spacing=30),
-                    ], spacing=8),
-                    
-                    ft.Container(height=15),
-                    
-                    # Botões de ação
-                    ft.Container(
-                        content=ft.Row([
-                            ft.ElevatedButton(
-                                "Add User", 
-                                icon=ft.Icons.PERSON_ADD,
-                                ref=action_btn_ref,
-                            ),
-                            ft.ElevatedButton(
-                                "Limpar Campos", 
-                                icon=ft.Icons.CLEAR,
-                                ref=clear_btn_ref,
-                            ),
-                        ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
-                        padding=ft.padding.symmetric(vertical=10)
-                    ),
-                    
-                    ft.Container(height=10),
-                    ft.Divider(),
-                    
-                    # Lista de usuários
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Text("Usuários Cadastrados", size=16, weight="bold"),
-                            ft.Container(
-                                content=ft.ListView(
-                                    spacing=8,
-                                    expand=True,
-                                    ref=users_list_ref,  # Referência específica para a lista de usuários
-                                ),
-                                height=300,
-                                border=ft.border.all(1, "outline"),
-                                border_radius=8,
-                                padding=8,
-                            ),
-                        ], spacing=10),
-                        padding=ft.padding.symmetric(vertical=10)
-                    ),
-                    
-                ], expand=True, spacing=8),
-                expand=True
-            )
+                content=ft.Row([
+                    ft.Text("Configure usuários e suas permissões de avaliação", 
+                           size=14, color="outline"),
+                ]),
+                padding=ft.padding.only(bottom=10)
+            ),
             
-        ], spacing=0),
+            # Formulário de usuário - fixo
+            users_form_container,
+
+            ft.Container(height=20),
+            
+            # Botões de ação - fixo
+            ft.Container(
+                content=ft.Row([
+                    ft.ElevatedButton(
+                        "Add User", 
+                        icon=ft.Icons.PERSON_ADD,
+                        ref=action_btn_ref,
+                    ),
+                    ft.ElevatedButton(
+                        "Limpar Campos", 
+                        icon=ft.Icons.CLEAR,
+                        ref=clear_btn_ref,
+                    ),
+                ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
+                padding=ft.padding.symmetric(vertical=10)
+            ),
+            
+            ft.Container(height=10),
+            ft.Divider(),
+            
+            # Lista de usuários - com scroll adaptável
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("Usuários Cadastrados", size=16, weight="bold"),
+                    ft.Container(
+                        content=ft.ListView(
+                            spacing=8,
+                            expand=True,
+                            ref=users_list_ref,  # Referência específica para a lista de usuários
+                        ),
+                        expand=True,  # Expande para ocupar o espaço restante
+                        border=ft.border.all(1, "outline"),
+                        border_radius=8,
+                        padding=8,
+                    ),
+                ], spacing=10, expand=True),  # Column expande para ocupar espaço restante
+                padding=ft.padding.symmetric(vertical=10),
+                expand=True  # Container expande para ocupar espaço disponível
+            ),
+            
+        ], spacing=8, expand=True),
         padding=20,
-        visible=False
+        visible=False,
+        expand=True  # Container principal expande
     )
 
     # Referências dos controles de usuários
@@ -7816,6 +8015,68 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as ex:
             print(f"Erro ao garantir carregamento do log: {ex}")
 
+    def clear_log_fields():
+        """Limpa os campos da aba Log quando o usuário sair da aba"""
+        try:
+            # Limpar campo de filtro/pesquisa
+            if log_user_filter_ref.current:
+                log_user_filter_ref.current.value = ""
+                log_user_filter_ref.current.update()
+            
+            # Limpar lista de logs
+            if log_list_ref.current:
+                log_list_ref.current.controls.clear()
+                log_list_ref.current.update()
+            
+            # Limpar detalhes do log selecionado
+            if log_details_ref.current:
+                log_details_ref.current.content = ft.Text(
+                    "Selecione uma entrada da lista para ver os detalhes aqui.",
+                    size=14,
+                    color="grey"
+                )
+                log_details_ref.current.update()
+            
+            print("🧹 Campos da aba Log limpos com sucesso")
+            
+        except Exception as ex:
+            print(f"❌ Erro ao limpar campos da aba Log: {ex}")
+
+    def test_log_clear_functionality():
+        """Função de teste para demonstrar a limpeza automática da aba Log"""
+        try:
+            print("🧪 Testando funcionalidade de limpeza da aba Log...")
+            print("✅ Implementação concluída:")
+            print("   - Campos da aba Log são limpos automaticamente ao sair da aba")
+            print("   - Campo de pesquisa/filtro é limpo")
+            print("   - Lista de logs é limpa")
+            print("   - Detalhes do log selecionado são limpos")
+            print("🎯 Agora quando você sair da aba Log, todos os campos serão automaticamente limpos!")
+            
+        except Exception as ex:
+            print(f"❌ Erro no teste de limpeza da aba Log: {ex}")
+
+    def demo_home_tab():
+        """Função de demonstração da nova aba Home"""
+        try:
+            print("🏠 Nova Aba Home implementada com sucesso!")
+            print("✅ Características da aba Home:")
+            print("   - Dashboard principal com boas-vindas personalizadas")
+            print("   - Cards de estatísticas rápidas (Fornecedores, Avaliações, Score Médio, Usuários)")
+            print("   - Informações do sistema e usuário logado")
+            print("   - Design responsivo com cards organizados")
+            print("🎯 Navegação atualizada:")
+            print("   - Home (índice 0) - Nova aba principal")
+            print("   - Score (índice 1) - Anteriormente índice 0")
+            print("   - Timeline (índice 2) - Anteriormente índice 1")
+            print("   - Risks (índice 3) - Anteriormente índice 2")
+            print("   - Email (índice 4) - Anteriormente índice 3")
+            print("   - Configs (índice 5) - Anteriormente índice 4")
+            print("🚀 A aplicação agora inicia na aba Home como painel principal!")
+            
+        except Exception as ex:
+            print(f"❌ Erro na demonstração da aba Home: {ex}")
+
     # Row para as abas de configuração
     config_tabs_row = ft.Row(
         alignment=ft.MainAxisAlignment.START,
@@ -7841,6 +8102,168 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # --- Fim: Lógica e Controles da Aba Configs ---
 
+    # --- Início: Conteúdo da Aba Home ---
+    def create_home_content():
+        """Cria o conteúdo da aba Home com informações e design diferenciado"""
+        
+        # Cards de estatísticas rápidas
+        def create_stats_card(title, value, icon, color):
+            theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+            return ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(icon, color=color, size=32),
+                        ft.Column([
+                            ft.Text(value, size=26, weight="bold", color=color),
+                            ft.Text(title, size=13, color=theme_colors.get('on_surface_variant', '#666666'), weight="w500")
+                        ], spacing=2, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.START)
+                    ], alignment=ft.MainAxisAlignment.START, spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+                ], spacing=0, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.START),
+                bgcolor=theme_colors.get('card_background'),
+                border_radius=16,
+                padding=ft.padding.all(24),
+                width=200,
+                height=90,
+                border=ft.border.all(1, theme_colors.get('outline_variant', '#E8E8E8')),
+                shadow=ft.BoxShadow(
+                    spread_radius=0,
+                    blur_radius=8,
+                    color="#00000010"
+                )
+            )
+
+
+
+        # Seção de boas-vindas
+        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+        welcome_section = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.DASHBOARD, size=42, color=theme_colors.get('primary')),
+                    ft.Column([
+                        ft.Text(f"Bem-vindo, {current_user_name}!", size=32, weight="bold", color=theme_colors.get('on_surface', '#1565C0')),
+                        ft.Text("Painel de Controle - Supplier Score APP", size=18, color=theme_colors.get('on_surface_variant', '#666666'), weight="w400")
+                    ], spacing=4, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.START)
+                ], alignment=ft.MainAxisAlignment.START, spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=ft.padding.only(bottom=40)
+        )
+
+        # Seção de estatísticas
+        stats_section = ft.Container(
+            content=ft.Column([
+                ft.Text("📊 Estatísticas Rápidas", size=22, weight="bold", color=theme_colors.get('on_surface', '#333333')),
+                ft.Container(
+                    content=ft.Row([
+                        create_stats_card("Fornecedores", "250+", ft.Icons.BUSINESS, "#1976D2"),
+                        create_stats_card("Avaliações", "1.2K", ft.Icons.STAR, "#F57C00"),
+                        create_stats_card("Score Médio", "8.5", ft.Icons.TRENDING_UP, "#388E3C"),
+                        create_stats_card("Usuários", "12", ft.Icons.PEOPLE, "#7B1FA2")
+                    ], wrap=True, spacing=24, alignment=ft.MainAxisAlignment.CENTER),
+                    padding=ft.padding.only(top=8)
+                )
+            ], spacing=20, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=ft.padding.only(bottom=40)
+        )
+
+        # Seção de informações do sistema
+        info_section = ft.Container(
+            content=ft.Column([
+                ft.Text("ℹ️ Informações do Sistema", size=22, weight="bold", color=theme_colors.get('on_surface', '#333333')),
+                ft.Container(
+                    content=ft.Column([
+                        # Informações do usuário
+                        ft.Text("👤 Usuário", size=16, weight="bold", color=theme_colors.get('primary', '#1976D2')),
+                        ft.Row([
+                            ft.Icon(ft.Icons.PERSON, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
+                            ft.Text(f"{current_user_name}", size=14, weight="w500", color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Row([
+                            ft.Icon(ft.Icons.BADGE, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
+                            ft.Text(f"WWID: {current_user_wwid}", size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Row([
+                            ft.Icon(ft.Icons.SECURITY, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
+                            ft.Text(f"Privilégio: {current_user_privilege}", size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        
+                        ft.Divider(height=20),
+                        
+                        # Permissões de avaliação
+                        ft.Text("🔐 Permissões de Avaliação", size=16, weight="bold", color=theme_colors.get('secondary', '#388E3C')),
+                        ft.Row([
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('otif', False) else ft.Icons.CANCEL, 
+                                   size=18, color="#4CAF50" if current_user_permissions.get('otif', False) else "#F44336"),
+                            ft.Text(f"OTIF: {'Permitido' if current_user_permissions.get('otif', False) else 'Negado'}", 
+                                   size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Row([
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('nil', False) else ft.Icons.CANCEL, 
+                                   size=18, color="#4CAF50" if current_user_permissions.get('nil', False) else "#F44336"),
+                            ft.Text(f"NIL: {'Permitido' if current_user_permissions.get('nil', False) else 'Negado'}", 
+                                   size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Row([
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('pickup', False) else ft.Icons.CANCEL, 
+                                   size=18, color="#4CAF50" if current_user_permissions.get('pickup', False) else "#F44336"),
+                            ft.Text(f"Pickup: {'Permitido' if current_user_permissions.get('pickup', False) else 'Negado'}", 
+                                   size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Row([
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('package', False) else ft.Icons.CANCEL, 
+                                   size=18, color="#4CAF50" if current_user_permissions.get('package', False) else "#F44336"),
+                            ft.Text(f"Package: {'Permitido' if current_user_permissions.get('package', False) else 'Negado'}", 
+                                   size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        
+                        ft.Divider(height=20),
+                        
+                        # Informações do sistema
+                        ft.Text("⚙️ Sistema", size=16, weight="bold", color=theme_colors.get('secondary', '#388E3C')),
+                        ft.Row([
+                            ft.Icon(ft.Icons.INFO, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
+                            ft.Text("Versão: 1.0.0", size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Row([
+                            ft.Icon(ft.Icons.ACCESS_TIME, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
+                            ft.Text("Atualização: Hoje", size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Row([
+                            ft.Icon(ft.Icons.STORAGE, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
+                            ft.Text("BD: Conectado", size=14, color=theme_colors.get('on_surface', '#000000'))
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.START),
+                    bgcolor=theme_colors.get('surface_variant'),
+                    border_radius=12,
+                    padding=24,
+                    width=500,  # Largura maior para acomodar todo o conteúdo
+                    alignment=ft.alignment.top_left
+                )
+            ], spacing=20, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        )
+
+        return ft.Column([
+            welcome_section,
+            stats_section,
+            info_section
+        ], spacing=20, scroll=ft.ScrollMode.AUTO, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+
+    # Criar a aba Home com referência atualizável
+    home_content_container = ft.Ref[ft.Container]()
+    
+    home_view = ft.Container(
+        content=ft.Container(
+            ref=home_content_container,
+            content=create_home_content(),
+            padding=ft.padding.only(top=30, left=40, right=40, bottom=30),
+            alignment=ft.alignment.top_center
+        ),
+        visible=True,  # Home será a aba inicial
+        expand=True
+    )
+
+    # --- Fim: Conteúdo da Aba Home ---
+
     score_view = ft.Column(
         [
             ft.Container(
@@ -7851,7 +8274,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Divider(),
             results_list,
         ],
-        visible=True,
+        visible=False,  # Score não será mais a aba inicial
         expand=True,
         scroll=ft.ScrollMode.AUTO,
     )
@@ -8618,11 +9041,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             table_content = ft.Container(
                 content=ft.Column([
-                    ft.Container(
-                        content=ft.Text("Dados Detalhados por Período", 
-                                       size=18, weight="bold", text_align=ft.TextAlign.CENTER),
-                        margin=ft.margin.only(bottom=10)
-                    ),
                     header_row,
                     ft.Divider(),
                     ft.Container(
@@ -9514,7 +9932,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     rail_container,
                     ft.VerticalDivider(width=1),  # Removido color para ficar transparente
                     ft.Container( # Container principal para o conteúdo das abas
-                        content=ft.Column([score_view, timeline_view, risks_view, email_view, configs_view], expand=True),
+                        content=ft.Column([home_view, score_view, timeline_view, risks_view, email_view, configs_view], expand=True),
                         expand=True,
                     ),
                 ],

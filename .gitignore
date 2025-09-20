@@ -6,3 +6,7 @@ db.db-wal
 __pycache__/
 storage/
 .pytest_cache/
+dist/
+*.spec
+*.txt
+build/
