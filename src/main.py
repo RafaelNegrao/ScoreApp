@@ -2943,6 +2943,168 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # --- Fim: Funções para Gerar Nota Cheia ---
 
+    # --- Início: Funções para Importar/Exportar Score ---
+    
+    def import_score_dialog():
+        """Abre diálogo para importar scores de arquivo"""
+        import_file_picker = ft.FilePicker(
+            on_result=lambda result: handle_import_file(result)
+        )
+        page.overlay.append(import_file_picker)
+        page.update()
+        
+        def handle_import_file(result):
+            if result.files:
+                file_path = result.files[0].path
+                try:
+                    # Aqui você pode implementar a lógica de importação
+                    # Por exemplo, ler um CSV ou Excel com scores
+                    show_toast(f"Funcionalidade de importação será implementada. Arquivo selecionado: {file_path}", "blue")
+                except Exception as e:
+                    show_toast(f"Erro ao importar arquivo: {e}", "red")
+        
+        # Abrir o seletor de arquivo
+        import_file_picker.pick_files(
+            dialog_title="Selecione o arquivo de scores para importar",
+            allowed_extensions=["csv", "xlsx", "xls"]
+        )
+    
+    def export_form_dialog():
+        """Abre diálogo para exportar formulário de scores"""
+        month_dropdown_ref = ft.Ref()
+        year_dropdown_ref = ft.Ref()
+        format_dropdown_ref = ft.Ref()
+        
+        # Opções de mês
+        months = [
+            ft.dropdown.Option("", "Selecione o mês..."),
+            ft.dropdown.Option("1", "Janeiro"),
+            ft.dropdown.Option("2", "Fevereiro"),
+            ft.dropdown.Option("3", "Março"),
+            ft.dropdown.Option("4", "Abril"),
+            ft.dropdown.Option("5", "Maio"),
+            ft.dropdown.Option("6", "Junho"),
+            ft.dropdown.Option("7", "Julho"),
+            ft.dropdown.Option("8", "Agosto"),
+            ft.dropdown.Option("9", "Setembro"),
+            ft.dropdown.Option("10", "Outubro"),
+            ft.dropdown.Option("11", "Novembro"),
+            ft.dropdown.Option("12", "Dezembro"),
+        ]
+        
+        # Opções de ano (2024 a 2040)
+        years = [ft.dropdown.Option("", "Selecione o ano...")] + [ft.dropdown.Option(str(year), str(year)) for year in range(2024, 2041)]
+        
+        # Formatos de exportação
+        formats = [
+            ft.dropdown.Option("csv", "CSV"),
+            ft.dropdown.Option("xlsx", "Excel"),
+        ]
+        
+        def close_dialog(e):
+            page.close(dialog)
+        
+        def export_form(e):
+            month = month_dropdown_ref.current.value if month_dropdown_ref.current else None
+            year = year_dropdown_ref.current.value if year_dropdown_ref.current else None
+            format_type = format_dropdown_ref.current.value if format_dropdown_ref.current else "csv"
+            
+            if not month or not year:
+                show_toast("Selecione o mês e ano para exportação", "orange")
+                return
+            
+            try:
+                # Aqui você pode implementar a lógica de exportação
+                # Por exemplo, gerar um arquivo CSV ou Excel com o formulário
+                show_toast(f"Funcionalidade de exportação será implementada. Formato: {format_type}, Período: {month}/{year}", "blue")
+                close_dialog(e)
+            except Exception as ex:
+                show_toast(f"Erro ao exportar formulário: {ex}", "red")
+        
+        # Obter cores do tema atual
+        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+        
+        # Conteúdo do diálogo
+        dialog_content = ft.Column([
+            ft.Text(
+                "Exportar Formulário", 
+                size=20, 
+                weight="bold",
+                color=theme_colors.get('on_surface')
+            ),
+            ft.Text(
+                "Selecione o período e formato para exportar o formulário de scores:", 
+                size=14,
+                color=theme_colors.get('on_surface')
+            ),
+            ft.Divider(height=20, color=theme_colors.get('outline')),
+            
+            ft.Row([
+                ft.Dropdown(
+                    label="Mês",
+                    options=months,
+                    expand=True,
+                    ref=month_dropdown_ref,
+                    dense=True,
+                    color=theme_colors.get('on_surface'),
+                    border_color=theme_colors.get('outline'),
+                    **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
+                ),
+                ft.Dropdown(
+                    label="Ano", 
+                    options=years,
+                    expand=True,
+                    ref=year_dropdown_ref,
+                    dense=True,
+                    color=theme_colors.get('on_surface'),
+                    border_color=theme_colors.get('outline'),
+                    **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
+                ),
+            ], spacing=10),
+
+            ft.Row([
+                ft.Dropdown(
+                    ref=format_dropdown_ref,
+                    label="Formato",
+                    options=formats,
+                    value="csv",
+                    expand=True,
+                    dense=True,
+                    color=theme_colors.get('on_surface'),
+                    border_color=theme_colors.get('outline'),
+                    **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
+                )
+            ], spacing=10),
+            
+            ft.Divider(height=20, color=theme_colors.get('outline')),
+            ft.Row([
+                ft.TextButton(
+                    "Cancelar", 
+                    on_click=close_dialog,
+                    style=ft.ButtonStyle(
+                        color=theme_colors.get('on_surface')
+                    )
+                ),
+                ft.ElevatedButton(
+                    "Exportar", 
+                    on_click=export_form, 
+                    icon=ft.Icons.DOWNLOAD,
+                    bgcolor=theme_colors.get('primary'), 
+                    color=theme_colors.get('on_primary'),
+                ),
+            ], alignment=ft.MainAxisAlignment.END, spacing=10)
+        ], width=450, spacing=10, tight=True)
+        
+        # Criar e exibir diálogo
+        dialog = ft.AlertDialog(
+            content=dialog_content,
+            modal=True
+        )
+        
+        page.open(dialog)
+    
+    # --- Fim: Funções para Importar/Exportar Score ---
+
     def theme_changed(e):
         """Handle theme change from UI (radio button)"""
         global current_user_wwid
@@ -8864,6 +9026,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 text="Gerar nota cheia",
                                 icon=ft.Icons.STAR,
                                 on_click=lambda _: generate_full_score_dialog()
+                            ),
+                            ft.PopupMenuItem(
+                                text="Importar Score",
+                                icon=ft.Icons.FILE_UPLOAD,
+                                on_click=lambda _: import_score_dialog()
+                            ),
+                            ft.PopupMenuItem(
+                                text="Exportar form",
+                                icon=ft.Icons.FILE_DOWNLOAD,
+                                on_click=lambda _: export_form_dialog()
                             )
                         ],
                         tooltip="Opções",
