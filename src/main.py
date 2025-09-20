@@ -2539,6 +2539,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             target_risks_text.current.update()
                     except Exception as _ex:
                         print(f"Aviso ao atualizar Target na aba Risks: {_ex}")
+                    # Ao entrar na página de Risks, buscar por Todo Período por padrão
+                    try:
+                        if risks_year_dropdown and risks_year_dropdown.current:
+                            # '' corresponde à opção 'Todo Período'
+                            risks_year_dropdown.current.value = ""
+                            try:
+                                risks_year_dropdown.current.update()
+                            except Exception:
+                                pass
+                    except Exception as _ex2:
+                        print(f"Aviso ao setar filtro 'Todo Período' na aba Risks: {_ex2}")
                     generate_risk_cards()
             except Exception as ex:
                 print(f"Erro ao gerar cards ao abrir aba Risks: {ex}")
@@ -4703,6 +4714,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             users_content.visible = idx == 3
             lists_content.visible = idx == 4
             log_content.visible = idx == 5
+            # Ao abrir a aba Log, garantir que os dados sejam carregados
+            if idx == 5:
+                try:
+                    ensure_log_loaded()
+                except Exception:
+                    pass
             update_config_tabs()
             page.update()
         return handler
@@ -7545,13 +7562,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # Referências para os controles da aba Log
     log_user_filter_ref = ft.Ref()
-    log_start_date_ref = ft.Ref()
-    log_end_date_ref = ft.Ref()
+    # Lista e detalhes do log
+    log_list_ref = ft.Ref()
+    log_details_ref = ft.Ref()
 
     log_controls = {
         'user_filter': log_user_filter_ref,
-        'start_date': log_start_date_ref,
-        'end_date': log_end_date_ref,
+        'list': log_list_ref,
+        'details': log_details_ref,
     }
 
     # Conteúdo da sub-aba Log
@@ -7562,42 +7580,241 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Row([
                 ft.TextField(
                     ref=log_user_filter_ref,
-                    label="Filtrar por usuário", 
+                    label="Pesquisar por WWID", 
                     expand=True,
                     bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                     color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                     border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
-                ft.TextField(
-                    ref=log_start_date_ref,
-                    label="Data inicial", 
-                    expand=True,
-                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                ),
-                ft.TextField(
-                    ref=log_end_date_ref,
-                    label="Data final", 
-                    expand=True,
-                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                ),
-                ft.ElevatedButton("Filtrar", icon=ft.Icons.FILTER_LIST),
+                ft.ElevatedButton("Filtrar", icon=ft.Icons.FILTER_LIST, on_click=lambda e: load_log_entries(log_user_filter_ref.current.value if log_user_filter_ref and hasattr(log_user_filter_ref, 'current') else None)),
             ], spacing=10),
             ft.Container(height=20),
-            ft.Container(
-                content=ft.Text("Log de atividades aparecerá aqui...", italic=True),
-                height=300,
-                border=ft.border.all(1, "outline"),
-                border_radius=8,
-                padding=20,
-            )
+            # Lista de logs e painel de detalhes
+            ft.Row([
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text("Entradas de Log", weight="bold"),
+                        ft.Container(height=8),
+                        # ListView para exibir os logs
+                        ft.ListView(controls=[], expand=True, spacing=5, ref=log_list_ref),
+                    ]),
+                    expand=True,
+                    padding=10,
+                    border=ft.border.all(1, "outline"),
+                    border_radius=8,
+                ),
+                ft.Container(width=20),
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text("Detalhes", weight="bold"),
+                        ft.Container(height=8),
+                        ft.TextField(
+                            ref=log_details_ref,
+                            multiline=True,
+                            expand=True,
+                            read_only=True,
+                            border_color=None,
+                            filled=True,
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                        ),
+                    ]),
+                    width=420,
+                    padding=10,
+                    border=ft.border.all(1, "outline"),
+                    border_radius=8,
+                )
+            ], expand=True)
         ], spacing=15),
         padding=20,
         visible=False
     )
+
+
+    # Função para carregar entradas da tabela log_table e popular o ListView
+    def load_log_entries(wwid_filter=None):
+        try:
+            # refs locais (definidos acima)
+            list_control = log_list_ref.current if log_list_ref and hasattr(log_list_ref, 'current') else None
+            details_control = log_details_ref.current if log_details_ref and hasattr(log_details_ref, 'current') else None
+
+            # preparar ícones por tipo
+            def icon_for_event(event_text):
+                try:
+                    if not event_text:
+                        return ft.Icon(ft.Icons.NOT_LISTED_LOCATION)
+                    # procurar prefixo [UPDATED], [EXCLUDED], [INCLUDED]
+                    if event_text.startswith('[UPDATED]'):
+                        return ft.Icon(ft.Icons.EDIT)
+                    if event_text.startswith('[EXCLUDED]'):
+                        return ft.Icon(ft.Icons.DELETE)
+                    if event_text.startswith('[INCLUDED]'):
+                        return ft.Icon(ft.Icons.ADD)
+                    # fallback para itens antigos sem prefixo
+                    return ft.Icon(ft.Icons.HISTORY)
+                except Exception:
+                    return ft.Icon(ft.Icons.HISTORY)
+
+            # Buscar dados do DB, aplicando filtro por usuário/WWID quando fornecido
+            rows = []
+            try:
+                base_q = f"SELECT log_id, date, time, user, event FROM {db_manager.log_table_name}"
+                if wwid_filter:
+                    # permitir pesquisa parcial (LIKE) ignorando case
+                    q = base_q + " WHERE UPPER(user) LIKE ? ORDER BY date DESC, time DESC"
+                    rows = db_manager.query(q, (f"%{wwid_filter.upper()}%",))
+                else:
+                    q = base_q + " ORDER BY date DESC, time DESC"
+                    rows = db_manager.query(q)
+            except Exception as e:
+                print(f"Erro ao ler log_table: {e}")
+
+            # Limpar list
+            if list_control is not None:
+                list_control.controls.clear()
+
+            # manter referência ao item atualmente selecionado para realce
+            selected_item_container = {'current': None}
+
+            # Popular lista
+            for r in rows:
+                event = r.get('event') or ''
+                date = r.get('date') or ''
+                time = r.get('time') or ''
+                user = r.get('user') or ''
+                # tentar extrair WWID (pode estar em coluna própria ou dentro do JSON do event)
+                def extract_wwid(row, event_text):
+                    # preferir colunas explícitas
+                    for k in ('wwid', 'user_wwid', 'registered_by', 'user'):
+                        if k in row and row.get(k):
+                            return str(row.get(k))
+                    # tentar parsear JSON
+                    try:
+                        import json
+                        parsed = json.loads(event_text)
+                        if isinstance(parsed, dict):
+                            for k in ('wwid', 'user_wwid', 'registered_by', 'user'):
+                                if k in parsed and parsed[k]:
+                                    return str(parsed[k])
+                    except Exception:
+                        pass
+                    return None
+
+                wwid = extract_wwid(r, event)
+
+                # label simplificado (incluir WWID se encontrado)
+                label = f"{date} {time} — {user}"
+                subtitle = None
+                if wwid and wwid != user:
+                    subtitle = f"WWID: {wwid}"
+
+                icon = icon_for_event(event)
+
+                # criar linha clicável
+                def format_event_text(raw_text):
+                    # Tenta parsear JSON para formatar legivelmente
+                    try:
+                        import json
+                        parsed = json.loads(raw_text)
+                        # Se for dict ou list, formatar em múltiplas linhas com chave: valor
+                        if isinstance(parsed, dict):
+                            lines = []
+                            for k, v in parsed.items():
+                                lines.append(f"{k}: {v}")
+                            return "\n".join(lines)
+                        if isinstance(parsed, list):
+                            return "\n".join([str(x) for x in parsed])
+                    except Exception:
+                        # não JSON -> seguir para parsing simples
+                        pass
+
+                    # Remover aspas e quebrar por vírgula em linhas
+                    try:
+                        parts = [p.strip() for p in raw_text.split(',') if p.strip()]
+                        # remover aspas iniciais/finais
+                        cleaned = [p.strip('"\'') for p in parts]
+                        return "\n".join(cleaned) if cleaned else raw_text
+                    except Exception:
+                        return raw_text
+
+
+                def make_click_handler(detail_text, container):
+                    def _on_click(e):
+                        try:
+                            # formatar e mostrar detalhes
+                            formatted = format_event_text(detail_text)
+                            if details_control is not None:
+                                details_control.value = formatted
+                                details_control.update()
+
+                            # realce visual: aplicar bgcolor no container clicado e limpar o anterior
+                            try:
+                                prev = selected_item_container.get('current')
+                                if prev and hasattr(prev, 'bgcolor'):
+                                    prev.bgcolor = None
+                                    prev.update()
+                            except Exception:
+                                pass
+
+                            try:
+                                if container:
+                                    try:
+                                        # usar cor do tema atual (primary_container) se disponível
+                                        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+                                        highlight = theme_colors.get('primary_container', '#e6f2ff')
+                                    except Exception:
+                                        highlight = '#e6f2ff'
+                                    container.bgcolor = highlight
+                                    container.update()
+                                    selected_item_container['current'] = container
+                            except Exception:
+                                pass
+
+                        except Exception as ex:
+                            print(f"Erro ao exibir detalhes do log: {ex}")
+                    return _on_click
+
+                item_row = ft.Container(
+                    content=ft.Row([
+                        icon,
+                        ft.Container(width=8),
+                        ft.Column([
+                            ft.Text(label, size=12),
+                            ft.Text(event if len(event) < 120 else (event[:117] + '...'), size=11, color="#666"),
+                            ft.Text(subtitle, size=11, color="#444") if subtitle else ft.Container()
+                        ], expand=True)
+                    ]),
+                    padding=8,
+                    border_radius=6,
+                    on_click=make_click_handler(event, None)  # será substituído abaixo com container
+                )
+
+                if list_control is not None:
+                    # ajustar handler para receber a referência do container (item_row)
+                    item_row.on_click = make_click_handler(event, item_row)
+                    list_control.controls.append(item_row)
+
+            if list_control is not None:
+                list_control.update()
+
+            # se não há linhas, mostrar mensagem
+            if not rows and list_control is not None:
+                list_control.controls.append(ft.Text("Nenhuma entrada de log encontrada.", italic=True))
+                list_control.update()
+
+        except Exception as e:
+            print(f"Erro geral ao carregar logs: {e}")
+
+
+    # Hook: carregar log quando a aba for aberta
+    def ensure_log_loaded():
+        try:
+            # A aba `log_content` é mostrada ao selecionar o índice; carregamos os dados quando visível
+            if log_content.visible:
+                # usar valor atual do campo de pesquisa (WWID)
+                w = log_user_filter_ref.current.value if log_user_filter_ref and hasattr(log_user_filter_ref, 'current') and log_user_filter_ref.current.value else None
+                load_log_entries(w)
+        except Exception as ex:
+            print(f"Erro ao garantir carregamento do log: {ex}")
 
     # Row para as abas de configuração
     config_tabs_row = ft.Row(
@@ -8881,10 +9098,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # 2. Obter parâmetros: ano e meta
             import datetime
             year_val = None
+            search_year = None
             if risks_year_dropdown and risks_year_dropdown.current and risks_year_dropdown.current.value:
                 year_val = risks_year_dropdown.current.value
-            # Se o valor não for um número (ex: "(Ano Atual)" ou vazio), usar o ano atual.
-            search_year = int(year_val) if year_val and year_val.strip().isdigit() else datetime.date.today().year
+                # se for um número válido, usar como filtro; caso contrário, ignorar
+                if year_val and year_val.strip().isdigit():
+                    search_year = int(year_val)
+            # Se search_year for None, vamos buscar todo o período disponível
 
             meta = target_slider.value if target_slider and target_slider.value is not None else 5.0
 
@@ -8899,16 +9119,29 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             cursor = db_conn.cursor()
 
-            # Abordagem otimizada: buscar todos os scores do ano e processar em Python
-            all_scores_query = """
-                SELECT
-                    s.supplier_id, s.vendor_name, s.bu, sr.month, sr.total_score
-                FROM supplier_database_table s
-                JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
-                WHERE sr.year = ? AND sr.total_score IS NOT NULL
-                ORDER BY s.supplier_id, sr.month
-            """
-            all_scores = db_manager.query(all_scores_query, (search_year,))
+            # Abordagem otimizada:
+            # - se `search_year` estiver definido, buscar apenas aquele ano
+            # - caso contrário, buscar todo o período disponível (todos os anos)
+            if search_year is not None:
+                all_scores_query = """
+                    SELECT
+                        s.supplier_id, s.vendor_name, s.bu, sr.year, sr.month, sr.total_score
+                    FROM supplier_database_table s
+                    JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
+                    WHERE sr.year = ? AND sr.total_score IS NOT NULL
+                    ORDER BY s.supplier_id, sr.year, sr.month
+                """
+                all_scores = db_manager.query(all_scores_query, (search_year,))
+            else:
+                all_scores_query = """
+                    SELECT
+                        s.supplier_id, s.vendor_name, s.bu, sr.year, sr.month, sr.total_score
+                    FROM supplier_database_table s
+                    JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
+                    WHERE sr.total_score IS NOT NULL
+                    ORDER BY s.supplier_id, sr.year, sr.month
+                """
+                all_scores = db_manager.query(all_scores_query)
 
             # Agrupar dados por fornecedor
             from collections import defaultdict
@@ -8929,7 +9162,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     print(f"⚠️ Dados inválidos ignorados para supplier {sid}: month='{month}', score='{score}' - {e}")
                     continue
 
-            print(f"Total de suppliers com dados no ano {search_year}: {len(supplier_data)}")
+            if search_year is not None:
+                print(f"Total de suppliers com dados no ano {search_year}: {len(supplier_data)}")
+            else:
+                print(f"Total de suppliers com dados em todo o período: {len(supplier_data)}")
 
             cards = []
             suppliers_at_risk = 0
@@ -9108,10 +9344,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             # Verificar se não há fornecedores em risco
             if not cards:
+                title_text = f"Nenhum fornecedor em risco encontrado"
+                if search_year is not None:
+                    title_text = f"Nenhum fornecedor em risco encontrado para {search_year}!"
+                else:
+                    title_text = f"Nenhum fornecedor em risco encontrado no período pesquisado!"
                 risks_cards_container.current.content = ft.Container(
                     content=ft.Column([
                         ft.Icon(ft.Icons.SHIELD, color="green", size=48),
-                        ft.Text(f"Nenhum fornecedor em risco encontrado para {search_year}!", size=16, text_align=ft.TextAlign.CENTER),
+                        ft.Text(title_text, size=16, text_align=ft.TextAlign.CENTER),
                         ft.Text(f"Todos os fornecedores estão com score acima da meta de {meta:.2f}.", size=12, color="gray")
                     ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
                     expand=True,
@@ -9173,7 +9414,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             width=220,
                             value="",
                             on_change=generate_risk_cards,
-                            options=[ft.dropdown.Option("", "(Ano Atual)")] 
+                            options=[ft.dropdown.Option("", "Todo Período")] 
                                     + [ft.dropdown.Option(str(y), str(y)) for y in range(2024, 2041)],
                             hint_text="Ano",
                             bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
