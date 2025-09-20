@@ -2,3 +2,4 @@ db.db
 bd.bd
 db.db-shm
 db.db-wal
+*.bak

@@ -4,33 +4,77 @@ import sqlite3
 import random
 import string
 
+# Configuração mínima de toasts (usada por redirect de `print` e por notificações)
+app_settings = {'toast_duration': 3}
 
-# Helper: retorna incremento padrão para spinbox (pode ser sobrescrito por configs)
+def toast(message, color="green", restore_control=None):
+    """Mostrar notificação toast de forma segura. Se `page` não estiver disponível,
+    grava em stderr como fallback silencioso (para execução fora da UI).
+    """
+    pg = globals().get('page', None)
+    try:
+        if restore_control is not None:
+            try:
+                restore_control.disabled = False
+                if hasattr(restore_control, '_is_processing'):
+                    restore_control._is_processing = False
+            except Exception:
+                pass
+
+        if pg is not None and hasattr(pg, 'overlay'):
+            try:
+                pg.overlay.append(
+                    ft.Container(
+                        content=ft.Text(str(message), color="white", weight="bold"),
+                        bgcolor=color,
+                        padding=10,
+                        border_radius=5,
+                        top=50,
+                        right=20,
+                        animate_opacity=300,
+                    )
+                )
+                pg.update()
+            except Exception:
+                try:
+                    import sys
+                    sys.stderr.write(str(message) + "\n")
+                except Exception:
+                    pass
+        else:
+            try:
+                import sys
+                sys.stderr.write(str(message) + "\n")
+            except Exception:
+                pass
+    except Exception:
+        try:
+            import sys
+            sys.stderr.write(str(message) + "\n")
+        except Exception:
+            pass
+
+# Redirecionar chamadas a `print(...)` para `toast(...)` para manter o comportamento pedido
+def _print_to_toast(*args, **kwargs):
+    sep = kwargs.get('sep', ' ')
+    msg = sep.join(map(str, args))
+    toast(msg)
+
+print = _print_to_toast
+
+
 def load_spinbox_increment():
     try:
-        # Em futuras versões, ler de configurações; por hora, retornar 0.1
         return 0.1
     except Exception:
         return 0.1
 
 
-# Helper: snackbar genérico usado pela aba Timeline
 def show_timeline_snackbar(message: str):
     try:
-        # Se houver objeto `page` no escopo global, usar para exibir snackbar
-        pg = globals().get('page', None)
-        if pg is not None and hasattr(pg, 'update'):
-            try:
-                pg.snack_bar = ft.SnackBar(ft.Text(message))
-                pg.snack_bar.open = True
-                pg.update()
-            except Exception:
-                # fallback simples
-                print(message)
-        else:
-            print(message)
-    except Exception as ex:
-        print(f"Erro ao exibir snackbar: {ex}")
+        toast(message)
+    except Exception:
+        pass
 
 # ===== CLASSE DE GERENCIAMENTO RESPONSIVO =====
 class ResponsiveAppManager:
@@ -411,9 +455,6 @@ class ResponsiveAppManager:
         try:
             # Definir breakpoint para responsividade (menor que 1000px = layout vertical)
             should_use_vertical_layout = window_width < 1000
-            
-            # Acessar a estrutura da aba Users através da página
-            # A estrutura é: page -> Container -> Row -> [rail, divider, content_container] -> content_container -> Column[views] -> configs_view -> Column -> Stack -> users_content
             users_form_container = ft.Container(
                 content=ft.Column([
                     # Linha 1: WWID e Nome
@@ -477,95 +518,6 @@ class ResponsiveAppManager:
             print(f"❌ Tipos incorretos: row1 ou row2 não são Row/Column")
             return
                 
-            # if len(row1.controls) < 2 or len(row2.controls) < 2:
-            #     print(f"❌ Controles insuficientes: row1={len(row1.controls)}, row2={len(row2.controls)}")
-            #     return
-            
-            # # Pegar os containers dos campos
-            # wwid_container = row1.controls[0]
-            # name_container = row1.controls[1]
-            # password_container = row2.controls[0] 
-            # privilege_container = row2.controls[1]
-            
-            # if should_use_vertical_layout:
-            #     # Layout vertical - reorganizar em Column (apenas se ainda não estiver)
-            #     if isinstance(row1, ft.Row):
-            #         print("📱 Aplicando layout VERTICAL na aba Users")
-                    
-            #         # Ajustar largura dos containers para centralização
-            #         wwid_container.width = 400
-            #         wwid_container.alignment = ft.alignment.center
-            #         name_container.width = 400
-            #         name_container.alignment = ft.alignment.center
-            #         password_container.width = 400
-            #         password_container.alignment = ft.alignment.center
-            #         privilege_container.width = 400
-            #         privilege_container.alignment = ft.alignment.center
-                    
-            #         # Recriar as linhas como Column centralizada
-            #         new_row1 = ft.Column([
-            #             wwid_container,
-            #             name_container
-            #         ], 
-            #         alignment=ft.MainAxisAlignment.CENTER, 
-            #         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            #         spacing=15)
-                    
-            #         new_row2 = ft.Column([
-            #             password_container,
-            #             privilege_container
-            #         ], 
-            #         alignment=ft.MainAxisAlignment.CENTER,
-            #         horizontal_alignment=ft.CrossAxisAlignment.CENTER, 
-            #         spacing=15)
-                    
-            #         # Substituir as rows existentes
-            #         # Substituir mantendo a posição original das linhas
-            #         idx1 = form_container.controls.index(row1)
-            #         idx2 = form_container.controls.index(row2)
-            #         form_container.controls[idx1] = new_row1
-            #         form_container.controls[idx2] = new_row2
-                    
-            #         # Atualizar a interface
-            #         users_content_found.update()
-            #         print("✅ Layout vertical centralizado aplicado com sucesso")
-                
-            # else:
-            #     # Layout horizontal - manter como Row (apenas se ainda não estiver)
-            #     if isinstance(row1, ft.Column):
-            #         print("📱 Aplicando layout HORIZONTAL na aba Users")
-                    
-            #         # Restaurar largura original dos containers
-            #         wwid_container.width = 350
-            #         wwid_container.alignment = ft.alignment.center
-            #         name_container.width = 350
-            #         name_container.alignment = ft.alignment.center
-            #         password_container.width = 350
-            #         password_container.alignment = ft.alignment.center
-            #         privilege_container.width = 350
-            #         privilege_container.alignment = ft.alignment.center
-                    
-            #         # Converter de volta para Rows
-            #         new_row1 = ft.Row([
-            #             wwid_container,
-            #             name_container,
-            #         ], alignment=ft.MainAxisAlignment.CENTER, spacing=20)
-                    
-            #         new_row2 = ft.Row([
-            #             password_container,
-            #             privilege_container,
-            #         ], alignment=ft.MainAxisAlignment.CENTER, spacing=20)
-                    
-            #         idx1 = form_container.controls.index(row1)
-            #         idx2 = form_container.controls.index(row2)
-            #         form_container.controls[idx1] = new_row1
-            #         form_container.controls[idx2] = new_row2
-                    
-            #         # Atualizar a interface
-            #         users_content_found.update()
-            #         print("✅ Layout horizontal aplicado com sucesso")
-            
-            # print(f"📱 Layout da aba Users atualizado: {'vertical' if should_use_vertical_layout else 'horizontal'}")
             
         except Exception as e:
             print(f"❌ Erro ao atualizar layout da aba Users: {e}")
@@ -1140,10 +1092,11 @@ class AddSupplierDialog(ft.AlertDialog):
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
-            "supplier_name": ft.TextField(
-                label="Supplier Name", 
+            "supplier_origin": ft.Dropdown(
+                label="Origem",
                 width=250,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
+                value="",
+                options=[ft.dropdown.Option(v) for v in ["", "Nacional", "Importado"]],
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
@@ -1206,49 +1159,49 @@ class AddSupplierDialog(ft.AlertDialog):
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
             ),
 
-            "planner": ft.Container(
-                content=ft.Dropdown(
-                    label="Planner",
-                    width=200,
-                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
-                    options=[ft.dropdown.Option(v) for v in ( [""] + (self.list_options.get('planner') or []) )]
-                ),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
-            ),
+                        "planner": ft.Container(
+                            content=ft.Dropdown(
+                                label="Planner",
+                                width=200,
+                                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                                options=[ft.dropdown.Option(v) for v in ((self.list_options.get('planner') or []) )]
+                            ),
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                        ),
 
-            "continuity": ft.Container(
-                content=ft.Dropdown(
-                    label="Continuity", 
-                    width=200,
-                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
-                    options=[ft.dropdown.Option(v) for v in ( [""] + (self.list_options.get('continuity') or []) )]
-                ),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
-            ),
+                        "continuity": ft.Container(
+                            content=ft.Dropdown(
+                                label="Continuity", 
+                                width=200,
+                                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                                options=[ft.dropdown.Option(v) for v in ((self.list_options.get('continuity') or []) )]
+                            ),
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                        ),
 
-            "sourcing": ft.Container(
-                content=ft.Dropdown(
-                    label="Sourcing",
-                    width=200,
-                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
-                    options=[ft.dropdown.Option(v) for v in ( [""] + (self.list_options.get('sourcing') or []) )]
-                ),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
-            ),
+                        "sourcing": ft.Container(
+                            content=ft.Dropdown(
+                                label="Sourcing",
+                                width=200,
+                                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                                options=[ft.dropdown.Option(v) for v in ((self.list_options.get('sourcing') or []) )]
+                            ),
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                        ),
 
-            "sqie": ft.Container(
-                content=ft.Dropdown(
-                    label="SQIE",
-                    width=200,
-                    color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
-                    options=[ft.dropdown.Option(v) for v in ( [""] + (self.list_options.get('sqie') or []) )]
-                ),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
-            ),
+                        "sqie": ft.Container(
+                            content=ft.Dropdown(
+                                label="SQIE",
+                                width=200,
+                                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                                options=[ft.dropdown.Option(v) for v in ((self.list_options.get('sqie') or []) )]
+                            ),
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                        ),
 
         }
         
@@ -1260,7 +1213,7 @@ class AddSupplierDialog(ft.AlertDialog):
             content=ft.Column([
                 ft.Text("📋 Informações Básicas", size=14, weight=ft.FontWeight.BOLD),
                 ft.Divider(height=1),
-                ft.Row([self.fields["vendor_name"], self.fields["supplier_name"]], spacing=15),
+                ft.Row([self.fields["vendor_name"], self.fields["supplier_origin"]], spacing=15),
                 self.fields["supplier_category"],
             ], spacing=10),
             padding=ft.padding.all(15),
@@ -3333,6 +3286,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
 
             try:
+                # Verificar status atual do supplier - se Inactive, não permitir salvar
+                try:
+                    cursor_check = db_conn.cursor()
+                    cursor_check.execute("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
+                    row_status = cursor_check.fetchone()
+                    current_status = row_status[0] if row_status else None
+                    if current_status and str(current_status).strip().lower().startswith("inactive"):
+                        # Restaurar botão e avisar
+                        reset_button_state()
+                        show_toast("❌ Não é possível salvar para fornecedores inativos.", "red", restore_control=save_button)
+                        return
+                except Exception as ex_status:
+                    print(f"Aviso: falha ao verificar status do supplier antes de salvar: {ex_status}")
+
                 cursor = db_conn.cursor()
                 
                 # Buscar critérios atuais da tabela criteria_table
@@ -3476,6 +3443,26 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 db_conn.commit()
                 
+                # Rechecagem de status imediatamente antes do commit para evitar condição de corrida
+                try:
+                    cursor_check_final = db_conn.cursor()
+                    cursor_check_final.execute("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
+                    final_row_status = cursor_check_final.fetchone()
+                    final_status = final_row_status[0] if final_row_status else None
+                    print(f"🔁 Rechecagem final de status antes do commit (spinbox): {final_status}")
+                    if final_status and str(final_status).strip().lower().startswith("inactive"):
+                        # Não efetuar commit em caso de fornecedor inativo
+                        show_toast("❌ Não é possível salvar para fornecedores inativos.", "red", restore_control=save_button)
+                        # Restaurar botão e abortar
+                        save_button.text = original_text
+                        save_button.icon = original_icon
+                        save_button.disabled = False
+                        save_button._is_processing = False
+                        safe_update_control(save_button, page)
+                        return
+                except Exception as ex_final_status:
+                    print(f"Aviso: falha na rechecagem final de status (spinbox): {ex_final_status}")
+
                 # Debug: mostrar informações detalhadas do salvamento
                 print(f"✅ Score salvo com sucesso!")
                 print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
@@ -3722,6 +3709,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         bu = record[2] if len(record) > 2 else "?"
         status = record[3] if len(record) > 3 else "?"
         supplier_number = record[4] if len(record) > 4 else "?"
+        supplier_origin = record[5] if len(record) > 5 else "N/A"
 
         print(f"Criando card para: {vendor_name} (ID: {supplier_id})")
         print(f"🔍 DEBUG PERMISSÕES NO CARD (SLIDER VERSION):")
@@ -4060,6 +4048,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 db_conn.commit()
             
                 
+                # Rechecagem de status imediatamente antes do commit para evitar condição de corrida
+                try:
+                    cursor_check_final = db_conn.cursor()
+                    cursor_check_final.execute("SELECT supplier_status FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
+                    final_row_status = cursor_check_final.fetchone()
+                    final_status = final_row_status[0] if final_row_status else None
+                    print(f"🔁 Rechecagem final de status antes do commit (slider): {final_status}")
+                    if final_status and str(final_status).strip().lower().startswith("inactive"):
+                        show_toast("❌ Não é possível salvar para fornecedores inativos.", "red", restore_control=save_button)
+                        save_button.text = original_text
+                        save_button.icon = original_icon
+                        save_button.disabled = False
+                        save_button._is_processing = False
+                        safe_update_control(save_button, page)
+                        return
+                except Exception as ex_final_status:
+                    print(f"Aviso: falha na rechecagem final de status (slider): {ex_final_status}")
+
                 saved_fields = [k.replace('quality_', '').replace('_', ' ').title() for k in values_to_save.keys()]
                 show_toast(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", "green")
                 
@@ -4170,32 +4176,35 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 show_toast(f"Erro inesperado: {ex}", "red")
                 print(f"Erro ao toggle favorite: {ex}")
 
-        def show_snackbar(message):
-            page.snack_bar = ft.SnackBar(ft.Text(message))
-            page.snack_bar.open = True
-            page.update()
-
         # Montagem do layout do card
-        info_col = ft.Column([
-            ft.Text(
-                vendor_name, 
-                weight="bold", 
-                size=16, 
-                width=200,  # Define largura para permitir quebra de linha
-                text_align=ft.TextAlign.LEFT
-            ),
-            ft.Text(f"BU: {bu}", size=12),
-            ft.Text(f"PO: {supplier_number}", size=12),
-            ft.Text(f"ID: {supplier_id}", size=12),
-            ft.Text(
-                f"Status: {status}", 
-                size=12,
-                color="green" if str(status).lower().startswith("active") else "red"
-            ),
-        ], 
-        spacing=4, 
-        tight=True,
-        expand=1  # Permite variação de tamanho
+        origin_icon = ft.Icons.AIRPLANEMODE_ACTIVE if supplier_origin == "Importado" else ft.Icons.FLAG if supplier_origin == "Nacional" else ft.Icons.HELP_OUTLINE
+        status_icon_color = "green" if str(status).lower().startswith("active") else "red"
+
+        info_col = ft.Column(
+            controls=[
+                ft.Text(
+                    vendor_name, 
+                    weight="bold", 
+                    size=16, 
+                    width=200,  # Define largura para permitir quebra de linha
+                    text_align=ft.TextAlign.LEFT
+                ),
+                ft.Row([ft.Icon(ft.Icons.BUSINESS, size=14, opacity=0.7), ft.Text(f"BU: {bu}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([ft.Icon(ft.Icons.RECEIPT_LONG, size=14, opacity=0.7), ft.Text(f"PO: {supplier_number}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([ft.Icon(ft.Icons.FINGERPRINT, size=14, opacity=0.7), ft.Text(f"ID: {supplier_id}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([ft.Icon(origin_icon, size=14, opacity=0.7), ft.Text(f"Origem: {supplier_origin}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([
+                    ft.Icon(ft.Icons.CIRCLE, size=14, color=status_icon_color), 
+                    ft.Text(
+                        f"Status: {status}", 
+                        size=12,
+                        color=status_icon_color
+                    )
+                ], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ], 
+            spacing=4, 
+            tight=True,
+            expand=1  # Permite variação de tamanho
         )
 
         scores_col = ft.Column(
@@ -4301,6 +4310,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         search_term = search_field_ref.current.value.strip()
         bu_val = selected_bu.current.value if selected_bu.current else None
+        po_val = selected_po.current.value if selected_po and selected_po.current else None
 
         print(f"Pesquisando por: '{search_term}', BU: {bu_val}")
 
@@ -4311,8 +4321,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             results_list.controls.clear()
             results_list.update()
 
-        # Se não há termo de busca nem BU selecionada, mostrar favoritos
-        if not search_term and (not bu_val or not bu_val.strip()):
+        # Se não há termo de busca nem BU nem PO selecionados, mostrar favoritos
+        if not search_term and (not bu_val or not bu_val.strip()) and (not po_val or not str(po_val).strip()):
             show_favorites_only()
             return
 
@@ -4328,8 +4338,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         try:
             base_query = """
-                SELECT supplier_id, vendor_name, BU, supplier_status, supplier_number
-                FROM supplier_database_table
+                SELECT supplier_id, vendor_name, BU, supplier_status, supplier_number, supplier_name
+                FROM supplier_database_table 
             """
             where_clauses = []
             params = []
@@ -4341,6 +4351,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if bu_val and bu_val.strip():
                 where_clauses.append("BU LIKE ?")
                 params.append(f"%{bu_val.strip()}%")
+
+            if po_val and str(po_val).strip():
+                # Filtrar por supplier_number (PO)
+                where_clauses.append("supplier_number LIKE ?")
+                params.append(f"%{str(po_val).strip()}%")
 
             query = f"{base_query} WHERE {' AND '.join(where_clauses)} ORDER BY vendor_name LIMIT 10"
             
@@ -4437,8 +4452,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         try:
             # Buscar suppliers favoritos do usuário
             favorites_query = """
-                SELECT s.supplier_id, s.vendor_name, s.BU, s.supplier_status, s.supplier_number
-                FROM supplier_database_table s
+                SELECT s.supplier_id, s.vendor_name, s.BU, s.supplier_status, s.supplier_number, s.supplier_name
+                FROM supplier_database_table s 
                 INNER JOIN favorites_table f ON s.supplier_id = f.supplier_id
                 WHERE f.user_wwid = ?
                 ORDER BY s.vendor_name
@@ -4516,7 +4531,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         options=month_options, 
         ref=selected_month, 
         width=120, 
-        value=str(datetime.datetime.now().month).zfill(2), # Pré-selecionar mês atual
+        value="", # Não pré-selecionar mês (iniciar vazio)
         on_change=on_month_year_change,
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -4557,17 +4572,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
-                        ref=selected_po
+                        ref=selected_po,
+                        on_change=lambda e: search_suppliers()
                     ),
-                    ft.TextField(
-                        label="BU", 
-                        expand=True, 
-                        border_radius=8, 
-                        ref=selected_bu, 
+                    ft.Dropdown(
+                        label="BU",
+                        expand=True,
+                        border_radius=8,
+                        ref=selected_bu,
                         on_change=lambda e: search_suppliers(),
                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                        options=[ft.dropdown.Option(v) for v in (load_list_options('business_unit_table','bu'))]
                     ),
                     month_dropdown,
                     year_dropdown,
@@ -5922,10 +5939,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
-            "supplier_name": ft.TextField(
-                label="Supplier Name",
-                value=supplier_name,  # Preencher com valor do banco
-                filled=False,
+            "supplier_origin": ft.Dropdown(
+                label="Origem",
+                value=supplier_name if supplier_name in ['Nacional', 'Importado'] else '',  # Preencher com valor do banco quando aplicável
+                options=[ft.dropdown.Option(v) for v in ["", "Nacional", "Importado"]],
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -5997,18 +6014,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ),
         }
 
-        def show_snackbar(message):
-            """Exibe mensagem de feedback para o usuário."""
-            page.snack_bar = ft.SnackBar(ft.Text(message))
-            page.snack_bar.open = True
-            page.update()
-
         def save_supplier(e):
             """Salva ou atualiza dados do supplier no banco de dados."""
+            nonlocal supplier_id
             print(f"🔧 DEBUG: save_supplier chamada para supplier ID: {supplier_id}")
             
             if not db_conn:
-                show_snackbar("❌ Erro: Banco de dados não conectado.")
+                show_toast("❌ Erro: Banco de dados não conectado.", "red")
                 return
 
             # Função auxiliar para tratar valores
@@ -6019,11 +6031,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             # Validações básicas
             if not safe_strip(fields["vendor_name"].value):
-                show_snackbar("❌ Campo Vendor Name é obrigatório!")
+                show_toast("❌ Campo Vendor Name é obrigatório!", "red")
                 return
             
-            if not safe_strip(fields["supplier_name"].value):
-                show_snackbar("❌ Campo Supplier Name é obrigatório!")
+            if not safe_strip(fields["supplier_origin"].value):
+                show_toast("❌ Campo Origem é obrigatório!", "red")
                 return
 
             try:
@@ -6054,7 +6066,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         safe_strip(fields["vendor_name"].value),
                         safe_strip(fields["supplier_category"].value),
                         safe_strip(fields["bu"].value),
-                        safe_strip(fields["supplier_name"].value),
+                        safe_strip(fields["supplier_origin"].value),
                         safe_strip(fields["supplier_email"].value),
                         safe_strip(fields["supplier_number"].value),
                         safe_strip(fields["supplier_status"].value),
@@ -6069,17 +6081,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Inserir novo registro
                     insert_query = """
                         INSERT INTO supplier_database_table 
-                        (supplier_id, vendor_name, supplier_category, bu, supplier_name,
+                        (vendor_name, supplier_category, bu, supplier_name,
                          supplier_email, supplier_number, supplier_status, planner, 
                          continuity, sourcing, sqie)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
                     cursor.execute(insert_query, (
-                        supplier_id,
                         safe_strip(fields["vendor_name"].value),
                         safe_strip(fields["supplier_category"].value),
                         safe_strip(fields["bu"].value),
-                        safe_strip(fields["supplier_name"].value),
+                        safe_strip(fields["supplier_origin"].value),
                         safe_strip(fields["supplier_email"].value),
                         safe_strip(fields["supplier_number"].value),
                         safe_strip(fields["supplier_status"].value),
@@ -6088,11 +6099,51 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         safe_strip(fields["sourcing"].value),
                         safe_strip(fields["sqie"].value)
                     ))
+                    # Pegar o supplier_id gerado
+                    supplier_id = cursor.lastrowid
                     action = "criado"
+                    # Atualizar o data do card com o novo ID
+                    if card.data:
+                        card.data['supplier_id'] = supplier_id
                 
                 db_conn.commit()
                 print(f"🔧 DEBUG: Dados commitados no banco")
-                show_snackbar(f"✅ Supplier {safe_strip(fields['vendor_name'].value)} {action} com sucesso!")
+                
+                # Atualizar supplier_name em supplier_score_records_table usando vendor_name
+                try:
+                    update_score_query = "UPDATE supplier_score_records_table SET supplier_name = ? WHERE supplier_id = ?"
+                    cursor.execute(update_score_query, (safe_strip(fields["vendor_name"].value), supplier_id))
+                    db_conn.commit()
+                    print(f"🔧 DEBUG: Supplier name atualizado em supplier_score_records_table para vendor_name '{safe_strip(fields['vendor_name'].value)}'")
+                except Exception as ex_upd:
+                    print(f"🔧 WARN: falha ao atualizar supplier_score_records_table: {ex_upd}")
+                
+                # Atualizar listas
+                load_scores()
+                load_suppliers_for_timeline()
+
+                # Atualizar dropdowns da aba Timeline, se referenciados
+                try:
+                    if 'timeline_vendor_dropdown' in globals() and timeline_vendor_dropdown.current:
+                        timeline_vendor_dropdown.current.options = load_suppliers_for_timeline()
+                    if 'timeline_bu_dropdown' in globals() and timeline_bu_dropdown.current:
+                        timeline_bu_dropdown.current.options = load_business_units_for_timeline()
+                    # Atualizar visualmente
+                    try:
+                        if timeline_vendor_dropdown.current:
+                            timeline_vendor_dropdown.current.update()
+                    except Exception:
+                        pass
+                    try:
+                        if timeline_bu_dropdown.current:
+                            timeline_bu_dropdown.current.update()
+                    except Exception:
+                        pass
+                    page.update()
+                except Exception as upd_ex:
+                    print(f"🔧 WARN: falha ao atualizar dropdowns da Timeline: {upd_ex}")
+
+                show_toast(f"✅ Supplier {safe_strip(fields['vendor_name'].value)} {action} com sucesso!", "green")
                 print(f"Supplier {supplier_id} {action}")
 
             except Exception as ex:
@@ -6100,7 +6151,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 print(f"Erro ao salvar supplier: {ex}")
             finally:
                 e.control.disabled = False
-                e.control.text = "Salvar"
+                e.control.text = "Update"
                 page.update()
 
         def delete_supplier(e):
@@ -6111,7 +6162,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 """Callback para confirmar a exclusão"""
                 try:
                     if not db_conn:
-                        show_snackbar("❌ Erro: Banco de dados não conectado.")
+                        show_toast("❌ Erro: Banco de dados não conectado.", "red")
                         return
                     cursor = db_conn.cursor()
                     cursor.execute("DELETE FROM supplier_score_records_table WHERE supplier_id = ?", (supplier_id,))
@@ -6120,10 +6171,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     db_conn.commit()
                     if card in suppliers_results_list.controls:
                         suppliers_results_list.controls.remove(card)
-                    show_snackbar(f"✅ Supplier {vendor_name} deletado com sucesso!")
+                    show_toast(f"✅ Supplier {vendor_name} deletado com sucesso!", "green")
                     print(f"Supplier {supplier_id} deletado com sucesso")
                 except Exception as ex:
-                    show_snackbar(f"❌ Erro ao deletar: {str(ex)}")
+                    show_toast(f"❌ Erro ao deletar: {str(ex)}", "red")
                     print(f"Erro ao deletar supplier: {ex}")
                 page.close(delete_dialog)
             
@@ -6146,7 +6197,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         # Criar botões APÓS definir as funções
         actions_row = ft.Row([
-            ft.ElevatedButton("Salvar", on_click=save_supplier, icon=ft.Icons.SAVE),
+            ft.ElevatedButton("Update", on_click=save_supplier, icon=ft.Icons.SAVE),
             ft.ElevatedButton("Excluir", on_click=delete_supplier, icon=ft.Icons.DELETE, color="red"),
         ], alignment=ft.MainAxisAlignment.END, spacing=10)
 
@@ -6164,7 +6215,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             left_column = ft.Column([
                 ft.Text(f"ID: {supplier_id}", size=12, weight="bold", color="primary"),
                 ft.Row([fields["vendor_name"], fields["supplier_category"]], spacing=10),
-                ft.Row([fields["bu"], fields["supplier_name"]], spacing=10),
+                ft.Row([fields["bu"], fields["supplier_origin"]], spacing=10),
                 ft.Row([fields["supplier_email"], fields["supplier_number"]], spacing=10),
             ], spacing=10, expand=True)
 
@@ -6222,12 +6273,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         """Abre dialog para adicionar um novo supplier."""
         print("➕ DEBUG: add_new_supplier chamada")
         
-        def show_snackbar(message):
-            """Exibe mensagem de feedback para o usuário."""
-            page.snack_bar = ft.SnackBar(ft.Text(message))
-            page.snack_bar.open = True
-            page.update()
-        
         def handle_confirm(e):
             """Callback para confirmar a criação do supplier"""
             print("🔍 DEBUG: handle_confirm chamado")
@@ -6239,14 +6284,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return str(value).strip()
                 
             def get_field_value(field):
-                """Obtém valor tanto de TextField quanto de Dropdown"""
-                if hasattr(field, 'value'):
-                    return safe_strip(field.value)
+                """Obtém valor tanto de TextField quanto de Dropdown ou Container que embala um Dropdown.
+                Suporta:
+                - TextField / Dropdown (tem atributo .value)
+                - Container com .content (ex: Container(content=Dropdown(...)))
+                - Outros casos: tenta acessar .controls[0].value como fallback
+                """
+                try:
+                    # Dropdowns e TextFields diretamente
+                    if hasattr(field, 'value'):
+                        return safe_strip(field.value)
+
+                    # Container que embala um controle em .content
+                    if hasattr(field, 'content') and hasattr(field.content, 'value'):
+                        return safe_strip(field.content.value)
+
+                    # Alguns componentes podem ter controls list
+                    if hasattr(field, 'controls') and len(field.controls) > 0 and hasattr(field.controls[0], 'value'):
+                        return safe_strip(field.controls[0].value)
+
+                except Exception:
+                    pass
                 return ""
             
             if not db_conn:
                 print("🔍 DEBUG: Banco de dados não conectado")
-                show_snackbar("❌ Erro: Banco de dados não conectado.")
+                show_toast("❌ Erro: Banco de dados não conectado.", "red")
                 return
             
             print("🔍 DEBUG: Preparando para inserir no banco")
@@ -6265,12 +6328,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                      continuity, sourcing, sqie)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
-                
+
                 cursor.execute(insert_query, (
                     get_field_value(add_dialog.fields["vendor_name"]),
                     get_field_value(add_dialog.fields["supplier_category"]),
                     get_field_value(add_dialog.fields["bu"]),
-                    get_field_value(add_dialog.fields["supplier_name"]),
+                    get_field_value(add_dialog.fields["supplier_origin"]),
                     get_field_value(add_dialog.fields["supplier_email"]),
                     get_field_value(add_dialog.fields["supplier_number"]),
                     get_field_value(add_dialog.fields["supplier_status"]),
@@ -6286,12 +6349,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Atualizar lista de suppliers
                 search_suppliers_config()
                 
-                show_snackbar(f"✅ Supplier {vendor_name} criado com sucesso!")
+                show_toast(f"✅ Supplier {vendor_name} criado com sucesso!", "green")
                 page.close(add_dialog)
                 
             except Exception as ex:
                 print(f"🔍 DEBUG: Erro ao inserir: {ex}")
-                show_snackbar(f"❌ Erro ao criar supplier: {str(ex)}")
+                show_toast(f"❌ Erro ao criar supplier: {str(ex)}", "red")
                 print(f"Erro ao criar supplier: {ex}")
         
         def handle_cancel(e):
@@ -8091,7 +8154,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ft.Container(ft.Text("NIL", weight="bold", size=header_font_size), width=60),
                     ft.Container(ft.Text("Total", weight="bold", size=header_font_size), width=60),
                     ft.Container(ft.Text("Ações", weight="bold", size=header_font_size), width=110),
-                ], scroll=ft.ScrollMode.AUTO)
+                ])
             else:
                 header_row = ft.Row([
                     ft.Container(ft.Text("Mês/Ano", weight="bold", size=header_font_size), width=90),
