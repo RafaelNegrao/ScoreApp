@@ -1376,14 +1376,34 @@ class EditTimelineRecordDialog(ft.AlertDialog):
         """Cria um controle de pontuação baseado na configuração (slider ou spinbox) e permissões"""
         global score_control_type
 
+        # Normalizar valor recebido: pode vir como número, string numérica, ou valores inválidos
+        norm_value = None
+        try:
+            if value is None:
+                norm_value = None
+            elif isinstance(value, (int, float)):
+                norm_value = float(value)
+            elif isinstance(value, str):
+                # remover espaços e possíveis percentuais/ caracteres extras
+                v = value.strip()
+                # tentar converter diretamentente
+                norm_value = float(v) if v != "" else None
+            else:
+                # tenta converter generically
+                norm_value = float(value)
+        except (ValueError, TypeError):
+            # valor inválido — registrar e usar None como fallback
+            print(f"Aviso: valor de pontuação inválido para '{label}': {value}")
+            norm_value = None
+
         if score_control_type == "slider":
             # Criar slider
-            score_text = ft.Text(f"{float(value):.1f}" if value is not None else "0.0", width=40, text_align=ft.TextAlign.CENTER)
+            score_text = ft.Text(f"{norm_value:.1f}" if norm_value is not None else "0.0", width=40, text_align=ft.TextAlign.CENTER)
             score_slider = ft.Slider(
                 min=0,
                 max=10,
                 divisions=100,
-                value=float(value) if value is not None else 0,
+                value=norm_value if norm_value is not None else 0,
                 width=120,
                 disabled=not has_permission
             )
@@ -1421,7 +1441,7 @@ class EditTimelineRecordDialog(ft.AlertDialog):
                 increment = 0.1
 
             score_field = ft.TextField(
-                value=f"{float(value):.1f}" if value is not None else "0.0",
+                value=f"{norm_value:.1f}" if norm_value is not None else "0.0",
                 text_align=ft.TextAlign.CENTER,
                 width=70,
                 border_radius=8,
@@ -1431,6 +1451,22 @@ class EditTimelineRecordDialog(ft.AlertDialog):
                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                 disabled=not has_permission
             )
+
+            # Validar entrada manual no campo de spinbox do diálogo
+            def on_score_field_change(e):
+                try:
+                    v = e.control.value
+                    if v is None or str(v).strip() == "":
+                        return
+                    num = float(str(v).strip())
+                    num = max(0, min(10, num))
+                    e.control.value = str(round(num, 1))
+                    e.control.update()
+                except Exception:
+                    # Não interromper a digitação do usuário
+                    pass
+
+            score_field.on_change = on_score_field_change
 
             def adjust_score(e):
                 if not has_permission:
@@ -1468,7 +1504,12 @@ class EditTimelineRecordDialog(ft.AlertDialog):
                 if hasattr(control, 'controls') and len(control.controls) >= 2:
                     slider = control.controls[1]  # O slider é o segundo controle
                     if hasattr(slider, 'value'):
-                        return slider.value
+                        # Garantir que o slider esteja no intervalo
+                        try:
+                            val = float(slider.value)
+                            return max(0, min(10, val))
+                        except Exception:
+                            return None
             else:  # spinbox
                 # Para spinbox: Column[Text, Row[IconButton, TextField, IconButton]]
                 if hasattr(control, 'controls') and len(control.controls) >= 2:
@@ -1476,7 +1517,11 @@ class EditTimelineRecordDialog(ft.AlertDialog):
                     if hasattr(spinbox_row, 'controls') and len(spinbox_row.controls) >= 2:
                         text_field = spinbox_row.controls[1]  # O TextField é o segundo da Row
                         if hasattr(text_field, 'value') and text_field.value:
-                            return float(text_field.value)
+                            try:
+                                val = float(text_field.value)
+                                return max(0, min(10, val))
+                            except Exception:
+                                return None
         except (ValueError, TypeError, AttributeError):
             pass
         return None
@@ -2160,7 +2205,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         # Normalize color - accept common names
         color_map = {
-            'green': '#2E7D32',
+            'green': "#31A037",
             'red': '#C62828',
             'orange': '#EF6C00',
             'blue': '#1565C0'
@@ -2791,6 +2836,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
             border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
         )
+
+        # Validar entrada manual: garantir 0.0 - 10.0 e formatar com uma casa decimal
+        def on_field_change(e):
+            try:
+                v = e.control.value
+                if v is None or str(v).strip() == "":
+                    return
+                num = float(str(v).strip())
+                num = max(0, min(10, num))
+                e.control.value = str(round(num, 1))
+                e.control.update()
+            except Exception:
+                # Se não for convertível, não quebrar a digitação do usuário
+                pass
+
+        score_field.on_change = on_field_change
 
         def adjust_score(e):
             try:
@@ -7228,66 +7289,88 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             show_toast(f"❌ Erro ao carregar usuário: {ex}", "red")
             page.update()
 
-    def clear_users_fields():
+    def clear_users_fields(e=None):
         """Limpa todos os campos do formulário de usuários."""
         try:
-            print("Limpando todos os campos...")
-            
-            # Limpar campos usando busca direta na estrutura
+            print("Limpando todos os campos (via users_controls)...")
+
+            def resolve(ctrl):
+                try:
+                    if ctrl is None:
+                        return None
+                    return ctrl.current if hasattr(ctrl, 'current') else ctrl
+                except Exception:
+                    return ctrl
+
+            # TextFields
             try:
-                wwid_field = find_field_by_label("WWID")
-                if wwid_field:
-                    wwid_field.value = ""
+                w = resolve(users_controls.get('wwid'))
+                if w and hasattr(w, 'value'):
+                    w.value = ""
+                    if hasattr(w, 'update'):
+                        w.update()
             except Exception as e:
                 print(f"Erro ao limpar WWID: {e}")
-            
+
             try:
-                name_field = find_field_by_label("Nome Completo")
-                if name_field:
-                    name_field.value = ""
+                n = resolve(users_controls.get('name'))
+                if n and hasattr(n, 'value'):
+                    n.value = ""
+                    if hasattr(n, 'update'):
+                        n.update()
             except Exception as e:
                 print(f"Erro ao limpar Name: {e}")
-            
+
             try:
-                password_field = find_field_by_label("Senha")
-                if password_field:
-                    password_field.value = ""
+                p = resolve(users_controls.get('password'))
+                if p and hasattr(p, 'value'):
+                    p.value = ""
+                    if hasattr(p, 'update'):
+                        p.update()
             except Exception as e:
                 print(f"Erro ao limpar Password: {e}")
-            
+
+            # Dropdown / Select
             try:
-                privilege_field = find_field_by_label("Nível de Privilégio")
-                if privilege_field:
-                    privilege_field.value = None
+                priv = resolve(users_controls.get('privilege'))
+                if priv and hasattr(priv, 'value'):
+                    priv.value = None
+                    if hasattr(priv, 'update'):
+                        priv.update()
             except Exception as e:
                 print(f"Erro ao limpar Privilege: {e}")
-            
-            # Limpar checkboxes usando busca direta
-            checkbox_labels = ["OTIF", "NIL", "Pickup", "Package"]
-            for label in checkbox_labels:
-                try:
-                    checkbox = find_checkbox_by_label(label)
-                    if checkbox:
-                        checkbox.value = False
-                except Exception as e:
-                    print(f"Erro ao limpar checkbox {label}: {e}")
-            
+
+            # Checkboxes
+            try:
+                for key in ('otif_check', 'nil_check', 'pickup_check', 'package_check'):
+                    cb = resolve(users_controls.get(key))
+                    if cb and hasattr(cb, 'value'):
+                        cb.value = False
+                        if hasattr(cb, 'update'):
+                            cb.update()
+            except Exception as e:
+                print(f"Erro ao limpar checkboxes: {e}")
+
             # Limpar seleção global
             global selected_user
             selected_user = None
-            
-            # Atualizar página diretamente
+
+            # Atualizar botão de ação e lista visual
+            try:
+                update_action_button()
+            except Exception:
+                pass
+            try:
+                refresh_users_list()
+            except Exception:
+                pass
+
+            # Atualizar página por fim
             try:
                 page.update()
             except Exception as e:
                 print(f"Erro ao atualizar página: {e}")
-            
-            # Atualizar botão de ação
-            update_action_button()
-            
-            # Atualizar lista visual (remover destaque)
-            refresh_users_list()
-            
+
             print("Campos limpos com sucesso!")
             
         except Exception as ex:
@@ -8239,12 +8322,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         page.open(edit_dialog)
                     return handle_edit
                 
+                # Passar uma tupla com os valores na ordem esperada pelo diálogo
+                record_tuple = (month, year_data, otif, nil, pickup, package, total, comment)
                 edit_btn = ft.IconButton(
                     icon=ft.Icons.EDIT,
                     icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
                     tooltip="Editar registro",
                     icon_size=16,
-                    on_click=create_edit_handler(row)
+                    on_click=create_edit_handler(record_tuple)
                 )
                 
                 # Função para deletar este registro específico
