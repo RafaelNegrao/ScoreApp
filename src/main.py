@@ -3,10 +3,8 @@ import datetime
 import random
 import string
 from db_manager import DBManager
-from email_manager import EmailManager, EmailSendConfirmationDialog
 import threading
 import getpass
-import win32com.client  # Para integração com Outlook
 
 # Configuração mínima de toasts (usada por redirect de `print` e por notificações)
 app_settings = {'toast_duration': 3}
@@ -548,7 +546,7 @@ def safe_update_control(control, page=None):
 # ===== DEFINIÇÕES SIMPLES DE TEMAS =====
 
 def get_current_theme_colors(theme_name="white"):
-    """Return base colors for the given theme
+    """Return base Colors for the given theme
 
     Nota: os campos de "Comentário" e os campos de nota (spinbox/slider TextField)
     presentes nos cards da aba Score foram configurados para usar a mesma cor de
@@ -710,16 +708,14 @@ def login_screen(page: ft.Page):
     
     password_field = ft.TextField(
         label="Password", 
-        password=True,
-        can_reveal_password=True,
+        password=True, 
+        can_reveal_password=True, 
         width=320,
         border_radius=8,
         border_color=Colors['outline'],
         prefix_icon=ft.Icons.LOCK,
         value=saved_password  # Preencher com valor salvo
-    )
-    
-    # Checkbox Remember Me
+    )    # Checkbox Remember Me
     remember_me_checkbox = ft.Checkbox(
         label="Lembrar de mim",
         value=bool(saved_wwid and saved_password),  # Marcar se há credenciais salvas
@@ -1568,25 +1564,80 @@ def save_app_settings(settings, user_wwid=None):
         return False
 
 def initialize_main_app(page: ft.Page, user_theme="white"):
-    global app_settings, current_user_wwid, current_user_name, current_user_privilege, current_user_permissions, users_controls, log_controls, page_ref, email_manager
+    global app_settings, current_user_wwid, current_user_name, current_user_privilege, current_user_permissions, users_controls, log_controls, page_ref
     
     # Definir page_ref global para uso em notificações
     page_ref = page
-    
-    # Criar EmailManager com a referência da página
-    email_manager = EmailManager(
-        db_manager=db_manager,
-        page_ref=page,
-        get_theme_colors_func=get_current_theme_colors,
-        get_theme_name_func=get_theme_name_from_page,
-        show_snack_bar_func=show_snack_bar
-    )
     
     # Armazenar nome do tema na página para acesso global e confiável
     page.data = {"theme_name": user_theme}
 
     # Carregar configurações do app
     app_settings = load_app_settings()
+    
+    def create_email_development_tabs():
+        """Cria as abas de email com mensagem de desenvolvimento"""
+        Colors = get_current_theme_colors(get_theme_name_from_page(page))
+        
+        # Conteúdo da mensagem de desenvolvimento
+        development_content = ft.Column([
+            ft.Container(height=50),  # Espaçamento superior
+            ft.Icon(
+                name=ft.Icons.CONSTRUCTION, 
+                size=80, 
+                color=Colors.get('on_surface_variant', Colors.get('on_surface', '#757575'))
+            ),
+            ft.Container(height=20),  # Espaçamento
+            ft.Text(
+                "Funcionalidade em Desenvolvimento",
+                size=24,
+                weight="bold",
+                color=Colors['on_surface'],
+                text_align=ft.TextAlign.CENTER
+            ),
+            ft.Container(height=10),  # Espaçamento
+            ft.Text(
+                "Esta seção está sendo desenvolvida e estará disponível em breve.",
+                size=16,
+                color=Colors.get('on_surface_variant', Colors.get('on_surface', '#757575')),
+                text_align=ft.TextAlign.CENTER
+            ),
+        ], 
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        expand=True
+        )
+        
+        # Criar as abas
+        tabs = ft.Tabs(
+            selected_index=0,
+            animation_duration=300,
+            tab_alignment=ft.TabAlignment.START,
+            tabs=[
+                ft.Tab(
+                    text="Envio Individual",
+                    icon=ft.Icons.PERSON,
+                    content=ft.Container(
+                        content=development_content,
+                        alignment=ft.alignment.center,
+                        expand=True,
+                        padding=20
+                    )
+                ),
+                ft.Tab(
+                    text="Envio em Lote", 
+                    icon=ft.Icons.GROUP,
+                    content=ft.Container(
+                        content=development_content,
+                        alignment=ft.alignment.center,
+                        expand=True,
+                        padding=20
+                    )
+                )
+            ],
+            expand=True
+        )
+        
+        return tabs
     
     # Tema simplificado - apenas 3 opções básicas
     
@@ -1989,24 +2040,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         """Atualiza as cores do container dos campos de pesquisa do Timeline"""
         try:
             if timeline_search_container.current:
-                colors = get_current_theme_colors(theme_name)
+                Colors = get_current_theme_colors(theme_name)
                 
                 # Atualizar as cores do container principal
-                timeline_search_container.current.bgcolor = colors.get('surface_variant')
-                timeline_search_container.current.border = ft.border.all(1.5, colors.get('outline'))
+                timeline_search_container.current.bgcolor = Colors.get('surface_variant')
+                timeline_search_container.current.border = ft.border.all(1.5, Colors.get('outline'))
                 
                 # Atualizar o campo de pesquisa
                 
                 # Atualizar os dropdowns dentro do container
                 if timeline_vendor_dropdown.current:
-                    timeline_vendor_dropdown.current.bgcolor = colors.get('field_background')
-                    timeline_vendor_dropdown.current.color = colors.get('on_surface')
-                    timeline_vendor_dropdown.current.border_color = colors.get('outline')
+                    timeline_vendor_dropdown.current.bgcolor = Colors.get('field_background')
+                    timeline_vendor_dropdown.current.color = Colors.get('on_surface')
+                    timeline_vendor_dropdown.current.border_color = Colors.get('outline')
                 
                 if timeline_year_dropdown.current:
-                    timeline_year_dropdown.current.bgcolor = colors.get('field_background')
-                    timeline_year_dropdown.current.color = colors.get('on_surface')
-                    timeline_year_dropdown.current.border_color = colors.get('outline')
+                    timeline_year_dropdown.current.bgcolor = Colors.get('field_background')
+                    timeline_year_dropdown.current.color = Colors.get('on_surface')
+                    timeline_year_dropdown.current.border_color = Colors.get('outline')
                 
                 timeline_search_container.current.update()
                 
@@ -2078,20 +2129,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def update_risks_container_colors(theme_name):
         """Atualiza as cores do header da aba Risks (ano e target)"""
         try:
-            colors = get_current_theme_colors(theme_name)
+            Colors = get_current_theme_colors(theme_name)
             # Atualizar container principal do header (border e bgcolor)
             if risks_header_container and risks_header_container.current:
                 try:
-                    risks_header_container.current.bgcolor = colors.get('surface_variant')
-                    risks_header_container.current.border = ft.border.all(1.5, colors.get('outline'))
+                    risks_header_container.current.bgcolor = Colors.get('surface_variant')
+                    risks_header_container.current.border = ft.border.all(1.5, Colors.get('outline'))
                 except Exception:
                     pass
 
             # Atualizar dropdown e texto alvo dentro do header
             if risks_year_dropdown and risks_year_dropdown.current:
-                risks_year_dropdown.current.bgcolor = colors.get('field_background')
-                risks_year_dropdown.current.color = colors.get('on_surface')
-                risks_year_dropdown.current.border_color = colors.get('outline')
+                risks_year_dropdown.current.bgcolor = Colors.get('field_background')
+                risks_year_dropdown.current.color = Colors.get('on_surface')
+                risks_year_dropdown.current.border_color = Colors.get('outline')
 
             if target_display_container and target_display_container.current:
                 # target_display_container tem borda e bgcolor especiais
@@ -4653,8 +4704,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         # --- Cards de métricas da Timeline ---
         try:
             if 'timeline_cards_refs' in globals() and timeline_cards_refs:
-                colors = get_current_theme_colors(theme_mode)
-                primary_color = colors.get('primary')
+                Colors = get_current_theme_colors(theme_mode)
+                primary_color = Colors.get('primary')
                 for refs in timeline_cards_refs.values():
                     if refs["card"].current:
                         refs["card"].current.surface_tint_color = primary_color
@@ -4672,15 +4723,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         # --- Botões da Timeline ---
         try:
             if timeline_chart_button.current and timeline_table_button.current:
-                colors = get_current_theme_colors(theme_mode)
+                Colors = get_current_theme_colors(theme_mode)
                 if timeline_chart_tab.current:
-                    timeline_chart_button.current.bgcolor = colors.get('primary')
-                    timeline_chart_button.current.color = colors.get('on_primary', '#FFFFFF')
+                    timeline_chart_button.current.bgcolor = Colors.get('primary')
+                    timeline_chart_button.current.color = Colors.get('on_primary', '#FFFFFF')
                     timeline_table_button.current.bgcolor = None
                     timeline_table_button.current.color = None
                 elif timeline_table_tab.current:
-                    timeline_table_button.current.bgcolor = colors.get('primary')
-                    timeline_table_button.current.color = colors.get('on_primary', '#FFFFFF')
+                    timeline_table_button.current.bgcolor = Colors.get('primary')
+                    timeline_table_button.current.color = Colors.get('on_primary', '#FFFFFF')
                     timeline_chart_button.current.bgcolor = None
                     timeline_chart_button.current.color = None
                 timeline_chart_button.current.update()
@@ -4696,7 +4747,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Verificar se o usuário tem acesso à aba
             if not is_tab_accessible(idx, current_user_privilege or "User"):
                 # Mostrar toast de erro e retornar sem alterar a seleção
-                show_toast("Acesso negado para esta funcionalidade", ft.colors.RED)
+                show_toast("Acesso negado para esta funcionalidade", ft.Colors.RED)
                 return
                 
             selected_index.current = idx
@@ -4722,12 +4773,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 except Exception as ex:
                     print(f"Aviso: erro ao limpar campos da aba Log: {ex}")
             
-            # Quando aba Score é selecionada e não há busca ativa, mostrar favoritos
+            # Quando aba Score é selecionada, apenas mostrar favoritos se TODOS os filtros estão vazios E o usuário fez uma ação específica
             if idx == 1 and search_field_ref.current:  # Score agora é índice 1
-                search_term = search_field_ref.current.value.strip()
-                bu_val = selected_bu.current.value if selected_bu.current else None
-                # Se não há termo de busca nem BU, mostrar favoritos
-                if not search_term and (not bu_val or not bu_val.strip()):
+                search_term = search_field_ref.current.value.strip() if search_field_ref.current.value else ""
+                bu_val = selected_bu.current.value if selected_bu.current and selected_bu.current.value else ""
+                po_val = selected_po.current.value if selected_po.current and selected_po.current.value else ""
+                month_val = selected_month.current.value if selected_month.current and selected_month.current.value else ""
+                year_val = selected_year.current.value if selected_year.current and selected_year.current.value else ""
+                
+                # Só mostrar favoritos se TODOS os campos estão vazios E não é a primeira abertura da aba
+                all_filters_empty = not search_term and not bu_val and not po_val and not month_val and not year_val
+                
+                # Não mostrar favoritos automaticamente ao mudar para a aba - deixar a página em branco
+                # Os favoritos só aparecem quando o usuário explicitamente limpar todos os filtros
+                if False:  # Desabilitar a exibição automática de favoritos
                     show_favorites_only()
                     
             update_menu()
@@ -6012,6 +6071,44 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     search_field_ref = ft.Ref()
 
+    def clear_score_filters(e=None):
+        """Limpa todos os filtros da aba Score e mostra os favoritos"""
+        try:
+            # Limpar campo de pesquisa
+            if search_field_ref.current:
+                search_field_ref.current.value = ""
+                search_field_ref.current.update()
+            
+            # Limpar PO
+            if selected_po.current:
+                selected_po.current.value = ""
+                selected_po.current.update()
+            
+            # Limpar BU
+            if selected_bu.current:
+                selected_bu.current.value = None
+                selected_bu.current.update()
+            
+            # Limpar Mês
+            if selected_month.current:
+                selected_month.current.value = ""
+                selected_month.current.update()
+            
+            # Limpar Ano
+            if selected_year.current:
+                selected_year.current.value = ""
+                selected_year.current.update()
+            
+            # Após limpar todos os filtros, mostrar favoritos
+            show_favorites_only()
+            
+            # Mostrar mensagem de sucesso
+            show_snack_bar("Filtros limpos com sucesso!", False)
+            
+        except Exception as ex:
+            print(f"Erro ao limpar filtros: {ex}")
+            show_snack_bar(f"Erro ao limpar filtros: {ex}", True)
+
     def create_score_slider(page_ref=None):
         """Cria um widget de slider customizado para notas de 0 a 10."""
         
@@ -6925,6 +7022,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ),
                     month_dropdown,
                     year_dropdown,
+                    ft.IconButton(
+                        icon=ft.Icons.CLEAR_ALL,
+                        tooltip="Limpar todos os filtros",
+                        on_click=clear_score_filters,
+                        icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                        icon_size=20,
+                        style=ft.ButtonStyle(
+                            shape=ft.CircleBorder(),
+                            bgcolor={
+                                ft.ControlState.DEFAULT: get_current_theme_colors(get_theme_name_from_page(page)).get('primary_container'),
+                                ft.ControlState.HOVERED: get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant')
+                            }
+                        )
+                    ),
                 ],
                 spacing=10,
             ),
@@ -6960,7 +7071,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             accessible_indices = [tab_idx for _, _, tab_idx in accessible_tabs]
             
             if idx not in accessible_indices:
-                show_toast("Acesso negado para esta configuração", ft.colors.RED)
+                show_toast("Acesso negado para esta configuração", ft.Colors.RED)
                 return
                 
             # Limpar campos da aba Log quando sair dela (se estava na aba Log antes)
@@ -11294,7 +11405,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 edit_btn = ft.IconButton(
                     icon=ft.Icons.EDIT,
-                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary') if can_edit else ft.colors.GREY_400,
+                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary') if can_edit else ft.Colors.GREY_400,
                     tooltip="Editar registro" if can_edit else "Sem permissão para editar",
                     icon_size=16,
                     on_click=create_edit_handler(record_tuple) if can_edit else None,
@@ -11322,7 +11433,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 delete_btn = ft.IconButton(
                     icon=ft.Icons.DELETE,
-                    icon_color="red" if can_edit else ft.colors.GREY_400,
+                    icon_color="red" if can_edit else ft.Colors.GREY_400,
                     tooltip="Deletar registro" if can_edit else "Sem permissão para deletar",
                     icon_size=16,
                     on_click=create_delete_handler(month, year_data, vendor_id) if can_edit else None,
@@ -11415,12 +11526,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Obter cores do tema atual
         theme_name = get_theme_name_from_page(page)
-        colors = get_current_theme_colors(theme_name)
+        Colors = get_current_theme_colors(theme_name)
         
         # Atualizar aparência dos botões
         if timeline_chart_button.current:
-            timeline_chart_button.current.bgcolor = colors.get('primary')
-            timeline_chart_button.current.color = colors.get('on_primary', '#FFFFFF')
+            timeline_chart_button.current.bgcolor = Colors.get('primary')
+            timeline_chart_button.current.color = Colors.get('on_primary', '#FFFFFF')
         if timeline_table_button.current:
             timeline_table_button.current.bgcolor = None
             timeline_table_button.current.color = None
@@ -11438,12 +11549,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Obter cores do tema atual
         theme_name = get_theme_name_from_page(page)
-        colors = get_current_theme_colors(theme_name)
+        Colors = get_current_theme_colors(theme_name)
         
         # Atualizar aparência dos botões
         if timeline_table_button.current:
-            timeline_table_button.current.bgcolor = colors.get('primary')
-            timeline_table_button.current.color = colors.get('on_primary', '#FFFFFF')
+            timeline_table_button.current.bgcolor = Colors.get('primary')
+            timeline_table_button.current.color = Colors.get('on_primary', '#FFFFFF')
         if timeline_chart_button.current:
             timeline_chart_button.current.bgcolor = None
             timeline_chart_button.current.color = None
@@ -11763,20 +11874,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ]),
             
             ft.Container(height=15),
-            ft.Text("Métricas Adicionais no Gráfico:", size=14, weight="bold", text_align=ft.TextAlign.CENTER),
-            ft.Row(
-                controls=[
-                    ft.Checkbox(label="OTIF", value=False, ref=timeline_otif_check, on_change=on_timeline_vendor_change),
-                    ft.Checkbox(label="NIL", value=False, ref=timeline_nil_check, on_change=on_timeline_vendor_change),
-                    ft.Checkbox(label="Pickup", value=False, ref=timeline_pickup_check, on_change=on_timeline_vendor_change),
-                    ft.Checkbox(label="Package", value=False, ref=timeline_package_check, on_change=on_timeline_vendor_change),
-                ],
-                alignment=ft.MainAxisAlignment.START
-            ),
-
-            ft.Container(height=20),
             
-            # Abas para gráfico e tabela
+            # Abas para gráfico e tabela com checkboxes na mesma linha
             ft.Row([
                 ft.ElevatedButton(
                     "Gráfico de Linha",
@@ -11790,7 +11889,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     on_click=switch_to_table_tab,
                     ref=timeline_table_button
                 ),
-            ], spacing=10),
+                ft.Container(width=20),  # Espaçamento
+                ft.Checkbox(label="OTIF", value=False, ref=timeline_otif_check, on_change=on_timeline_vendor_change),
+                ft.Checkbox(label="NIL", value=False, ref=timeline_nil_check, on_change=on_timeline_vendor_change),
+                ft.Checkbox(label="Pickup", value=False, ref=timeline_pickup_check, on_change=on_timeline_vendor_change),
+                ft.Checkbox(label="Package", value=False, ref=timeline_package_check, on_change=on_timeline_vendor_change),
+            ], spacing=10, alignment=ft.MainAxisAlignment.START),
             
             ft.Container(height=15),
             
@@ -12215,7 +12319,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Text("Envio de E-mails", size=24, weight="bold"),
             ft.Divider(),
             ft.Container(height=10),
-            email_manager.get_email_tabs()
+            create_email_development_tabs()
         ], expand=True), 
         alignment=ft.alignment.top_center, 
         expand=True, 
