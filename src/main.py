@@ -583,6 +583,15 @@ def get_theme_name_from_page(page_ref=None):
         return page_ref.data.get("theme_name", "white")
     return "white"
 
+def get_primary_darker_color(theme_name="white"):
+    """Retorna uma versão mais escura da cor primária baseada no tema"""
+    if theme_name == "dark":
+        return "#1A3D68"  # Versão mais escura de #4EA1FF
+    elif theme_name == "dracula":
+        return "#4D3377"  # Versão mais escura de #BD93F9
+    else:  # white
+        return "#93B7E2"  # Versão mais escura de #0066CC
+
 def get_card_color(theme_name="white"):
     """Retorna a cor dos cards baseada no tema"""
     if theme_name == "dracula":
@@ -5455,7 +5464,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"    ✅ Criando {score_control_type} {ui_name} ({'habilitado' if has_permission else 'desabilitado'})")
             
             if score_control_type == "slider":
-                slider_row, slider_control, text_control = create_score_slider()
+                slider_row, slider_control, text_control = create_score_slider(page)
                 # Desabilitar slider se não tiver permissão
                 if not has_permission:
                     slider_control.disabled = True
@@ -5969,11 +5978,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     search_field_ref = ft.Ref()
 
-    def create_score_slider():
+    def create_score_slider(page_ref=None):
         """Cria um widget de slider customizado para notas de 0 a 10."""
         
         # O texto que exibirá o valor do slider
         score_text = ft.Text("0.0", width=40, text_align=ft.TextAlign.RIGHT)
+
+        # Obter a cor mais escura baseada no tema atual
+        theme_name = get_theme_name_from_page(page_ref) if page_ref else "white"
+        darker_color = get_primary_darker_color(theme_name)
 
         # O slider
         score_slider = ft.Slider(
@@ -5981,7 +5994,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             max=10,
             divisions=100,  # (10 - 0) / 0.1 = 100
             value=0,
-            width=200  # Largura mínima do slider (removido expand=True que conflitava)
+            width=250,  # Largura mínima do slider (removido expand=True que conflitava)
+            # Cores do slider: ativa primária; inativa mais escura baseada no tema
+            active_color="primary",
+            inactive_color=darker_color
         )
 
         def on_slider_change(e):
@@ -6043,7 +6059,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"    {'✅ Criando' if has_permission else '🔒 Criando (desabilitado)'} {score_control_type} {ui_name}")
             
             if score_control_type == "slider":
-                slider_row, slider_control, text_control = create_score_slider()
+                slider_row, slider_control, text_control = create_score_slider(page)
                 # Desabilitar slider se não tiver permissão
                 if not has_permission:
                     slider_control.disabled = True
