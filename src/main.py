@@ -3,13 +3,29 @@ import datetime
 import random
 import string
 from db_manager import DBManager
+from email_manager import EmailManager, EmailSendConfirmationDialog
 import threading
 import getpass
+import win32com.client  # Para integração com Outlook
 
 # Configuração mínima de toasts (usada por redirect de `print` e por notificações)
 app_settings = {'toast_duration': 3}
 
 db_manager = DBManager('db.db')
+
+
+def show_snack_bar(message, is_error=False):
+    """Mostra uma mensagem snack bar na interface"""
+    global page_ref
+    try:
+        if 'page_ref' in globals() and page_ref:
+            color = ft.Colors.RED if is_error else ft.Colors.GREEN
+            page_ref.show_snack_bar(ft.SnackBar(content=ft.Text(message), bgcolor=color))
+            page_ref.update()  # Força atualização imediata
+        else:
+            print(f"Notification: {message}")
+    except:
+        print(f"Notification: {message}")
 
 
 def load_spinbox_increment():
@@ -503,7 +519,7 @@ current_user_privilege = None
 current_user_permissions = {}
 selected_user = None  # Para controlar a seleção de usuários na aba Users
 suppliers_results_list = None  # Lista global dos cards de suppliers
-score_control_type = "slider"  # Tipo de controle: "slider" ou "spinbox"
+score_control_type = "slider"  # Tipo de controle: "slider", "spinbox" ou "cupertino"
 
 # ===== FUNÇÕES AUXILIARES =====
 
@@ -1552,7 +1568,19 @@ def save_app_settings(settings, user_wwid=None):
         return False
 
 def initialize_main_app(page: ft.Page, user_theme="white"):
-    global app_settings, current_user_wwid, current_user_name, current_user_privilege, current_user_permissions, users_controls, log_controls
+    global app_settings, current_user_wwid, current_user_name, current_user_privilege, current_user_permissions, users_controls, log_controls, page_ref, email_manager
+    
+    # Definir page_ref global para uso em notificações
+    page_ref = page
+    
+    # Criar EmailManager com a referência da página
+    email_manager = EmailManager(
+        db_manager=db_manager,
+        page_ref=page,
+        get_theme_colors_func=get_current_theme_colors,
+        get_theme_name_func=get_theme_name_from_page,
+        show_snack_bar_func=show_snack_bar
+    )
     
     # Armazenar nome do tema na página para acesso global e confiável
     page.data = {"theme_name": user_theme}
@@ -4678,6 +4706,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             risks_view.visible = idx == 3
             email_view.visible = idx == 4
             configs_view.visible = idx == 5
+            
+            # Carregar dados específicos da aba quando ela for selecionada
+            if idx == 4:  # Aba Email
+                # O EmailManager já cuida de toda a inicialização
+                # Força atualização da página
+                page_ref.update()
             
             # Limpar campos da aba Log quando sair da aba Configs
             if selected_index.current != 5 and idx != 5:
@@ -12175,18 +12209,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         visible=False,
         padding=20
     )
+
     email_view = ft.Container(
         content=ft.Column([
-            ft.Text("Central de E-mails", size=24, weight="bold"),
+            ft.Text("Envio de E-mails", size=24, weight="bold"),
             ft.Divider(),
-            ft.Text("Gerencie e envie e-mails para fornecedores.", size=16),
-            ft.Container(height=20),
-            ft.Row([
-                ft.ElevatedButton("Novo E-mail", icon=ft.Icons.EMAIL),
-                ft.ElevatedButton("Templates", icon=ft.Icons.ARTICLE),
-                ft.ElevatedButton("Histórico", icon=ft.Icons.HISTORY),
-            ], alignment=ft.MainAxisAlignment.START, spacing=10),
-        ]), 
+            ft.Container(height=10),
+            email_manager.get_email_tabs()
+        ], expand=True), 
         alignment=ft.alignment.top_center, 
         expand=True, 
         visible=False,
