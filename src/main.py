@@ -64,9 +64,11 @@ class ResponsiveAppManager:
         """Limpa todos os resultados e reseta o estado"""
         if self.results_container:
             self.results_container.controls.clear()
+            # Forçar a atualização da UI é crucial para garantir que a limpeza seja
+            # refletida visualmente antes que novos cards sejam adicionados, especialmente
+            # em máquinas mais lentas. Uma atualização de página inteira é mais robusta.
             self.results_container.update()
-            # Não resetar o layout - manter o estado atual baseado na janela
-            # self.current_layout permanece como estava (single ou double)
+            self.page.update()
     
     def check_initial_window_state(self):
         """Verifica o estado inicial da janela e aplica o layout apropriado"""
@@ -473,8 +475,6 @@ class ResponsiveAppManager:
                 width=500,
                 alignment=ft.alignment.center
             )
-            print(f"❌ Tipos incorretos: row1 ou row2 não são Row/Column")
-            return
                 
             
         except Exception as e:
@@ -558,7 +558,9 @@ def get_current_theme_colors(theme_name="white"):
         return {
             "field_background": "#2C2C2C",
             "on_surface": "#E0E0E0",
+            "on_surface_variant": "#B0B0B0",
             "outline": "#555555",
+            "outline_variant": "#444444",
             "card_background": "#1E1E1E",
             "primary": "#4EA1FF",
             "on_primary": "#FFFFFF",
@@ -570,7 +572,9 @@ def get_current_theme_colors(theme_name="white"):
         return {
             "field_background": None,
             "on_surface": "#F8F8F2",
+            "on_surface_variant": "#BFBDB6",
             "outline": "#6272A4",
+            "outline_variant": "#44475A",
             "card_background": "#343746",
             "primary": "#BD93F9",
             "on_primary": "#FFFFFF",
@@ -582,7 +586,9 @@ def get_current_theme_colors(theme_name="white"):
         return {
             "field_background": "#FFFFFF",
             "on_surface": "#1C1C1C",
+            "on_surface_variant": "#666666",
             "outline": "#CCCCCC",
+            "outline_variant": "#E8E8E8",
             "card_background": "#F7F7F7",
             "primary": "#0066CC",
             "on_primary": "#FFFFFF",
@@ -2044,7 +2050,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 # Atualizar as cores do container principal
                 timeline_search_container.current.bgcolor = Colors.get('surface_variant')
-                timeline_search_container.current.border = ft.border.all(1.5, Colors.get('outline'))
+                timeline_search_container.current.border = None  # Remover borda
                 
                 # Atualizar o campo de pesquisa
                 
@@ -2134,7 +2140,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if risks_header_container and risks_header_container.current:
                 try:
                     risks_header_container.current.bgcolor = Colors.get('surface_variant')
-                    risks_header_container.current.border = ft.border.all(1.5, Colors.get('outline'))
+                    risks_header_container.current.border = None  # Remover borda
                 except Exception:
                     pass
 
@@ -4087,7 +4093,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             show_toast(f"❌ Erro durante a importação: {str(e)}", "red")
     
-    def export_suppliers_to_excel(with_existing_scores=False, month=None, year=None):
+    def export_suppliers_to_excel(with_existing_scores=False, month=None, year=None, conditional_formatting=False):
         """Exporta suppliers ativos para Excel com proteção por senha e opcionalmente com notas existentes"""
         print("🔄 DEBUG: Iniciando exportação...")
         
@@ -4096,6 +4102,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             import openpyxl
             from openpyxl.styles import Font, Alignment, PatternFill, Protection
             from openpyxl.worksheet.datavalidation import DataValidation
+            from openpyxl.formatting.rule import ColorScaleRule
             import os
             from datetime import datetime
             print("✅ DEBUG: openpyxl importado com sucesso!")
@@ -4358,21 +4365,38 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 print(f"🔍 DEBUG: Validação aplicada ao range: {notes_range}")
                 
-                # Adicionar formatação condicional para destacar valores fora do range
-                from openpyxl.formatting.rule import CellIsRule
-                from openpyxl.styles import Font as ConditionalFont, PatternFill as ConditionalFill
-                
-                # Regra para valores inválidos (menores que 0 ou maiores que 10)
-                invalid_rule = CellIsRule(
-                    operator='notBetween',
-                    formula=[0, 10],
-                    fill=ConditionalFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid"),
-                    font=ConditionalFont(color="CC0000", bold=True)
-                )
-                
-                # Aplicar formatação condicional ao range de notas
-                ws.conditional_formatting.add(notes_range, invalid_rule)
-                print("🔍 DEBUG: Formatação condicional aplicada para valores inválidos")
+                # Aplicar formatação condicional baseada na opção selecionada
+                if conditional_formatting:
+                    # Formatação condicional com escala de cores (vermelho 0 -> verde 10)
+                    color_scale_rule = ColorScaleRule(
+                        start_type='num',
+                        start_value=0,
+                        start_color='FF0000',  # Vermelho para 0
+                        mid_type='num', 
+                        mid_value=5,
+                        mid_color='FFFF00',    # Amarelo para 5
+                        end_type='num',
+                        end_value=10,
+                        end_color='00FF00'     # Verde para 10
+                    )
+                    ws.conditional_formatting.add(notes_range, color_scale_rule)
+                    print("🔍 DEBUG: Formatação condicional de escala de cores aplicada (0=vermelho, 10=verde)")
+                else:
+                    # Formatação condicional apenas para valores fora do range
+                    from openpyxl.formatting.rule import CellIsRule
+                    from openpyxl.styles import Font as ConditionalFont, PatternFill as ConditionalFill
+                    
+                    # Regra para valores inválidos (menores que 0 ou maiores que 10)
+                    invalid_rule = CellIsRule(
+                        operator='notBetween',
+                        formula=[0, 10],
+                        fill=ConditionalFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid"),
+                        font=ConditionalFont(color="CC0000", bold=True)
+                    )
+                    
+                    # Aplicar formatação condicional ao range de notas
+                    ws.conditional_formatting.add(notes_range, invalid_rule)
+                    print("🔍 DEBUG: Formatação condicional aplicada para valores inválidos")
             
             # Aplicar proteção da planilha
             ws.protection.set_password(password)
@@ -4385,35 +4409,88 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ws.protection.deleteColumns = False
             ws.protection.deleteRows = False
             
-            print("🔄 DEBUG: Salvando arquivo...")
-            # Salvar arquivo
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            if with_existing_scores:
-                filename = f"Export_score_with_data_{month}_{year}_{timestamp}.xlsx"
-                success_message = f"✅ Arquivo com notas de {month}/{year} exportado com sucesso!\n{filename}\nLocalização: Desktop"
-            else:
-                filename = f"Import_score_{timestamp}.xlsx"
-                success_message = f"✅ Arquivo exportado com sucesso!\n{filename}\nLocalização: Desktop"
+            print("🔄 DEBUG: Preparando para salvar arquivo...")
             
-            # Tentar salvar na área de trabalho do usuário
-            try:
-                import os
-                desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-                full_path = os.path.join(desktop_path, filename)
-                wb.save(full_path)
-                print(f"📁 DEBUG: Arquivo salvo em: {full_path}")
-                show_toast(success_message, "green")
-            except Exception as save_error:
-                print(f"❌ Erro ao salvar na Desktop: {save_error}")
-                # Fallback para pasta atual
+            # Criar nome do arquivo baseado na nova nomenclatura
+            timestamp = datetime.now().strftime("%Y%m%d")
+            
+            # Determinar a nota/tipo de dados
+            if with_existing_scores:
+                note_type = f"Data_{month}_{year}"
+                data_ref = f"{month}_{year}"
+            else:
+                note_type = "Import"
+                data_ref = timestamp
+            
+            # Nome do arquivo: Score_[nota]_[data_ref]
+            suggested_filename = f"Score_{note_type}_{data_ref}.xlsx"
+            
+            # Abrir diálogo para salvar arquivo
+            def save_file_dialog():
                 try:
-                    wb.save(filename)
-                    print(f"📁 DEBUG: Arquivo salvo na pasta atual: {filename}")
-                    fallback_message = f"✅ Arquivo exportado: {filename}\n(salvo na pasta do aplicativo)"
-                    show_toast(fallback_message, "green")
-                except Exception as fallback_error:
-                    print(f"❌ Erro no fallback: {fallback_error}")
-                    raise fallback_error
+                    # Criar diálogo de seleção de arquivo
+                    file_picker = ft.FilePicker(
+                        on_result=lambda e: save_selected_file(e)
+                    )
+                    page.overlay.append(file_picker)
+                    page.update()
+                    
+                    # Abrir diálogo para salvar
+                    file_picker.save_file(
+                        dialog_title="Salvar arquivo Excel",
+                        file_name=suggested_filename,
+                        allowed_extensions=["xlsx"]
+                    )
+                    
+                except Exception as picker_error:
+                    print(f"❌ Erro no file picker: {picker_error}")
+                    # Fallback para Desktop
+                    save_to_desktop()
+            
+            def save_selected_file(e):
+                try:
+                    if e.path:
+                        # Usuário selecionou um local
+                        full_path = e.path
+                        wb.save(full_path)
+                        print(f"📁 DEBUG: Arquivo salvo em: {full_path}")
+                        success_message = f"✅ Arquivo exportado com sucesso!\n{os.path.basename(full_path)}\nLocalização: {os.path.dirname(full_path)}"
+                        show_toast(success_message, "green")
+                    else:
+                        # Usuário cancelou
+                        show_toast("❌ Exportação cancelada pelo usuário", "orange")
+                        
+                except Exception as save_error:
+                    print(f"❌ Erro ao salvar no local selecionado: {save_error}")
+                    save_to_desktop()
+                finally:
+                    # Remover file picker do overlay
+                    page.overlay.clear()
+                    page.update()
+            
+            def save_to_desktop():
+                """Fallback: salvar na Desktop"""
+                try:
+                    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+                    full_path = os.path.join(desktop_path, suggested_filename)
+                    wb.save(full_path)
+                    print(f"📁 DEBUG: Arquivo salvo em: {full_path}")
+                    success_message = f"✅ Arquivo exportado com sucesso!\n{suggested_filename}\nLocalização: Desktop"
+                    show_toast(success_message, "green")
+                except Exception as desktop_error:
+                    print(f"❌ Erro ao salvar na Desktop: {desktop_error}")
+                    # Último fallback para pasta atual
+                    try:
+                        wb.save(suggested_filename)
+                        print(f"📁 DEBUG: Arquivo salvo na pasta atual: {suggested_filename}")
+                        fallback_message = f"✅ Arquivo exportado: {suggested_filename}\n(salvo na pasta do aplicativo)"
+                        show_toast(fallback_message, "green")
+                    except Exception as fallback_error:
+                        print(f"❌ Erro no fallback final: {fallback_error}")
+                        raise fallback_error
+            
+            # Iniciar processo de salvamento
+            save_file_dialog()
                     
         except Exception as e:
             error_msg = f"❌ Erro ao exportar: {str(e)}"
@@ -4425,6 +4502,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Referencias para os controles
         export_with_scores_switch_ref = ft.Ref[ft.Switch]()
+        conditional_formatting_switch_ref = ft.Ref[ft.Switch]()
         month_dropdown_ref = ft.Ref[ft.Dropdown]()
         year_dropdown_ref = ft.Ref[ft.Dropdown]()
         period_container_ref = ft.Ref[ft.Container]()
@@ -4459,6 +4537,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             try:
                 # Verificar se deve exportar com notas
                 export_with_scores = export_with_scores_switch_ref.current.value
+                # Verificar se deve aplicar formatação condicional
+                apply_conditional_formatting = conditional_formatting_switch_ref.current.value
                 
                 if export_with_scores:
                     # Verificar se mês e ano foram selecionados
@@ -4469,9 +4549,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         show_toast("❌ Selecione mês e ano para exportar com notas existentes", "red")
                         return
                     
-                    export_suppliers_to_excel(with_existing_scores=True, month=selected_month, year=selected_year)
+                    export_suppliers_to_excel(with_existing_scores=True, month=selected_month, year=selected_year, conditional_formatting=apply_conditional_formatting)
                 else:
-                    export_suppliers_to_excel(with_existing_scores=False)
+                    export_suppliers_to_excel(with_existing_scores=False, conditional_formatting=apply_conditional_formatting)
                     
                 close_dialog(e)
             except Exception as ex:
@@ -4531,6 +4611,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     on_change=on_switch_change
                 ),
                 ft.Text("Exportar com notas existentes", size=14, weight="bold", color=theme_colors.get('on_surface'))
+            ], spacing=10),
+            
+            # Switch para formatação condicional
+            ft.Row([
+                ft.Switch(
+                    ref=conditional_formatting_switch_ref,
+                    value=True,
+                    active_color=theme_colors.get('primary')
+                ),
+                ft.Column([
+                    ft.Text("Formatação condicional nas notas", size=14, weight="bold", color=theme_colors.get('on_surface')),
+                    ft.Text("Cores de 0 (vermelho) a 10 (verde)", size=12, color=theme_colors.get('on_surface_variant'))
+                ], spacing=2)
             ], spacing=10),
             
             # Container para campos de período
@@ -6074,33 +6167,30 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def clear_score_filters(e=None):
         """Limpa todos os filtros da aba Score e mostra os favoritos"""
         try:
-            # Limpar campo de pesquisa
+            # Limpa os valores dos campos de filtro no backend.
             if search_field_ref.current:
                 search_field_ref.current.value = ""
-                search_field_ref.current.update()
             
-            # Limpar PO
             if selected_po.current:
                 selected_po.current.value = ""
-                selected_po.current.update()
             
-            # Limpar BU
             if selected_bu.current:
                 selected_bu.current.value = None
-                selected_bu.current.update()
             
-            # Limpar Mês
             if selected_month.current:
                 selected_month.current.value = ""
-                selected_month.current.update()
             
-            # Limpar Ano
             if selected_year.current:
                 selected_year.current.value = ""
-                selected_year.current.update()
             
-            # Após limpar todos os filtros, mostrar favoritos
+            # A função show_favorites_only() é chamada para limpar a lista de resultados
+            # e exibir apenas os fornecedores favoritos.
             show_favorites_only()
+            
+            # Uma única atualização de página no final é mais eficiente e garante que
+            # tanto os campos de filtro limpos quanto a nova lista de resultados
+            # sejam enviados para a interface do usuário de uma só vez.
+            page.update()
             
             # Mostrar mensagem de sucesso
             show_snack_bar("Filtros limpos com sucesso!", False)
@@ -6855,13 +6945,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def show_favorites_only():
         """Mostra apenas os suppliers favoritos do usuário logado"""
         global current_user_wwid
-        # Limpar resultados existentes antes de adicionar favoritos para evitar duplicação
+        # Limpa os resultados existentes de forma robusta antes de adicionar os favoritos.
+        # Isso é crucial para garantir que a tela não contenha cards antigos.
         try:
-            if 'responsive_app_manager' in globals() and responsive_app_manager and getattr(responsive_app_manager, 'results_container', None):
+            if responsive_app_manager and responsive_app_manager.results_container:
                 responsive_app_manager.clear_results()
-            elif 'results_list' in globals() and results_list:
-                results_list.controls.clear()
-                results_list.update()
         except Exception as _clearex:
             print(f"Aviso: falha ao limpar resultados antes de mostrar favoritos: {_clearex}")
 
@@ -10507,32 +10595,144 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # --- Fim: Lógica e Controles da Aba Configs ---
 
     # --- Início: Conteúdo da Aba Home ---
+    def format_stats_value(value, stat_type):
+        """Formata valores das estatísticas para exibição"""
+        try:
+            if stat_type == 'suppliers_count':
+                return f"{value:,}" if value > 0 else "0"
+            elif stat_type == 'evaluations_count':
+                if value >= 1000:
+                    return f"{value/1000:.1f}K"
+                else:
+                    return str(value)
+            elif stat_type == 'average_score':
+                return f"{value:.1f}" if value > 0 else "0.0"
+            elif stat_type == 'users_count':
+                return str(value)
+            else:
+                return str(value)
+        except:
+            return "0"
+
+    def get_home_statistics():
+        """Busca estatísticas reais do banco de dados para a tela Home"""
+        try:
+            stats = {
+                'suppliers_count': 0,
+                'evaluations_count': 0,
+                'average_score': 0.0,
+                'users_count': 0
+            }
+            
+            if not db_manager:
+                return stats
+            
+            # 1. Contar fornecedores ativos
+            suppliers_query = "SELECT COUNT(*) as count FROM supplier_database_table WHERE supplier_status = 'Active'"
+            suppliers_result = db_manager.query_one(suppliers_query)
+            stats['suppliers_count'] = suppliers_result['count'] if suppliers_result else 0
+            
+            # 2. Contar avaliações (registros na tabela de scores)
+            evaluations_query = "SELECT COUNT(*) as count FROM supplier_score_records_table"
+            evaluations_result = db_manager.query_one(evaluations_query)
+            stats['evaluations_count'] = evaluations_result['count'] if evaluations_result else 0
+            
+            # 3. Calcular score médio geral
+            avg_score_query = "SELECT AVG(total_score) as avg_score FROM supplier_score_records_table WHERE total_score > 0"
+            avg_score_result = db_manager.query_one(avg_score_query)
+            if avg_score_result and avg_score_result['avg_score']:
+                stats['average_score'] = round(avg_score_result['avg_score'], 1)
+            
+            # 4. Contar usuários
+            users_query = "SELECT COUNT(*) as count FROM users_table"
+            users_result = db_manager.query_one(users_query)
+            stats['users_count'] = users_result['count'] if users_result else 0
+            
+            print(f"📊 Estatísticas do Home carregadas: Fornecedores={stats['suppliers_count']}, Avaliações={stats['evaluations_count']}, Score Médio={stats['average_score']}, Usuários={stats['users_count']}")
+            
+            return stats
+            
+        except Exception as e:
+            print(f"❌ Erro ao buscar estatísticas do Home: {e}")
+            # Retornar valores padrão em caso de erro
+            return {
+                'suppliers_count': 0,
+                'evaluations_count': 0,
+                'average_score': 0.0,
+                'users_count': 0
+            }
+
     def create_home_content():
         """Cria o conteúdo da aba Home com informações e design diferenciado"""
         
         # Cards de estatísticas rápidas
-        def create_stats_card(title, value, icon, color):
+        def create_stats_card(title, value, icon, color_type="primary"):
             theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+            current_theme = get_theme_name_from_page(page)
+            
+            # Usar sempre a cor primária do tema para todos os cards
+            primary_color = theme_colors.get('primary', '#0066CC')
+            icon_color = theme_colors.get('on_primary', '#FFFFFF')  # Cor do ícone - branca ou adequada ao tema
+            value_color = primary_color
+            bg_color = primary_color  # Fundo sólido com a cor primária
+            
             return ft.Container(
                 content=ft.Column([
+                    # Linha superior com ícone e valor
                     ft.Row([
-                        ft.Icon(icon, color=color, size=32),
-                        ft.Column([
-                            ft.Text(value, size=26, weight="bold", color=color),
-                            ft.Text(title, size=13, color=theme_colors.get('on_surface_variant', '#666666'), weight="w500")
-                        ], spacing=2, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.START)
-                    ], alignment=ft.MainAxisAlignment.START, spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-                ], spacing=0, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.START),
+                        ft.Container(
+                            content=ft.Icon(icon, color=icon_color, size=28),
+                            bgcolor=bg_color,
+                            border_radius=12,
+                            padding=ft.padding.all(8),
+                            width=44,
+                            height=44,
+                            alignment=ft.alignment.center
+                        ),
+                        ft.Container(
+                            content=ft.Text(
+                                value, 
+                                size=28, 
+                                weight="bold", 
+                                color=value_color,
+                                text_align=ft.TextAlign.RIGHT
+                            ),
+                            alignment=ft.alignment.center_right,
+                            expand=True
+                        )
+                    ], 
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN, 
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER
+                    ),
+                    ft.Container(height=8),  # Espaçamento
+                    # Linha inferior com título
+                    ft.Container(
+                        content=ft.Text(
+                            title, 
+                            size=14, 
+                            color=theme_colors.get('on_surface_variant', theme_colors.get('on_surface', '#666666')), 
+                            weight="w500",
+                            text_align=ft.TextAlign.LEFT
+                        ),
+                        alignment=ft.alignment.bottom_left,
+                        expand=True
+                    )
+                ], 
+                spacing=0, 
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+                ),
                 bgcolor=theme_colors.get('card_background'),
                 border_radius=16,
-                padding=ft.padding.all(24),
-                width=200,
-                height=90,
-                border=ft.border.all(1, theme_colors.get('outline_variant', '#E8E8E8')),
+                padding=ft.padding.all(20),
+                width=220,
+                height=110,
+                border=ft.border.all(1, theme_colors.get('outline_variant', theme_colors.get('outline', '#E8E8E8'))),
                 shadow=ft.BoxShadow(
                     spread_radius=0,
-                    blur_radius=8,
-                    color="#00000010"
+                    blur_radius=12,
+                    color="#00000015" if current_theme == "white" else "#00000025",
+                    offset=ft.Offset(0, 4)
                 )
             )
 
@@ -10553,21 +10753,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             padding=ft.padding.only(bottom=40)
         )
 
+        # Buscar estatísticas reais do banco de dados
+        stats = get_home_statistics()
+        
         # Seção de estatísticas
         stats_section = ft.Container(
             content=ft.Column([
                 ft.Text("📊 Estatísticas Rápidas", size=22, weight="bold", color=theme_colors.get('on_surface', '#333333')),
                 ft.Container(
                     content=ft.Row([
-                        create_stats_card("Fornecedores", "250+", ft.Icons.BUSINESS, "#1976D2"),
-                        create_stats_card("Avaliações", "1.2K", ft.Icons.STAR, "#F57C00"),
-                        create_stats_card("Score Médio", "8.5", ft.Icons.TRENDING_UP, "#388E3C"),
-                        create_stats_card("Usuários", "12", ft.Icons.PEOPLE, "#7B1FA2")
-                    ], wrap=True, spacing=24, alignment=ft.MainAxisAlignment.CENTER),
-                    padding=ft.padding.only(top=8)
+                        create_stats_card("Fornecedores", format_stats_value(stats['suppliers_count'], 'suppliers_count'), ft.Icons.BUSINESS),
+                        create_stats_card("Avaliações", format_stats_value(stats['evaluations_count'], 'evaluations_count'), ft.Icons.STAR),
+                        create_stats_card("Score Médio", format_stats_value(stats['average_score'], 'average_score'), ft.Icons.TRENDING_UP),
+                        create_stats_card("Usuários", format_stats_value(stats['users_count'], 'users_count'), ft.Icons.PEOPLE)
+                    ], 
+                    wrap=True, 
+                    spacing=20, 
+                    run_spacing=16,  # Espaçamento entre linhas
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER
+                    ),
+                    padding=ft.padding.only(top=16, bottom=8),
+                    alignment=ft.alignment.center
                 )
-            ], spacing=20, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=ft.padding.only(bottom=40)
+            ], spacing=24, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=ft.padding.only(bottom=48),
+            alignment=ft.alignment.center
         )
 
         # Seção de informações do sistema
@@ -11623,7 +11834,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
                 ], horizontal_alignment=ft.CrossAxisAlignment.START),
                 padding=ft.padding.symmetric(horizontal=20, vertical=15),
-                border=ft.border.all(1.5, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+                border=None,  # Remover borda inicial
                 border_radius=12,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
                 width=700,
@@ -12300,7 +12511,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 padding=ft.padding.symmetric(horizontal=16, vertical=16),
                 margin=ft.margin.only(bottom=6),
                 ref=risks_header_container,
-                border=ft.border.all(1.5, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+                border=None,  # Remover borda inicial
                 border_radius=12,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
                 expand=False,  # <--- NÃO DEIXAR EXPANDIR
