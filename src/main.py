@@ -11,6 +11,32 @@ app_settings = {'toast_duration': 3}
 
 db_manager = DBManager('db.db')
 
+def ensure_supplier_po_column():
+    """Verifica se a coluna supplier_po existe, se não, cria ela"""
+    try:
+        # Verificar se a coluna supplier_po existe
+        columns_info = db_manager.query("PRAGMA table_info(supplier_database_table)")
+        column_names = [col[1] for col in columns_info]
+        
+        if 'supplier_po' not in column_names:
+            print("🔧 Coluna supplier_po não encontrada, criando...")
+            db_manager.execute("ALTER TABLE supplier_database_table ADD COLUMN supplier_po TEXT")
+            print("✅ Coluna supplier_po criada com sucesso!")
+        else:
+            print("✅ Coluna supplier_po já existe")
+    except Exception as e:
+        # Se for erro de coluna duplicada, está tudo certo
+        if "duplicate column name" in str(e).lower():
+            print("✅ Coluna supplier_po já existe (verificação por erro)")
+        else:
+            print(f"❌ Erro ao verificar coluna supplier_po: {e}")
+            # Tentar criar a coluna apenas se não for erro de duplicata
+            try:
+                db_manager.execute("ALTER TABLE supplier_database_table ADD COLUMN supplier_po TEXT")
+                print("✅ Coluna supplier_po criada após erro inicial")
+            except Exception as e2:
+                if "duplicate column name" not in str(e2).lower():
+                    print(f"❌ Falha ao criar coluna supplier_po: {e2}")
 
 def show_snack_bar(message, is_error=False):
     """Mostra uma mensagem snack bar na interface"""
@@ -1085,7 +1111,14 @@ class AddSupplierDialog(ft.AlertDialog):
                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
             "supplier_number": ft.TextField(
-                label="Número", 
+                label="SSID", 
+                width=250,
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
+            ),
+            "supplier_po": ft.TextField(
+                label="PO", 
                 width=250,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
@@ -1176,7 +1209,7 @@ class AddSupplierDialog(ft.AlertDialog):
                 ft.Text("📋 Informações Básicas", size=14, weight=ft.FontWeight.BOLD),
                 ft.Divider(height=1),
                 ft.Row([self.fields["vendor_name"], self.fields["supplier_origin"]], spacing=15),
-                self.fields["supplier_category"],
+                ft.Row([self.fields["supplier_category"], self.fields["supplier_status"]], spacing=15),
             ], spacing=10),
             padding=ft.padding.all(15),
             bgcolor="surface_variant",
@@ -1187,7 +1220,8 @@ class AddSupplierDialog(ft.AlertDialog):
             content=ft.Column([
                 ft.Text("📞 Informações de Contato", size=14, weight=ft.FontWeight.BOLD),
                 ft.Divider(height=1),
-                ft.Row([self.fields["supplier_email"], self.fields["supplier_number"]], spacing=15),
+                ft.Row([self.fields["supplier_email"], self.fields["supplier_po"]], spacing=15),
+                ft.Row([self.fields["supplier_number"]], spacing=15),
             ], spacing=10),
             padding=ft.padding.all(15),
             bgcolor="surface_variant",
@@ -1198,7 +1232,7 @@ class AddSupplierDialog(ft.AlertDialog):
             content=ft.Column([
                 ft.Text("🏢 Configurações Organizacionais", size=14, weight=ft.FontWeight.BOLD),
                 ft.Divider(height=1),
-                ft.Row([self.fields["bu"], self.fields["supplier_status"]], spacing=15),
+                ft.Row([self.fields["bu"]], spacing=15),
             ], spacing=10),
             padding=ft.padding.all(15),
             bgcolor="surface_variant",
@@ -2158,6 +2192,31 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 except Exception:
                     pass
 
+            # Atualizar cores do switch de inativos
+            if inactive_switch_container and inactive_switch_container.current:
+                Colors = get_current_theme_colors()
+                try:
+                    inactive_switch_container.current.bgcolor = Colors.get('surface_variant')
+                    inactive_switch_container.current.border = ft.border.all(1, Colors.get('outline'))
+                except Exception:
+                    pass
+                    
+            if inactive_switch and inactive_switch.current:
+                Colors = get_current_theme_colors()
+                try:
+                    inactive_switch.current.active_color = Colors.get('primary')
+                    inactive_switch.current.inactive_track_color = Colors.get('on_surface_variant')
+                    inactive_switch.current.inactive_thumb_color = Colors.get('on_surface_variant')
+                except Exception:
+                    pass
+                    
+            if inactive_switch_icon and inactive_switch_icon.current:
+                Colors = get_current_theme_colors()
+                try:
+                    inactive_switch_icon.current.color = Colors.get('on_surface_variant')
+                except Exception:
+                    pass
+
             # Fazer update nos controles referenciados e forçar redraw da página
             if risks_header_container and risks_header_container.current:
                 try:
@@ -2173,6 +2232,23 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if risks_year_dropdown and risks_year_dropdown.current:
                 try:
                     risks_year_dropdown.current.update()
+                except Exception:
+                    pass
+                    
+            # Atualizar controles do switch de inativos
+            if inactive_switch_container and inactive_switch_container.current:
+                try:
+                    inactive_switch_container.current.update()
+                except Exception:
+                    pass
+            if inactive_switch and inactive_switch.current:
+                try:
+                    inactive_switch.current.update()
+                except Exception:
+                    pass
+            if inactive_switch_icon and inactive_switch_icon.current:
+                try:
+                    inactive_switch_icon.current.update()
                 except Exception:
                     pass
             try:
@@ -5042,6 +5118,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         db_conn = sqlite3.connect("db.db", check_same_thread=False)
         print("Conexão com banco de dados estabelecida com sucesso!")
         
+        # Verificar e criar coluna supplier_po se necessário
+        ensure_supplier_po_column()
+        
         # Criar tabela de favoritos se não existir
         db_manager.execute('''
             CREATE TABLE IF NOT EXISTS favorites_table (
@@ -5671,13 +5750,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     def create_result_widget(record):
         """Cria um card de resultado para um registro do banco.
-        Dicionário esperado com chaves: supplier_id, vendor_name, BU, supplier_status, supplier_number, supplier_name
+        Dicionário esperado com chaves: supplier_id, vendor_name, BU, supplier_status, supplier_number, supplier_name, supplier_po
         """
         supplier_id = record.get('supplier_id', '?')
         vendor_name = record.get('vendor_name', '?')
         bu = record.get('bu', '?')
         status = record.get('supplier_status', '?')
         supplier_number = record.get('supplier_number', '?')
+        supplier_po = record.get('supplier_po', '?')
         supplier_name = record.get('supplier_name', '?')
 
         print(f"🏗️ CRIANDO CARD: {vendor_name} (ID: {supplier_id}) com TIPO: {score_control_type}")
@@ -6146,7 +6226,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         info_col = ft.Column([
             ft.Text(vendor_name, weight="bold", size=16),
             ft.Text(f"BU: {bu}"),
-            ft.Text(f"PO: {supplier_number}"),
+            ft.Text(f"PO: {supplier_po}"),
+            ft.Text(f"SSID: {supplier_number}"),
             ft.Text(f"ID: {supplier_id}"),
             ft.Text(f"Status: {status}", color="green" if str(status).strip() == "Active" else "red" if str(status).strip() == "Inactive" else "gray"),
         ], spacing=4, alignment=ft.MainAxisAlignment.START, expand=1)  # Permite variação de tamanho
@@ -6308,6 +6389,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         bu = record.get('BU', '?')
         status = record.get('supplier_status', '?')
         supplier_number = record.get('supplier_number', '?')
+        supplier_po = record.get('supplier_po', '?')
         supplier_origin = record.get('supplier_name', 'N/A')
 
         print(f"Criando card para: {vendor_name} (ID: {supplier_id})")
@@ -6776,7 +6858,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     text_align=ft.TextAlign.LEFT
                 ),
                 ft.Row([ft.Icon(ft.Icons.BUSINESS, size=14, opacity=0.7), ft.Text(f"BU: {bu}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Row([ft.Icon(ft.Icons.RECEIPT_LONG, size=14, opacity=0.7), ft.Text(f"PO: {supplier_number}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([ft.Icon(ft.Icons.RECEIPT_LONG, size=14, opacity=0.7), ft.Text(f"PO: {supplier_po}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([ft.Icon(ft.Icons.NUMBERS, size=14, opacity=0.7), ft.Text(f"SSID: {supplier_number}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Row([ft.Icon(ft.Icons.FINGERPRINT, size=14, opacity=0.7), ft.Text(f"ID: {supplier_id}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Row([ft.Icon(origin_icon, size=14, opacity=0.7), ft.Text(f"Origem: {supplier_origin}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Row([
@@ -6960,7 +7043,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         try:
             base_query = """
-                SELECT supplier_id, vendor_name, bu, supplier_status, supplier_number, supplier_name
+                SELECT supplier_id, vendor_name, bu, supplier_status, supplier_number, supplier_name, supplier_po
                 FROM supplier_database_table 
             """
             where_clauses = []
@@ -7074,7 +7157,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         try:
             # Buscar suppliers favoritos do usuário
             favorites_query = """
-                SELECT s.supplier_id, s.vendor_name, s.bu, s.supplier_status, s.supplier_number, s.supplier_name
+                SELECT s.supplier_id, s.vendor_name, s.bu, s.supplier_status, s.supplier_number, s.supplier_name, s.supplier_po
                 FROM supplier_database_table s 
                 INNER JOIN favorites_table f ON s.supplier_id = f.supplier_id
                 WHERE f.user_wwid = ?
@@ -8541,6 +8624,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         supplier_name = record.get('supplier_name', '')
         supplier_email = record.get('supplier_email', '')
         supplier_number = record.get('supplier_number', '')
+        supplier_po = record.get('supplier_po', '')
         supplier_status = record.get('supplier_status', '')
         planner = record.get('planner', '')
         continuity = record.get('continuity', '')
@@ -8608,8 +8692,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
             ),
             "supplier_number": ft.TextField(
-                label="Number",
+                label="SSID",
                 value=supplier_number,  # Preencher com valor do banco
+                filled=False,
+                expand=True,
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+            ),
+            "supplier_po": ft.TextField(
+                label="PO",
+                value=supplier_po,  # Preencher com valor do banco
                 filled=False,
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
@@ -8708,7 +8801,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     update_query = """
                         UPDATE supplier_database_table 
                         SET vendor_name = ?, supplier_category = ?, bu = ?, supplier_name = ?,
-                            supplier_email = ?, supplier_number = ?, supplier_status = ?,
+                            supplier_email = ?, supplier_number = ?, supplier_po = ?, supplier_status = ?,
                             planner = ?, continuity = ?, sourcing = ?, sqie = ?
                         WHERE supplier_id = ?
                     """
@@ -8719,6 +8812,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         safe_strip(fields["supplier_origin"].value),
                         safe_strip(fields["supplier_email"].value),
                         safe_strip(fields["supplier_number"].value),
+                        safe_strip(fields["supplier_po"].value),
                         safe_strip(fields["supplier_status"].value),
                         safe_strip(fields["planner"].value),
                         safe_strip(fields["continuity"].value),
@@ -8732,9 +8826,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     insert_query = """
                         INSERT INTO supplier_database_table 
                         (vendor_name, supplier_category, bu, supplier_name,
-                         supplier_email, supplier_number, supplier_status, planner, 
+                         supplier_email, supplier_number, supplier_po, supplier_status, planner, 
                          continuity, sourcing, sqie)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
                     db_manager.execute(insert_query, (
                         safe_strip(fields["vendor_name"].value),
@@ -8743,6 +8837,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         safe_strip(fields["supplier_origin"].value),
                         safe_strip(fields["supplier_email"].value),
                         safe_strip(fields["supplier_number"].value),
+                        safe_strip(fields["supplier_po"].value),
                         safe_strip(fields["supplier_status"].value),
                         safe_strip(fields["planner"].value),
                         safe_strip(fields["continuity"].value),
@@ -8864,14 +8959,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ft.Text(f"ID: {supplier_id}", size=12, weight="bold", color="primary"),
                 ft.Row([fields["vendor_name"], fields["supplier_category"]], spacing=10),
                 ft.Row([fields["bu"], fields["supplier_origin"]], spacing=10),
-                ft.Row([fields["supplier_email"], fields["supplier_number"]], spacing=10),
+                ft.Row([fields["supplier_status"], fields["supplier_email"]], spacing=10),
             ], spacing=10, expand=True)
 
             right_column = ft.Column([
                 ft.Text("Configurações", size=12, weight="bold", color="primary"),
-                fields["supplier_status"],
                 ft.Row([fields["planner"], fields["continuity"]], spacing=10),
                 ft.Row([fields["sourcing"], fields["sqie"]], spacing=10),
+                ft.Row([fields["supplier_po"], fields["supplier_number"]], spacing=10),
             ], spacing=10, expand=True)
 
             # Aplicar layout responsivo
@@ -8972,9 +9067,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 insert_query = """
                     INSERT INTO supplier_database_table 
                     (vendor_name, supplier_category, bu, supplier_name,
-                     supplier_email, supplier_number, supplier_status, planner, 
+                     supplier_email, supplier_number, supplier_po, supplier_status, planner, 
                      continuity, sourcing, sqie)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
 
                 db_manager.execute(insert_query, (
@@ -8984,6 +9079,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     get_field_value(add_dialog.fields["supplier_origin"]),
                     get_field_value(add_dialog.fields["supplier_email"]),
                     get_field_value(add_dialog.fields["supplier_number"]),
+                    get_field_value(add_dialog.fields["supplier_po"]),
                     get_field_value(add_dialog.fields["supplier_status"]),
                     get_field_value(add_dialog.fields["planner"]),
                     get_field_value(add_dialog.fields["continuity"]),
@@ -11098,6 +11194,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     risks_cards_container = ft.Ref[ft.Container]()
     target_risks_text = ft.Ref[ft.Text]()
     include_inactive_switch = ft.Ref[ft.Switch]()
+    inactive_switch_container = ft.Ref[ft.Container]()
+    inactive_switch_icon = ft.Ref[ft.Icon]()
     # Ref para o container que agrupa ano e target (para atualização de tema)
     risks_header_container = ft.Ref[ft.Container]()
     # Ref para o container do display de Target (borda/背景 especial)
@@ -12383,7 +12481,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if search_year is not None:
                 all_scores_query = f"""
                     SELECT
-                        s.supplier_id, s.vendor_name, s.bu, sr.year, sr.month, sr.total_score
+                        s.supplier_id, s.vendor_name, s.bu, s.supplier_number, s.supplier_po, sr.year, sr.month, sr.total_score
                     FROM supplier_database_table s
                     JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
                     WHERE sr.year = ? AND sr.total_score IS NOT NULL 
@@ -12394,7 +12492,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             else:
                 all_scores_query = f"""
                     SELECT
-                        s.supplier_id, s.vendor_name, s.bu, sr.year, sr.month, sr.total_score
+                        s.supplier_id, s.vendor_name, s.bu, s.supplier_number, s.supplier_po, sr.year, sr.month, sr.total_score
                     FROM supplier_database_table s
                     JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
                     WHERE sr.total_score IS NOT NULL 
@@ -12410,6 +12508,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 sid = row['supplier_id']
                 vname = row['vendor_name']
                 bu = row['bu']
+                supplier_number = row['supplier_number']
+                supplier_po = row['supplier_po']
                 month = row['month']
                 score = row['total_score']
 
@@ -12417,7 +12517,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     month_int = int(month)
                     score_float = float(score)
                     supplier_data[sid]['scores'].append((month_int, score_float))
-                    supplier_data[sid]['info'] = {'vendor_name': vname, 'bu': bu}
+                    supplier_data[sid]['info'] = {'vendor_name': vname, 'bu': bu, 'supplier_number': supplier_number, 'supplier_po': supplier_po}
                 except (ValueError, TypeError) as e:
                     print(f"⚠️ Dados inválidos ignorados para supplier {sid}: month='{month}', score='{score}' - {e}")
                     continue
@@ -12433,6 +12533,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             for supplier_id, data in supplier_data.items():
                 vendor_name = data['info']['vendor_name']
                 bu = data['info']['bu']
+                supplier_number = data['info'].get('supplier_number', '')
+                supplier_po = data['info'].get('supplier_po', '')
                 monthly_scores = data['scores']
 
                 scores_list = [s[1] for s in monthly_scores]
@@ -12544,6 +12646,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ft.Column([
                                     ft.Text(vendor_name, weight=ft.FontWeight.BOLD, size=18, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                                     ft.Text(f"BU: {bu}" if bu else "BU: -", size=12, color="gray"),
+                                    ft.Text(f"PO: {supplier_po}" if supplier_po else "PO: -", size=12, color="gray"),
+                                    ft.Text(f"SSID: {supplier_number}" if supplier_number else "SSID: -", size=12, color="gray"),
                                     ft.Text(f"ID: {supplier_id}", size=11, color="gray")
                                 ], expand=True),
                                 ft.Column([
@@ -12701,16 +12805,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         ),
                         ft.Container(width=20),
                         ft.Container(
+                            ref=inactive_switch_container,
                             content=ft.Row(
                                 [
-                                    ft.Icon(ft.Icons.VISIBILITY, color=ft.Colors.GREY_600, size=20),
+                                    ft.Icon(ft.Icons.VISIBILITY, ref=inactive_switch_icon, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'), size=20),
                                     ft.Text("Incluir Inativos:", weight=ft.FontWeight.BOLD, size=14),
                                     ft.Switch(
                                         ref=include_inactive_switch,
                                         value=False,
                                         on_change=generate_risk_cards,
-                                        active_color=ft.Colors.ORANGE_700,
-                                        inactive_thumb_color=ft.Colors.GREY_400,
+                                        active_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                                        inactive_thumb_color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
                                     ),
                                 ],
                                 spacing=8,
@@ -12718,9 +12823,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 tight=True,
                             ),
                             padding=ft.padding.symmetric(horizontal=12, vertical=6),
-                            border=ft.border.all(1.5, ft.Colors.GREY_400),
+                            border=ft.border.all(1.5, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
                             border_radius=30,
-                            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.GREY_400),
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
                         ),
                     ],
                     alignment=ft.MainAxisAlignment.START,
