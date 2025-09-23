@@ -2869,13 +2869,29 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             page.update()
             
             # Carregar fornecedores
-            fornecedores = db_manager.query(
-                "SELECT supplier_id, vendor_name, supplier_status FROM supplier_database_table"
-            )
+            if include_inactive:
+                fornecedores = db_manager.query(
+                    "SELECT supplier_id, vendor_name, supplier_status FROM supplier_database_table"
+                )
+            else:
+                # Filtrar na própria query para melhor performance
+                fornecedores = db_manager.query(
+                    "SELECT supplier_id, vendor_name, supplier_status FROM supplier_database_table WHERE LOWER(supplier_status) = 'active'"
+                )
             
             if not fornecedores:
                 page.run_thread(lambda: show_toast("Nenhum fornecedor encontrado no banco de dados.", "orange"))
                 return
+
+            # Otimização: buscar todos os registros existentes de uma vez
+            progress_text_ref.current.value = "Verificando registros existentes..."
+            page.update()
+            
+            existing_records = db_manager.query(
+                "SELECT supplier_id FROM supplier_score_records_table WHERE month = ? AND year = ?",
+                (month, year)
+            )
+            existing_set = {str(record.get('supplier_id') if isinstance(record, dict) else record[0]) for record in existing_records}
             
             # Configurar barra de progresso
             progress_bar_ref.current.value = 0
@@ -2891,37 +2907,39 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ignorados_inativos = 0
             ignorados_existentes = 0
             
+            # Preparar batch de inserções
+            batch_inserts = []
+            
+            progress_text_ref.current.value = "Preparando dados para inserção..."
+            page.update()
+            
             for i, fornecedor in enumerate(fornecedores):
                 # Cancelamento cooperativo
                 if cancel_event.is_set():
-                    # Fechar diálogo e notificar
                     page.close(dialog)
                     page.run_thread(lambda: show_toast("Operação cancelada pelo usuário.", "orange"))
                     return
-                # Atualizar progresso
-                progress = (i + 1) / total_fornecedores
-                progress_bar_ref.current.value = progress
-                progress_text_ref.current.value = f"Processando fornecedor {i + 1} de {total_fornecedores}..."
-                page.update()
+                    
+                # Atualizar progresso de preparação
+                if i % 50 == 0:  # Atualizar a cada 50 fornecedores para não sobrecarregar UI
+                    progress = (i + 1) / total_fornecedores * 0.5  # 50% para preparação
+                    progress_bar_ref.current.value = progress
+                    progress_text_ref.current.value = f"Preparando dados... {i + 1} de {total_fornecedores}"
+                    page.update()
                 
-                # fornecedores é lista de dicts
                 supplier_id = fornecedor.get('supplier_id') if isinstance(fornecedor, dict) else fornecedor[0]
                 supplier_name = fornecedor.get('vendor_name') if isinstance(fornecedor, dict) else fornecedor[1]
                 raw_status = fornecedor.get('supplier_status') if isinstance(fornecedor, dict) else fornecedor[2]
                 status = raw_status.strip() if raw_status else ""
                 status_lower = status.lower()
                 
-                # Filtrar fornecedores inativos (status deve ser "Active")
+                # Filtrar fornecedores inativos (se não incluir inativos e já não foi filtrado na query)
                 if not include_inactive and status_lower != "active":
                     ignorados_inativos += 1
                     continue
                 
-                # Verificar se já existe registro para este período
-                existe = db_manager.query(
-                    "SELECT 1 FROM supplier_score_records_table WHERE supplier_id = ? AND month = ? AND year = ?",
-                    (supplier_id, month, year)
-                )
-                if existe:
+                # Verificar se já existe usando o set (muito mais rápido)
+                if str(supplier_id) in existing_set:
                     ignorados_existentes += 1
                     continue
                 
@@ -2934,7 +2952,29 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 )
                 total = round(total, 2)
                 
-                # Inserir registro
+                # Adicionar ao batch
+                batch_inserts.append((
+                    str(supplier_id),
+                    str(supplier_name),
+                    str(month),
+                    str(year),
+                    float(nota_fixa),  # quality_package
+                    float(nota_fixa),  # quality_pickup
+                    float(nota_fixa),  # nil
+                    float(nota_fixa),  # otif
+                    float(total),      # total_score
+                    "Maximum score auto-generated.",
+                    register_date.isoformat(),
+                    str(user),
+                    registered_by
+                ))
+            
+            # Executar inserções em batch se houver dados
+            if batch_inserts:
+                progress_text_ref.current.value = f"Inserindo {len(batch_inserts)} registros..."
+                progress_bar_ref.current.value = 0.5  # 50% para inserção
+                page.update()
+                
                 query_insert = """
                     INSERT INTO supplier_score_records_table (
                         supplier_id, supplier_name, month, year,
@@ -2942,29 +2982,40 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         total_score, comment, register_date, changed_by, registered_by
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
-                params = (
-                    str(supplier_id),                 # supplier_id como texto (mantém compatibilidade)
-                    str(supplier_name),               # supplier_name texto
-                    str(month),                       # mês como texto
-                    str(year),                        # ano como texto
-                    float(nota_fixa),                 # quality_package (numérico)
-                    float(nota_fixa),                 # quality_pickup (numérico)
-                    float(nota_fixa),                 # nil (numérico)
-                    float(nota_fixa),                 # otif (numérico)
-                    float(total),                     # total_score (numérico)
-                    "Maximum score auto-generated.", # comment
-                    register_date.isoformat(),        # register_date (ISO string)
-                    str(user),                        # changed_by
-                    registered_by                     # registered_by
-                )
                 
                 try:
-                    db_manager.execute(query_insert, params)
-                    adicionados += 1
-                    print(f"Registro adicionado para {supplier_name} - {month}/{year}")
-                except Exception as insert_error:
-                    print(f"Erro ao inserir {supplier_name}: {insert_error}")
-                    continue
+                    # Usar transação para inserção em batch
+                    with db_manager._get_connection() as conn:
+                        cursor = conn.cursor()
+                        
+                        # Inserir em lotes de 100 para evitar sobrecarga
+                        batch_size = 100
+                        total_batches = len(batch_inserts) // batch_size + (1 if len(batch_inserts) % batch_size > 0 else 0)
+                        
+                        for batch_num in range(total_batches):
+                            if cancel_event.is_set():
+                                page.close(dialog)
+                                page.run_thread(lambda: show_toast("Operação cancelada pelo usuário.", "orange"))
+                                return
+                                
+                            start_idx = batch_num * batch_size
+                            end_idx = min(start_idx + batch_size, len(batch_inserts))
+                            batch_data = batch_inserts[start_idx:end_idx]
+                            
+                            cursor.executemany(query_insert, batch_data)
+                            
+                            # Atualizar progresso
+                            progress = 0.5 + (batch_num + 1) / total_batches * 0.5  # 50% base + 50% para inserção
+                            progress_bar_ref.current.value = progress
+                            progress_text_ref.current.value = f"Inserindo lote {batch_num + 1} de {total_batches}..."
+                            page.update()
+                        
+                        conn.commit()
+                        adicionados = len(batch_inserts)
+                        
+                except Exception as batch_error:
+                    page.run_thread(lambda: show_toast(f"Erro durante inserção em batch: {str(batch_error)}", "red"))
+                    return
             
             # Exibir resultado no próprio diálogo (sem fechar)
             try:
@@ -2982,6 +3033,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 progress_text_ref.current.visible = True
                 progress_text_ref.current.value = summary_text
                 progress_text_ref.current.size = 14
+                
+                # Log único para geração de full score
+                try:
+                    with db_manager._get_connection() as conn:
+                        db_manager._log_db_change(conn, f"FULL SCORE GENERATED - {adicionados} records added", user, db_manager.current_user_wwid)
+                except Exception as log_error:
+                    print(f"Erro ao logar geração de full score: {log_error}")
                 
                 # reabilitar Gerar; alterar Cancelar para Fechar
                 if generate_button_ref and generate_button_ref.current:
@@ -6831,23 +6889,59 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         return card
 
+    # Variáveis globais para debounce
+    global search_timer, search_lock
+    search_timer = None
+    search_lock = False
+
+    # Sistema de debounce para evitar múltiplas consultas simultâneas
+    search_timer = None
+    search_lock = False
+    
+    def search_suppliers_debounced():
+        """Executa a busca com debounce para evitar conflitos SQLite."""
+        global search_timer, search_lock
+        
+        # Cancelar timer anterior se existir
+        if search_timer:
+            try:
+                search_timer.cancel()
+            except:
+                pass
+            search_timer = None
+        
+        # Criar novo timer para executar a busca após 300ms de inatividade
+        import threading
+        search_timer = threading.Timer(0.3, search_suppliers)
+        search_timer.start()
+
     def search_suppliers():
-        """Versão otimizada da busca de fornecedores."""
-        if not search_field_ref.current:
+        """Versão otimizada da busca de fornecedores com proteção contra queries simultâneas."""
+        global search_lock
+        
+        # Evitar múltiplas execuções simultâneas
+        if search_lock:
             return
-            
-        search_term = search_field_ref.current.value.strip()
-        bu_val = selected_bu.current.value if selected_bu.current else None
-        po_val = selected_po.current.value if selected_po and selected_po.current else None
+        search_lock = True
+        
+        try:
+            if not search_field_ref.current:
+                return
+                
+            search_term = search_field_ref.current.value.strip()
+            bu_val = selected_bu.current.value if selected_bu.current else None
+            po_val = selected_po.current.value if selected_po and selected_po.current else None
 
-        print(f"Pesquisando por: '{search_term}', BU: {bu_val}")
+            print(f"Pesquisando por: '{search_term}', BU: {bu_val}")
 
-        # Limpar resultados anteriores
-        if responsive_app_manager:
-            responsive_app_manager.clear_results()
-        else:
-            results_list.controls.clear()
-            results_list.update()
+            # Limpar resultados anteriores
+            if responsive_app_manager:
+                responsive_app_manager.clear_results()
+            else:
+                results_list.controls.clear()
+                results_list.update()
+        finally:
+            search_lock = False
 
         # Se não há termo de busca nem BU nem PO selecionados, mostrar favoritos
         if not search_term and (not bu_val or not bu_val.strip()) and (not po_val or not str(po_val).strip()):
@@ -6936,10 +7030,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             )
 
         # Atualizar a lista
-        results_list.update()
+        try:
+            results_list.update()
+        except Exception as update_error:
+            print(f"Erro ao atualizar lista: {update_error}")
         
         # Carregar scores após criar os cards
         if results_list.controls and selected_month.current and selected_year.current:
+            load_scores()
             load_scores()
 
     def show_favorites_only():
@@ -7079,7 +7177,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 hint_text="Pesquisar por nome ou ID do fornecedor...",
                 prefix_icon=ft.Icons.SEARCH,
                 border_radius=8,
-                on_change=lambda e: search_suppliers(),
+                on_change=lambda e: search_suppliers_debounced(),
                 ref=search_field_ref,
                 bgcolor=None,
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -7095,14 +7193,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                         ref=selected_po,
-                        on_change=lambda e: search_suppliers()
+                        on_change=lambda e: search_suppliers_debounced()
                     ),
                     ft.Dropdown(
                         label="BU",
                         expand=True,
                         border_radius=8,
                         ref=selected_bu,
-                        on_change=lambda e: search_suppliers(),
+                        on_change=lambda e: search_suppliers_debounced(),
                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
@@ -8476,7 +8574,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "supplier_category": ft.Dropdown(
                 label="Category",
                 value=supplier_category,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('categories_table','category'))],
+                options=[ft.dropdown.Option(v) for v in load_list_options('categories_table','category')],
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -8485,7 +8583,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "bu": ft.Dropdown(
                 label="BU (Business Unit)",
                 value=bu,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('business_unit_table','bu'))],
+                options=[ft.dropdown.Option(v) for v in load_list_options('business_unit_table','bu')],
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -8531,7 +8629,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "planner": ft.Dropdown(
                 label="Planner",
                 value=planner,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('planner_table','name'))],
+                options=[ft.dropdown.Option(v) for v in load_list_options('planner_table','name')],
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -8540,7 +8638,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "continuity": ft.Dropdown(
                 label="Continuity",
                 value=continuity,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('continuity_table','name'))],
+                options=[ft.dropdown.Option(v) for v in load_list_options('continuity_table','name')],
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -8549,7 +8647,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "sourcing": ft.Dropdown(
                 label="Sourcing",
                 value=sourcing,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('sourcing_table','name'))],
+                options=[ft.dropdown.Option(v) for v in load_list_options('sourcing_table','name')],
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -8558,7 +8656,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "sqie": ft.Dropdown(
                 label="SQIE",
                 value=sqie,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in ([""] + load_list_options('sqie_table','name'))],
+                options=[ft.dropdown.Option(v) for v in load_list_options('sqie_table','name')],
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -8946,17 +9044,53 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         page.open(add_dialog)
         print("➕ DEBUG: Dialog para adicionar supplier aberto!")
 
-    def search_suppliers_config():
-        """Busca suppliers para edição na aba de configurações."""
-        if not suppliers_search_field_ref.current:
-            return
-            
-        search_term = suppliers_search_field_ref.current.value.strip()
-        
-        print(f"Buscando suppliers para edição: '{search_term}'")
+    # Variáveis globais para debounce de suppliers
+    global suppliers_search_timer, suppliers_search_lock
+    suppliers_search_timer = None
+    suppliers_search_lock = False
 
-        suppliers_results_list.controls.clear()
-        page.update()
+    # Sistema de debounce para busca de suppliers na aba Suppliers
+    suppliers_search_timer = None
+    suppliers_search_lock = False
+    
+    def search_suppliers_config_debounced():
+        """Executa a busca de suppliers com debounce para evitar conflitos SQLite."""
+        global suppliers_search_timer, suppliers_search_lock
+        
+        # Cancelar timer anterior se existir
+        if suppliers_search_timer:
+            try:
+                suppliers_search_timer.cancel()
+            except:
+                pass
+            suppliers_search_timer = None
+        
+        # Criar novo timer para executar a busca após 300ms de inatividade
+        import threading
+        suppliers_search_timer = threading.Timer(0.3, search_suppliers_config)
+        suppliers_search_timer.start()
+
+    def search_suppliers_config():
+        """Busca suppliers para edição na aba de configurações com proteção contra queries simultâneas."""
+        global suppliers_search_lock
+        
+        # Evitar múltiplas execuções simultâneas
+        if suppliers_search_lock:
+            return
+        suppliers_search_lock = True
+        
+        try:
+            if not suppliers_search_field_ref.current:
+                return
+                
+            search_term = suppliers_search_field_ref.current.value.strip()
+            
+            print(f"Buscando suppliers para edição: '{search_term}'")
+
+            suppliers_results_list.controls.clear()
+            page.update()
+        finally:
+            suppliers_search_lock = False
 
         # Se o campo de pesquisa estiver vazio, limpar todos os cards e retornar
         if not search_term:
@@ -9021,7 +9155,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 )
             )
 
-        page.update()
+        try:
+            page.update()
+        except Exception as update_error:
+            print(f"Erro ao atualizar página: {update_error}")
 
     # Conteúdo da sub-aba Suppliers
     suppliers_content = ft.Container(
@@ -9035,7 +9172,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     prefix_icon=ft.Icons.SEARCH,
                     expand=True,
                     ref=suppliers_search_field_ref,
-                    on_change=lambda e: search_suppliers_config(),
+                    on_change=lambda e: search_suppliers_config_debounced(),
                     bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                     color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                     border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
@@ -10960,6 +11097,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     risks_year_dropdown = ft.Ref[ft.Dropdown]()
     risks_cards_container = ft.Ref[ft.Container]()
     target_risks_text = ft.Ref[ft.Text]()
+    include_inactive_switch = ft.Ref[ft.Switch]()
     # Ref para o container que agrupa ano e target (para atualização de tema)
     risks_header_container = ft.Ref[ft.Container]()
     # Ref para o container do display de Target (borda/背景 especial)
@@ -11262,22 +11400,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         x = p1[0] + (p2[0] - p1[0]) * (target_y - p1[1]) / (p2[1] - p1[1])
         return (x, target_y)
 
-    def create_colored_line_series(points, target_y):
+    def create_colored_line_series(points, target_y, tooltip_label="Total Score"):
         if not points:
             return []
         if len(points) < 2:
             point = points[0]
             color = ft.Colors.GREEN_600 if point[1] >= target_y else ft.Colors.RED_600
-            return [ft.LineChartData(data_points=[ft.LineChartDataPoint(point[0], point[1])], color=color, stroke_width=3)]
+            tooltip_text = f"{tooltip_label} - {point[1]}"
+            return [ft.LineChartData(data_points=[ft.LineChartDataPoint(point[0], point[1], tooltip=tooltip_text)], color=color, stroke_width=3)]
 
         above_segments, below_segments = [], []
         current_above, current_below = [], []
 
         p1 = points[0]
+        tooltip_p1 = f"{tooltip_label} - {p1[1]}"
         if p1[1] >= target_y:
-            current_above.append(ft.LineChartDataPoint(p1[0], p1[1]))
+            current_above.append(ft.LineChartDataPoint(p1[0], p1[1], tooltip=tooltip_p1))
         else:
-            current_below.append(ft.LineChartDataPoint(p1[0], p1[1]))
+            current_below.append(ft.LineChartDataPoint(p1[0], p1[1], tooltip=tooltip_p1))
 
         for i in range(len(points) - 1):
             p1, p2 = points[i], points[i+1]
@@ -11287,22 +11427,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 intersection = find_intersection(p1, p2, target_y)
                 if intersection:
                     ix, iy = intersection
-                    intersection_point = ft.LineChartDataPoint(ix, iy)
+                    tooltip_inter = f"{tooltip_label} - {iy}"
+                    intersection_point = ft.LineChartDataPoint(ix, iy, tooltip=tooltip_inter)
+                    tooltip_p2 = f"{tooltip_label} - {p2[1]}"
                     if p1_above:
                         current_above.append(intersection_point)
                         above_segments.append(current_above)
                         current_above = []
-                        current_below = [intersection_point, ft.LineChartDataPoint(p2[0], p2[1])]
+                        current_below = [intersection_point, ft.LineChartDataPoint(p2[0], p2[1], tooltip=tooltip_p2)]
                     else:
                         current_below.append(intersection_point)
                         below_segments.append(current_below)
                         current_below = []
-                        current_above = [intersection_point, ft.LineChartDataPoint(p2[0], p2[1])]
+                        current_above = [intersection_point, ft.LineChartDataPoint(p2[0], p2[1], tooltip=tooltip_p2)]
             else:
+                tooltip_p2 = f"{tooltip_label} - {p2[1]}"
                 if p2_above:
-                    current_above.append(ft.LineChartDataPoint(p2[0], p2[1]))
+                    current_above.append(ft.LineChartDataPoint(p2[0], p2[1], tooltip=tooltip_p2))
                 else:
-                    current_below.append(ft.LineChartDataPoint(p2[0], p2[1]))
+                    current_below.append(ft.LineChartDataPoint(p2[0], p2[1], tooltip=tooltip_p2))
 
         if current_above: above_segments.append(current_above)
         if current_below: below_segments.append(current_below)
@@ -11373,12 +11516,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
 
             data_series = []
+            series_names = []
             total_score_points = [(m - 1, d["total_score"]) for m, d in monthly_data.items() if d and d.get("total_score") is not None]
             if total_score_points:
-                data_series.extend(create_colored_line_series(total_score_points, target_value))
+                colored_series = create_colored_line_series(total_score_points, target_value)
+                data_series.extend(colored_series)
+                series_names.extend(["Total Score"] * len(colored_series))
 
             # Adicionar linha de target
-            target_line_points = [ft.LineChartDataPoint(i, target_value) for i in range(12)]
+            target_line_points = [ft.LineChartDataPoint(i, target_value, tooltip=f"Target - {target_value}") for i in range(12)]
             data_series.append(ft.LineChartData(
                 data_points=target_line_points,
                 color=ft.Colors.AMBER_700,
@@ -11386,20 +11532,30 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 curved=False,
                 dash_pattern=[5, 5]
             ))
+            series_names.append("Target")
 
             additional_scores_map = {
-                "otif": {"ref": timeline_otif_check, "color": ft.Colors.ORANGE_ACCENT_700},
-                "nil": {"ref": timeline_nil_check, "color": ft.Colors.PURPLE_ACCENT_700},
-                "pickup": {"ref": timeline_pickup_check, "color": ft.Colors.CYAN_700},
-                "package": {"ref": timeline_package_check, "color": ft.Colors.PINK_ACCENT_700},
+                "otif": {"ref": timeline_otif_check, "color": ft.Colors.ORANGE_ACCENT_700, "tooltip": "OTIF"},
+                "nil": {"ref": timeline_nil_check, "color": ft.Colors.PURPLE_ACCENT_700, "tooltip": "NIL"},
+                "pickup": {"ref": timeline_pickup_check, "color": ft.Colors.CYAN_700, "tooltip": "Quality Pickup"},
+                "package": {"ref": timeline_package_check, "color": ft.Colors.PINK_ACCENT_700, "tooltip": "Quality Package"},
             }
             for key, details in additional_scores_map.items():
                 if hasattr(details["ref"], 'current') and details["ref"].current and details["ref"].current.value:
-                    points = [ft.LineChartDataPoint(m - 1, d[key]) for m, d in monthly_data.items() if d and d.get(key) is not None]
+                    points = [ft.LineChartDataPoint(m - 1, d[key], tooltip=f"{details['tooltip']} - {d[key]}") for m, d in monthly_data.items() if d and d.get(key) is not None]
                     if points:
                         data_series.append(ft.LineChartData(data_points=points, color=details["color"], stroke_width=2, curved=False, dash_pattern=[3, 3]))
+                        series_names.append(details["tooltip"])
 
             months_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+            
+            def timeline_tooltip_provider(series_index, point_index, point):
+                if series_index < len(series_names):
+                    name = series_names[series_index]
+                    value = point.y
+                    return f"{name} - {value}"
+                return f"{point.y}"
+            
             line_chart = ft.LineChart(
                 data_series=data_series,
                 border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
@@ -11428,7 +11584,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 max_x=11, 
                 expand=True,
             )
-            timeline_chart_container.current.content = line_chart
+            # Criar legenda
+            legend_items = []
+            if total_score_points:
+                legend_items.append(ft.Row([ft.Container(width=20, height=10, bgcolor=ft.Colors.GREEN_600), ft.Text("Total Score", size=12)], spacing=5))
+            legend_items.append(ft.Row([ft.Container(width=20, height=10, bgcolor=ft.Colors.AMBER_700), ft.Text("Target", size=12)], spacing=5))
+            for key, details in additional_scores_map.items():
+                if hasattr(details["ref"], 'current') and details["ref"].current and details["ref"].current.value:
+                    legend_items.append(ft.Row([ft.Container(width=20, height=10, bgcolor=details["color"]), ft.Text(details["tooltip"], size=12)], spacing=5))
+            
+            chart_with_legend = ft.Column([
+                line_chart,
+                ft.Container(height=10),  # Espaço
+                ft.Row(legend_items, spacing=10, alignment=ft.MainAxisAlignment.START)
+            ], spacing=5)
+            
+            timeline_chart_container.current.content = chart_with_legend
             timeline_chart_container.current.update()
         except Exception as e:
             print(f"Erro ao atualizar gráfico: {e}")
@@ -11557,14 +11728,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ])
             else:
                 header_row = ft.Row([
-                    ft.Container(ft.Text("Mês/Ano", weight="bold", size=header_font_size), width=90),
-                    ft.Container(ft.Text("OTIF", weight="bold", size=header_font_size), width=70),
-                    ft.Container(ft.Text("NIL", weight="bold", size=header_font_size), width=70),
-                    ft.Container(ft.Text("Pickup", weight="bold", size=header_font_size), width=70),
-                    ft.Container(ft.Text("Package", weight="bold", size=header_font_size), width=80),
-                    ft.Container(ft.Text("Total", weight="bold", size=header_font_size), width=70),
+                    ft.Container(ft.Text("Mês/Ano", weight="bold", size=header_font_size), width=80),
+                    ft.Container(ft.Text("OTIF", weight="bold", size=header_font_size), width=60),
+                    ft.Container(ft.Text("NIL", weight="bold", size=header_font_size), width=60),
+                    ft.Container(ft.Text("Pickup", weight="bold", size=header_font_size), width=65),
+                    ft.Container(ft.Text("Package", weight="bold", size=header_font_size), width=70),
+                    ft.Container(ft.Text("Total", weight="bold", size=header_font_size), width=60),
                     ft.Container(ft.Text("Comentário", weight="bold", size=header_font_size), expand=True),
-                    ft.Container(ft.Text("Ações", weight="bold", size=header_font_size), width=140),
+                    ft.Container(ft.Text("Ações", weight="bold", size=header_font_size), width=120),
                 ])
             
             # Criar linhas de dados
@@ -11588,6 +11759,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     month_name = str(month)
                 
                 bgcolor = "lightgray" if i % 2 == 0 else None
+                
+                def on_hover_row(e, original_bgcolor):
+                    theme_name = get_theme_name_from_page(page)
+                    Colors = get_current_theme_colors(theme_name)
+                    hover_color = Colors.get('surface_variant', ft.Colors.BLUE_50)
+                    if e.data == 'true':
+                        e.control.bgcolor = hover_color
+                    else:
+                        e.control.bgcolor = original_bgcolor
+                    e.control.update()
                 
                 # Função para editar este registro específico
                 def create_edit_handler(record_row):
@@ -11671,27 +11852,30 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             ]),
                         ], spacing=2),
                         bgcolor=bgcolor,
-                        padding=5
+                        padding=5,
+                        on_hover=lambda e, bg=bgcolor: on_hover_row(e, bg)
                     )
                 else:
                     # Layout completo para desktop
                     data_row = ft.Container(
                         content=ft.Row([
-                                ft.Container(ft.Text(f"{month_name}/{year_data}", size=row_font_size), width=90),
-                                ft.Container(ft.Text(f"{float(otif):.1f}" if otif is not None else "--", size=row_font_size), width=70),
-                                ft.Container(ft.Text(f"{float(nil):.1f}" if nil is not None else "--", size=row_font_size), width=70),
-                                ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup is not None else "--", size=row_font_size), width=70),
-                                ft.Container(ft.Text(f"{float(package):.1f}" if package is not None else "--", size=row_font_size), width=80),
-                                ft.Container(ft.Text(f"{float(total):.1f}" if total is not None else "--", size=row_font_size, weight="bold"), width=70),
+                                ft.Container(ft.Text(f"{month_name}/{year_data}", size=row_font_size), width=80),
+                                ft.Container(ft.Text(f"{float(otif):.1f}" if otif is not None else "--", size=row_font_size), width=60),
+                                ft.Container(ft.Text(f"{float(nil):.1f}" if nil is not None else "--", size=row_font_size), width=60),
+                                ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup is not None else "--", size=row_font_size), width=65),
+                                ft.Container(ft.Text(f"{float(package):.1f}" if package is not None else "--", size=row_font_size), width=70),
+                                ft.Container(ft.Text(f"{float(total):.1f}" if total is not None else "--", size=row_font_size, weight="bold"), width=60),
                                 ft.Container(ft.Text(comment or "--", size=row_font_size - 1, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS), expand=True),
-                                ft.Container(ft.Row([edit_btn, delete_btn], spacing=5), width=140),
+                                ft.Container(ft.Row([edit_btn, delete_btn], spacing=5), width=120),
                         ]),
                         bgcolor=bgcolor,
-                        padding=5
+                        padding=5,
+                        on_hover=lambda e, bg=bgcolor: on_hover_row(e, bg)
                     )
                 data_rows.append(data_row)
             
-            table_content = ft.Container(
+            # Envolver em um container com scroll horizontal se necessário
+            table_inner = ft.Container(
                 content=ft.Column([
                     header_row,
                     ft.Divider(),
@@ -11700,6 +11884,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         expand=True
                     )
                 ], expand=True),
+                expand=True
+            )
+            
+            table_content = ft.Container(
+                content=ft.ListView([table_inner], expand=True, auto_scroll=False),
                 padding=ft.padding.all(20),
                 border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
                 border_radius=10,
@@ -12170,6 +12359,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Se search_year for None, vamos buscar todo o período disponível
 
             meta = target_slider.value if target_slider and target_slider.value is not None else 5.0
+            
+            # Verificar se deve incluir suppliers inativos
+            include_inactive = include_inactive_switch.current.value if include_inactive_switch and include_inactive_switch.current else False
 
             # 3. Limpar container e mostrar mensagem de carregamento
             risks_cards_container.current.content = ft.Column(
@@ -12182,26 +12374,31 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             cursor = db_conn.cursor()
 
+            # Construir filtro de status baseado no switch
+            status_filter = "" if include_inactive else "AND s.supplier_status = 'Active'"
+
             # Abordagem otimizada:
             # - se `search_year` estiver definido, buscar apenas aquele ano
             # - caso contrário, buscar todo o período disponível (todos os anos)
             if search_year is not None:
-                all_scores_query = """
+                all_scores_query = f"""
                     SELECT
                         s.supplier_id, s.vendor_name, s.bu, sr.year, sr.month, sr.total_score
                     FROM supplier_database_table s
                     JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
-                    WHERE sr.year = ? AND sr.total_score IS NOT NULL
+                    WHERE sr.year = ? AND sr.total_score IS NOT NULL 
+                    {status_filter}
                     ORDER BY s.supplier_id, sr.year, sr.month
                 """
                 all_scores = db_manager.query(all_scores_query, (search_year,))
             else:
-                all_scores_query = """
+                all_scores_query = f"""
                     SELECT
                         s.supplier_id, s.vendor_name, s.bu, sr.year, sr.month, sr.total_score
                     FROM supplier_database_table s
                     JOIN supplier_score_records_table sr ON s.supplier_id = sr.supplier_id
-                    WHERE sr.total_score IS NOT NULL
+                    WHERE sr.total_score IS NOT NULL 
+                    {status_filter}
                     ORDER BY s.supplier_id, sr.year, sr.month
                 """
                 all_scores = db_manager.query(all_scores_query)
@@ -12495,12 +12692,35 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ],
                                 spacing=5,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                tight=True,  # <--- IMPORTANTE
+                                tight=True,
                             ),
                             padding=ft.padding.symmetric(horizontal=12, vertical=6),
                             border=ft.border.all(1.5, ft.Colors.AMBER_700),
                             border_radius=30,
                             bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER_700),
+                        ),
+                        ft.Container(width=20),
+                        ft.Container(
+                            content=ft.Row(
+                                [
+                                    ft.Icon(ft.Icons.VISIBILITY, color=ft.Colors.GREY_600, size=20),
+                                    ft.Text("Incluir Inativos:", weight=ft.FontWeight.BOLD, size=14),
+                                    ft.Switch(
+                                        ref=include_inactive_switch,
+                                        value=False,
+                                        on_change=generate_risk_cards,
+                                        active_color=ft.Colors.ORANGE_700,
+                                        inactive_thumb_color=ft.Colors.GREY_400,
+                                    ),
+                                ],
+                                spacing=8,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                tight=True,
+                            ),
+                            padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                            border=ft.border.all(1.5, ft.Colors.GREY_400),
+                            border_radius=30,
+                            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.GREY_400),
                         ),
                     ],
                     alignment=ft.MainAxisAlignment.START,

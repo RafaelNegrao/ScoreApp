@@ -100,7 +100,7 @@ class DBManager:
                     self.logger.error(f"Database error: {e}")
                     raise
 
-    def execute(self, query, params=None):
+    def execute(self, query, params=None, skip_log=False):
         def _execute():
             # Avoid logging operations that touch the log table itself
             qtext = (query or '')
@@ -220,7 +220,8 @@ class DBManager:
                             payload = {}
                         event_text = f"{op_tag} " + json.dumps(payload, default=str)
                         try:
-                            self._log_db_change(conn, event=event_text)
+                            if not skip_log:
+                                self._log_db_change(conn, event=event_text)
                             conn.commit()
                         except Exception:
                             pass
@@ -230,7 +231,7 @@ class DBManager:
                 return lastrowid
         return self._execute_with_retry(_execute)
 
-    def execute_many(self, query, params_list):
+    def execute_many(self, query, params_list, skip_log=False):
         def _execute_many():
             qtext = (query or '')
             should_log = self.log_table_name.lower() not in qtext.lower()
@@ -247,7 +248,8 @@ class DBManager:
                         payload = {'rows': rowcount}
                         event_text = event_text + ' ' + json.dumps(payload)
                         try:
-                            self._log_db_change(conn, event=event_text)
+                            if not skip_log:
+                                self._log_db_change(conn, event=event_text)
                             conn.commit()
                         except Exception:
                             pass
