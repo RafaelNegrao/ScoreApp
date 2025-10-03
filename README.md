@@ -1,31 +1,51 @@
-# VPCR Tracker App
+# Supplier Score App
 
-Aplicativo desktop construído com [Flet](https://flet.dev/) para centralizar o acompanhamento de projetos VPCR, organizar cards por status, analisar indicadores e controlar importações de planilhas. O projeto utiliza SQLite como persistência local e oferece um fluxo completo para inspeção, filtros, dashboards e ajustes de tema.
+Aplicativo desktop cons## ▶️ Execução local
+
+```powershell
+cd "C:\Users\Rafael\Desktop\ScoreApp\src"## 🧰 Dicas e resolução de problemas
+
+- **Erro de autenticação**: Verifique se o banco de dados contém usuários cadastrados. O primeiro acesso requer criação manual de usuário admin.
+- **Banco bloqueado**: O modo WAL cria arquivos `db.db-wal`/`-shm`; feche o app antes de mover o banco.
+- **Gráficos não aparecem**: Certifique-se de que há dados cadastrados para o fornecedor e período selecionados.
+- **Exportação falha**: Verifique se o `openpyxl` está instalado (`pip install openpyxl`) e se há permissão de escrita na pasta de destino.
+- **Build falhou**: Verifique se a linha de comando do PyInstaller corresponde ao caminho atual e se o ícone `.ico` existe em `images/`.on main.py
+```
+
+A aplicação iniciará com a tela de login. Após autenticação, a janela principal abrirá com as seguintes abas:
+
+1. **Score** – Registro de scores mensais por fornecedor com todas as métricas (OTIF, NIL, Pickup, Package).
+2. **Timeline** – Visualização histórica com gráficos de performance, tabela detalhada e análise estatística de tendências.
+3. **Suppliers** – Gerenciamento completo do cadastro de fornecedores.
+4. **Users** – Administração de usuários, permissões e privilégios (apenas para administradores).
+5. **Settings** – Configurações de tema e preferências do usuário.Flet](https://flet.dev/) para gerenciamento e acompanhamento de scores de fornecedores. O projeto utiliza SQLite como persistência local e oferece um fluxo completo para registro, visualização, análise de tendências e exportação de dados com sistema de autenticação e controle de permissões.
 
 ## ✨ Principais funcionalidades
 
-- **Gerenciamento de cards VPCR**: visualização estilo Kanban com filtros dinâmicos por status, fornecedor, sourcing manager e outras dimensões.
-- **Importação de planilhas Excel**: valida cabeçalhos seguindo o modelo oficial, registra inconsistências e persiste os dados no banco `vpcr_database.db`.
-- **Indicadores interativos**: aba dedicada com métricas resumidas, percentuais e rankings (status, tipos, suppliers e responsáveis).
-- **Registro de TODOs e log**: acompanha atividades pendentes e histórico de alterações por item.
-- **Temas personalizáveis**: seleção entre temas Dark, Dracula e Light Dracula diretamente na aba Settings.
-- **Build nativo para Windows**: geração de executável `.exe` via PyInstaller com ícones personalizados.
+- **Sistema de autenticação**: Login com WWID e senha, com opção "Lembrar de mim" e controle de permissões por usuário.
+- **Gerenciamento de fornecedores**: Cadastro completo com nome, BU, número de fornecedor e PO.
+- **Registro de scores mensais**: Entrada de métricas OTIF, NIL, Quality Pickup e Quality Package com cálculo automático do Total Score.
+- **Timeline de performance**: Visualização histórica com gráficos interativos, tabela detalhada e análise estatística de tendências.
+- **Análise de regressão linear**: Cálculo automático de tendências, equações da reta e coeficiente R² para todas as métricas.
+- **Exportação de dados**: Geração de planilhas Excel com todos os dados dos fornecedores e seus scores.
+- **Temas personalizáveis**: Múltiplos temas (White, Dark, Dracula, etc.) com persistência por usuário.
+- **Build nativo para Windows**: Geração de executável `.exe` via PyInstaller com ícones personalizados.
 
 ## 🛠 Arquitetura em alto nível
 
 | Camada | Tecnologia | Observações |
 | --- | --- | --- |
-| Interface | Flet (Flutter + Python) | Layout responsivo, `ft.Tabs`, `ft.ResponsiveRow`, animações de ícones. |
-| Regras de negócio | `main.py` | Contém `VPCRApp`, gerenciadores de importação, temas e banco. |
-| Persistência | SQLite (`vpcr_database.db`) | Tabelas VPCR, TODOs e log; modo WAL ativo para concorrência. |
-| Importação | `openpyxl` (opcional) | Lê planilhas `.xlsx/.xlsm`, valida cabeçalhos e colunas obrigatórias. |
+| Interface | Flet (Flutter + Python) | Layout responsivo, `ft.Tabs`, `ft.Card`, `ft.DataTable`, gráficos com `ft.LineChart`. |
+| Regras de negócio | `main.py`, `db_manager.py` | Lógica de autenticação, cálculos de médias, regressão linear e gerenciamento de temas. |
+| Persistência | SQLite (`db.db`) | Tabelas: users, suppliers, scores, themes; modo WAL ativo para concorrência. |
+| Exportação | `openpyxl` | Exporta dados para planilhas Excel formatadas. |
 
 ## ✅ Pré-requisitos
 
 - Python 3.11 ou superior (recomendado 3.13, já usado para desenvolvimento).
 - `pip` atualizado.
 - Sistema Windows (build do executável utiliza PyInstaller com ícones `.ico`).
-- Arquivo `vpcr_database.db` presente na raiz do projeto.
+- Arquivo `db.db` presente na pasta `src/` do projeto.
 
 ## 🚀 Configuração do ambiente
 
@@ -41,7 +61,7 @@ pip install flet openpyxl
 pip install pyinstaller
 ```
 
-> 💡 `openpyxl` é opcional, mas necessário para importar planilhas. Caso o pacote não esteja instalado, a aplicação exibirá uma mensagem orientando o usuário.
+> 💡 `openpyxl` é necessário para a funcionalidade de exportação de dados para Excel.
 
 ## ▶️ Execução local
 
@@ -56,44 +76,59 @@ A janela principal abrirá com três abas:
 2. **Indicadores** – Resumo com métricas totais, distribuições percentuais e rankings “Top 5”.
 3. **Settings** – Seleção de tema, fonte e atalhos para importação.
 
-## 📥 Importação de dados Excel
+## 📥 Exportação de dados
 
-1. Abra a aba **VPCR** e clique em **Importar Arquivos VPCR**.
-2. Selecione arquivos `.xlsx` ou `.xlsm` com o cabeçalho oficial (célula A1 = `VPCR Project ID`, coluna T = `Last Updated Date`).
-3. O gerenciador valida o layout, acusa divergências e grava os registros no banco.
-4. Após a importação, use **Recarregar** para atualizar os cards e os indicadores.
+1. Na aba **Suppliers**, clique no botão **Export Data**.
+2. Escolha o local para salvar o arquivo Excel.
+3. O sistema exportará todos os fornecedores cadastrados e seus respectivos scores históricos.
+4. O arquivo gerado inclui formatação automática com cabeçalhos destacados.
 
-## 📊 Indicadores disponibilizados
+## 📊 Métricas e análises disponíveis
 
-- **Resumo Geral**: total de VPCRs, número de status distintos, fornecedores ativos e sourcing managers.
-- **Distribuições**: barras com percentuais por status e tipo de VPCR.
-- **Rankings**: Top 5 Suppliers e Top 5 Sourcing Managers.
-- **Continuity**: panorama das classificações de continuidade logo abaixo da distribuição por tipo.
+### Aba Score
+- Entrada de dados mensais com validação automática
+- Cálculo automático do Total Score (média das 4 métricas)
+- Histórico completo de alterações com timestamp e usuário responsável
 
-Todos os cards utilizam `ft.ProgressBar`, ícones temáticos e layout responsivo (`ft.ResponsiveRow`) para adaptação em diferentes resoluções.
+### Aba Timeline
+- **Cards de métricas**: Overall Average, 12M Average, Year Average, Q1-Q4 com indicadores de tendência
+- **Gráfico de performance**: Visualização interativa com múltiplas séries (Total Score, OTIF, NIL, Pickup, Package)
+- **Tabela detalhada**: Dados mensais com filtros por ano, com scroll horizontal e header fixo
+- **Analytics**: Análise de regressão linear para todas as métricas com:
+  - Equação da reta (y = mx + b)
+  - Coeficiente de determinação (R²)
+  - Classificação de tendência (Crescimento ↗, Queda ↘, Estável →)
+  - Memorial de cálculo detalhado com valores observados vs preditos
 
-## 🗂 Estrutura simplificada
+Todos os componentes utilizam layout responsivo e se adaptam a diferentes resoluções de tela.
+
+## 🗂 Estrutura do projeto
 
 ```text
-VPCR App/
-├── main.py                 # Lógica principal do app Flet
-├── vpcr_database.db        # Banco SQLite com dados VPCR
-├── comandos.txt            # Comando PyInstaller de referência
-├── cummins.ico / process.ico
+ScoreApp/
+├── src/
+│   ├── main.py             # Lógica principal do app Flet
+│   ├── db_manager.py       # Gerenciador do banco de dados SQLite
+│   ├── db.db               # Banco SQLite com dados de usuários, fornecedores e scores
+│   └── storage/            # Pasta para arquivos temporários e exportações
+├── images/
+│   └── cummins.ico         # Ícone da aplicação
 ├── build/                  # Artefatos gerados pelo PyInstaller
-├── VPCR Tracker app.exe    # Executável gerado (quando disponível)
+├── Supplier Score APP.exe  # Executável gerado (quando disponível)
+├── comandos.txt            # Comando PyInstaller de referência
+├── LICENSE                 # Licença do projeto
 └── README.md               # Este arquivo
 ```
 
 ## 📦 Gerando o executável para Windows
 
-Com o ambiente virtual ativado e o pacote `pyinstaller` instalado, execute:
+Com o ambiente virtual ativado e o pacote `pyinstaller` instalado, execute na raiz do projeto:
 
 ```powershell
-pyinstaller --onefile --windowed --icon "process.ico" --add-data "cummins.ico;." --name "VPCR Tracker app" main.py
+pyinstaller --onefile --windowed --icon "images\cummins.ico" --name "Supplier Score APP" src\main.py
 ```
 
-O executável será gerado em `dist/VPCR Tracker app.exe`. Ícones adicionais são empacotados via `--add-data`.
+O executável será gerado em `dist/Supplier Score APP.exe`. Certifique-se de que o banco de dados `db.db` esteja presente na pasta `src/` antes de distribuir.
 
 ## 🧰 Dicas e resolução de problemas
 
