@@ -5,6 +5,7 @@ import string
 from db_manager import DBManager
 import threading
 import getpass
+from concurrent.futures import ThreadPoolExecutor
 
 # Configuração mínima de toasts (usada por redirect de `print` e por notificações)
 app_settings = {'toast_duration': 3}
@@ -38,17 +39,41 @@ def ensure_supplier_po_column():
                 if "duplicate column name" not in str(e2).lower():
                     print(f"❌ Falha ao criar coluna supplier_po: {e2}")
 
-def show_snack_bar(message, is_error=False):
-    """Mostra uma mensagem snack bar na interface"""
+def show_snack_bar(message, is_error=False, page=None):
+    """
+    Mostra uma mensagem snack bar na interface de forma thread-safe
+    
+    Args:
+        message: Mensagem a ser exibida
+        is_error: True para erro (vermelho), False para sucesso (verde)
+        page: Instância do page (opcional, usa page_ref global se não fornecido)
+    """
     global page_ref
+    
+    # Tentar obter referência do page
+    target_page = page if page is not None else page_ref
+    
     try:
-        if 'page_ref' in globals() and page_ref:
+        if target_page is not None and hasattr(target_page, 'open'):
             color = ft.Colors.RED if is_error else ft.Colors.GREEN
-            page_ref.show_snack_bar(ft.SnackBar(content=ft.Text(message), bgcolor=color))
-            page_ref.update()  # Força atualização imediata
+            
+            # Criar SnackBar conforme documentação do Flet
+            snack_bar = ft.SnackBar(
+                ft.Text(message, color=ft.Colors.WHITE),
+                bgcolor=color,
+            )
+            
+            # Usar page.open() conforme exemplo oficial do Flet
+            try:
+                target_page.open(snack_bar)
+            except Exception as open_error:
+                # Se open() falhar, tenta adicionar ao overlay
+                print(f"Aviso: page.open() falhou: {open_error}")
+                print(f"Notification: {message}")
         else:
             print(f"Notification: {message}")
-    except:
+    except Exception as e:
+        print(f"Erro em show_snack_bar: {e}")
         print(f"Notification: {message}")
 
 
@@ -90,11 +115,7 @@ class ResponsiveAppManager:
         """Limpa todos os resultados e reseta o estado"""
         if self.results_container:
             self.results_container.controls.clear()
-            # Forçar a atualização da UI é crucial para garantir que a limpeza seja
-            # refletida visualmente antes que novos cards sejam adicionados, especialmente
-            # em máquinas mais lentas. Uma atualização de página inteira é mais robusta.
-            self.results_container.update()
-            self.page.update()
+            safe_update_control(self.results_container, self.page)
     
     def check_initial_window_state(self):
         """Verifica o estado inicial da janela e aplica o layout apropriado"""
@@ -148,6 +169,9 @@ class ResponsiveAppManager:
         # Atualizar layout da aba Users se necessário
         self.update_users_layout(window_width)
 
+        # Atualizar layout da timeline se necessário
+        self.update_timeline_layout(window_width)
+
         # Gerenciar estado do menu lateral baseado na largura da tela e layout
         if self.menu_is_expanded_ref and self.update_menu_func:
             # Se a tela for pequena, fechar o menu se estiver aberto
@@ -174,9 +198,7 @@ class ResponsiveAppManager:
                 self._apply_single_column_layout()
                 
             # Atualizar a interface
-            if hasattr(self.results_container, 'update'):
-                self.results_container.update()
-            self.page.update()
+            safe_update_control(self.results_container, self.page)
             
         except Exception as e:
             print(f"❌ Erro ao aplicar layout responsivo: {e}")
@@ -261,6 +283,16 @@ class ResponsiveAppManager:
         self.results_container.controls.clear()
         for card in all_cards:
             self.results_container.controls.append(card)
+
+    def render_cards(self, cards):
+        """Substitui os cards exibidos reaproveitando instâncias existentes."""
+        if not self.results_container:
+            return
+
+        self.results_container.controls.clear()
+        self.results_container.controls.extend(cards)
+        # Garantir disposição correta com base no layout atual
+        self.apply_responsive_layout()
     
     def add_card_to_layout(self, card):
         """Adiciona um novo card respeitando o layout atual"""
@@ -508,6 +540,77 @@ class ResponsiveAppManager:
             import traceback
             traceback.print_exc()
     
+    def update_timeline_layout(self, window_width):
+        """Atualiza o layout da timeline baseado na largura da janela"""
+        try:
+            # Verificar se a variável da timeline existe no escopo global
+            if 'timeline_content_container' not in globals():
+                return
+            
+            timeline_content_container = globals().get('timeline_content_container')
+            timeline_chart_container = globals().get('timeline_chart_container')
+            timeline_table_container = globals().get('timeline_table_container')
+            
+            if not timeline_content_container or not timeline_content_container.current:
+                return
+            
+            should_use_side_by_side = window_width >= 1200  # Threshold de 1200px
+            
+            # Pegar o conteúdo existente dos containers (se houver)
+            chart_content = None
+            table_content = None
+            
+            if timeline_chart_container and timeline_chart_container.current:
+                chart_content = timeline_chart_container.current.content
+            
+            if timeline_table_container and timeline_table_container.current:
+                table_content = timeline_table_container.current.content
+                
+            # Criar containers com altura fixa de 500px
+            chart_container = ft.Container(
+                ref=timeline_chart_container,
+                content=chart_content if chart_content else ft.Container(
+                    content=ft.Text("Selecione um fornecedor para visualizar o gráfico", 
+                                   size=16, text_align=ft.TextAlign.CENTER),
+                    alignment=ft.alignment.center,
+                ),
+                height=500,
+                expand=True
+            )
+            
+            # Tabela sempre com scroll interno
+            table_container = ft.Container(
+                ref=timeline_table_container,
+                content=table_content if table_content else ft.Column([
+                    ft.Text("Selecione um fornecedor para visualizar a tabela", 
+                           size=16, text_align=ft.TextAlign.CENTER)
+                ], scroll=ft.ScrollMode.AUTO),
+                height=500,
+                expand=True
+            )
+                
+            if should_use_side_by_side:
+                # Layout lado a lado (Row) - largura >= 1200px
+                timeline_content_container.current.content = ft.Row([
+                    chart_container,
+                    table_container
+                ], spacing=20)
+                print("📱 Timeline: Layout lado a lado aplicado (Row)")
+            else:
+                # Layout empilhado (Column) - largura < 1200px
+                timeline_content_container.current.content = ft.Column([
+                    chart_container,
+                    table_container
+                ], spacing=20)
+                print("📱 Timeline: Layout empilhado aplicado (Column - tabela abaixo do gráfico)")
+            
+            timeline_content_container.current.update()
+            
+        except Exception as e:
+            print(f"❌ Erro ao atualizar layout da timeline: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def _find_users_content_recursive(self, control, depth=0):
         """Busca recursiva para encontrar users_content"""
         if depth > 10:  # Evitar recursão infinita
@@ -550,24 +653,96 @@ score_control_type = "slider"  # Tipo de controle: "slider", "spinbox" ou "cuper
 def safe_update_control(control, page=None):
     """
     Atualiza um controle de forma segura, lidando com casos onde o controle
-    não está devidamente vinculado à página
+    não está devidamente vinculado à página ou onde há problemas de concorrência
     """
     try:
+        if control is None:
+            return
+        
+        # Tentar atualizar o controle primeiro
         if hasattr(control, 'page') and control.page is not None:
-            control.update()
-        elif page is not None:
-            # Se o controle não está vinculado à página, atualizar toda a página
-            page.update()
-        else:
-            # Tentar atualizar o controle mesmo assim
-            control.update()
-    except Exception as update_error:
-        print(f"Aviso: Erro ao atualizar controle, tentando page.update(): {update_error}")
+            try:
+                control.update()
+                return
+            except Exception as control_error:
+                print(f"Aviso: Erro ao atualizar controle diretamente: {control_error}")
+        
+        # Se o controle não funcionou e temos uma página, tentar atualizar a página com lock
         if page is not None:
             try:
-                page.update()
+                # Usar run_task para atualização thread-safe
+                if hasattr(page, 'run_task'):
+                    page.run_task(lambda: _safe_page_update(page))
+                else:
+                    _safe_page_update(page)
             except Exception as page_error:
-                print(f"Erro ao atualizar página: {page_error}")
+                print(f"Aviso: Erro ao atualizar página: {page_error}")
+    except Exception as e:
+        print(f"Erro crítico em safe_update_control: {e}")
+
+def _safe_page_update(page):
+    """Atualização interna da página com verificações extras"""
+    try:
+        if page is not None and hasattr(page, 'update'):
+            page.update()  # Chamada real do update
+    except Exception as e:
+        print(f"Erro ao executar page.update: {e}")
+
+def safe_page_update(page):
+    """
+    Wrapper seguro para safe_page_update(page) que previne crashes por:
+    - Atualizações concorrentes
+    - Referências inválidas
+    - Estado inconsistente da página
+    
+    Use esta função SEMPRE ao invés de safe_page_update(page) diretamente
+    """
+    if page is None:
+        return
+    
+    try:
+        # Verificar se a página está em estado válido
+        if not hasattr(page, 'update'):
+            print("Aviso: Página não possui método update")
+            return
+        
+        # Tentar atualizar de forma thread-safe
+        if hasattr(page, 'run_task'):
+            try:
+                page.run_task(lambda: _safe_page_update(page))
+            except Exception as task_error:
+                print(f"Aviso: run_task falhou, tentando update direto: {task_error}")
+                _safe_page_update(page)
+        else:
+            _safe_page_update(page)
+            
+    except Exception as e:
+        print(f"Erro em safe_page_update: {e}")
+
+def safe_callback(func):
+    """
+    Decorator para proteger callbacks contra exceções que causam crashes
+    Use este decorator em callbacks de botões, eventos, etc.
+    
+    Exemplo:
+        @safe_callback
+        def on_button_click(e):
+            # código do callback
+    """
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"⚠️ Erro capturado no callback {func.__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Tentar mostrar mensagem ao usuário se possível
+            try:
+                if args and hasattr(args[0], 'page'):
+                    show_snack_bar(f"Erro: {str(e)[:100]}", is_error=True)
+            except:
+                pass
+    return wrapper
 
 # ===== DEFINIÇÕES SIMPLES DE TEMAS =====
 
@@ -814,13 +989,19 @@ def login_screen(page: ft.Page):
         password = password_field.value.strip()
 
         if not wwid or not password:
-            error_text.value = "Por favor, preencha todos os campos"
+            error_text.value = ""
+            snackbar = ft.SnackBar(
+                content=ft.Text("⚠️ Por favor, preencha todos os campos", color=ft.Colors.WHITE),
+                bgcolor=ft.Colors.ORANGE_700,
+            )
+            page.overlay.append(snackbar)
+            snackbar.open = True
             page.update()
             return
 
         # Apenas desabilita o botão para evitar múltiplos cliques
         login_button.disabled = True
-        page.update()
+        safe_page_update(page)
 
         # Autenticar usuário
         user_data = authenticate_user(wwid, password)
@@ -863,7 +1044,7 @@ def login_screen(page: ft.Page):
             page.window.min_height = 900
             page.window.resizable = True
             page.window.maximized = True
-            page.update() # Aplica a maximização
+            safe_page_update(page) # Aplica a maximização
 
             # Inicializar aplicação principal na mesma página
             initialize_main_app(page, user_theme)
@@ -871,8 +1052,14 @@ def login_screen(page: ft.Page):
         else:
             # Reabilita o botão e mostra o erro
             login_button.disabled = False
-            error_text.value = "WWID ou senha incorretos"
+            error_text.value = ""
             password_field.value = ""
+            snackbar = ft.SnackBar(
+                content=ft.Text("❌ WWID ou senha incorretos", color=ft.Colors.WHITE),
+                bgcolor=ft.Colors.RED_700,
+            )
+            page.overlay.append(snackbar)
+            snackbar.open = True
             page.update()
 
     login_button.on_click = on_login_click
@@ -1066,7 +1253,7 @@ class AddSupplierDialog(ft.AlertDialog):
             else:
                 e.control.color = get_current_theme_colors(self.page).get('on_surface') if hasattr(self, 'page') else "black"
             if e.page:
-                e.page.update()
+                e.safe_page_update(page)
             elif hasattr(e.control, 'update'):
                 e.control.update()
         
@@ -1614,6 +1801,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # Carregar configurações do app
     app_settings = load_app_settings()
+
+    # Executor único para tarefas pesadas fora da thread da UI
+    background_executor = ThreadPoolExecutor(max_workers=4)
+
+    def run_async(task, *args, on_success=None, on_error=None, on_finally=None):
+        """Executa `task` em thread separada e trata callbacks na UI."""
+
+        def worker():
+            try:
+                result = task(*args)
+                if on_success:
+                    page.call_from_thread(lambda: on_success(result))
+            except Exception as exc:  # noqa: BLE001
+                print(f"⚠️ Erro em tarefa assíncrona: {exc}")
+                if on_error:
+                    page.call_from_thread(lambda: on_error(exc))
+            finally:
+                if on_finally:
+                    page.call_from_thread(on_finally)
+
+        background_executor.submit(worker)
     
     def create_email_development_tabs():
         """Cria as abas de email com mensagem de desenvolvimento"""
@@ -1950,7 +2158,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 # Atualizar página diretamente
                 try:
-                    page.update()
+                    safe_page_update(page)
                 except Exception as e:
                     print(f"Erro ao atualizar página: {e}")
                 
@@ -2045,7 +2253,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         # Save current theme
         page.data["theme_name"] = theme_mode
-        page.update()
+        safe_page_update(page)
 
         # Update all UI controls (always call, whether init or not)
         try:
@@ -2194,24 +2402,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             # Atualizar cores do switch de inativos
             if inactive_switch_container and inactive_switch_container.current:
-                Colors = get_current_theme_colors()
                 try:
                     inactive_switch_container.current.bgcolor = Colors.get('surface_variant')
                     inactive_switch_container.current.border = ft.border.all(1, Colors.get('outline'))
                 except Exception:
                     pass
                     
-            if inactive_switch and inactive_switch.current:
-                Colors = get_current_theme_colors()
+            if include_inactive_switch and include_inactive_switch.current:
                 try:
-                    inactive_switch.current.active_color = Colors.get('primary')
-                    inactive_switch.current.inactive_track_color = Colors.get('on_surface_variant')
-                    inactive_switch.current.inactive_thumb_color = Colors.get('on_surface_variant')
+                    include_inactive_switch.current.active_color = Colors.get('primary')
+                    include_inactive_switch.current.inactive_track_color = Colors.get('on_surface_variant')
+                    include_inactive_switch.current.inactive_thumb_color = Colors.get('on_surface_variant')
                 except Exception:
                     pass
                     
             if inactive_switch_icon and inactive_switch_icon.current:
-                Colors = get_current_theme_colors()
                 try:
                     inactive_switch_icon.current.color = Colors.get('on_surface_variant')
                 except Exception:
@@ -2241,9 +2446,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     inactive_switch_container.current.update()
                 except Exception:
                     pass
-            if inactive_switch and inactive_switch.current:
+            if include_inactive_switch and include_inactive_switch.current:
                 try:
-                    inactive_switch.current.update()
+                    include_inactive_switch.current.update()
                 except Exception:
                     pass
             if inactive_switch_icon and inactive_switch_icon.current:
@@ -2252,7 +2457,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 except Exception:
                     pass
             try:
-                page.update()
+                safe_page_update(page)
             except Exception:
                 pass
 
@@ -2284,7 +2489,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Traceback: {traceback.format_exc()}")
             # Fallback: tentar forçar update da página inteira
             try:
-                page.update()
+                safe_page_update(page)
             except:
                 pass
 
@@ -2336,7 +2541,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         apply_theme("white", is_initialization=True)  # fallback para tema padrão
     # ===== FIM DO CARREGAMENTO INICIAL DO TEMA =====
 
-    def show_toast(message, color="green", restore_control=None):
+    # DEPRECATED: Função substituída por show_snack_bar()
+    # Mantida temporariamente para referência
+    def _deprecated_show_toast(message, color="green", restore_control=None):
         """Mostra um show_toast com duração configurável e gerenciamento melhorado.
 
         If `restore_control` is provided, the control will be re-enabled and its
@@ -2406,7 +2613,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     except (ValueError, AttributeError):
                         pass
                         
-                page.update()
+                safe_page_update(page)
                 
             except Exception as ex:
                 print(f"Aviso: erro na limpeza de toasts: {ex}")
@@ -2440,7 +2647,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             page.overlay.append(toast_container)
             _active_toast = toast_container
-            page.update()
+            safe_page_update(page)
         except Exception as ex:
             print(f"Erro ao mostrar show_toast: {ex}")
             return
@@ -2470,7 +2677,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         # Verificação dupla para evitar condições de corrida
                         if toast_ref in page.overlay:
                             page.overlay.remove(toast_ref)
-                            page.update()
+                            safe_page_update(page)
                         else:
                             # NOVO: Fallback - procurar por toasts similares órfãos
                             similar_toasts = [
@@ -2481,7 +2688,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             for toast in similar_toasts[:1]:  # Remove apenas o primeiro
                                 try:
                                     page.overlay.remove(toast)
-                                    page.update()
+                                    safe_page_update(page)
                                     break
                                 except (ValueError, AttributeError):
                                     pass
@@ -2545,7 +2752,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             # Atualizar página se removemos algo
             if toasts_removed > 0:
-                page.update()
+                safe_page_update(page)
                 print(f"🧹 Removidos {toasts_removed} toast(s) órfão(s)")
             
             return toasts_removed
@@ -2565,10 +2772,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 print(f"🧹 Limpeza inicial: {cleared} toasts removidos")
             
             # Mostrar alguns toasts de teste
-            show_toast("✅ Teste 1: Toast verde", "green")
-            threading.Timer(1.0, lambda: show_toast("⚠️ Teste 2: Toast laranja", "orange")).start()
-            threading.Timer(2.0, lambda: show_toast("❌ Teste 3: Toast vermelho", "red")).start()
-            threading.Timer(3.0, lambda: show_toast("ℹ️ Teste 4: Toast azul", "blue")).start()
+            show_snack_bar("✅ Teste 1: Toast verde")
+            threading.Timer(1.0, lambda: show_snack_bar("⚠️ Teste 2: Toast laranja", False)).start()
+            threading.Timer(2.0, lambda: show_snack_bar("❌ Teste 3: Toast vermelho", True)).start()
+            threading.Timer(3.0, lambda: show_snack_bar("ℹ️ Teste 4: Toast azul", False)).start()
             
             print("🧪 Testes de toast iniciados. Observe se eles aparecem e desaparecem automaticamente.")
             
@@ -2590,7 +2797,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as ex:
             print(f"❌ Erro no teste dos spinboxes: {ex}")
 
-    show_toast = show_toast
+    # show_toast = show_toast  # REMOVIDO - função obsoleta
 
     def load_user_criteria(user_wwid=None):
         """Carrega os pesos dos critérios salvos no banco."""
@@ -2725,7 +2932,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         cancel_button_ref.current.disabled = True
                     if generate_button_ref.current:
                         generate_button_ref.current.disabled = True
-                    page.update()
+                    safe_page_update(page)
                 except Exception:
                     pass
             else:
@@ -2742,7 +2949,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 progress_text_ref.current.visible = True
                 progress_text_ref.current.value = "❌ Mês e ano devem ser selecionados para gerar notas."
                 progress_text_ref.current.color = ft.Colors.RED
-                page.update()
+                safe_page_update(page)
                 return
             
             # Validação para não gerar para meses futuros
@@ -2756,7 +2963,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 progress_text_ref.current.visible = True
                 progress_text_ref.current.value = "❌ Não é possível gerar notas para meses futuros."
                 progress_text_ref.current.color = ft.Colors.RED
-                page.update()
+                safe_page_update(page)
                 return
             
             # Evitar reentrância e desabilitar botão Gerar
@@ -2775,7 +2982,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     year_dropdown_ref.current.disabled = True
                 if include_inactive_ref.current:
                     include_inactive_ref.current.disabled = True
-                page.update()
+                safe_page_update(page)
             except Exception:
                 pass
 
@@ -2798,7 +3005,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         include_inactive_ref
                     )
                 except Exception as ex:
-                    page.run_thread(lambda: show_toast(f"Erro durante a geração: {str(ex)}", "red"))
+                    page.run_thread(lambda: show_snack_bar(f"Erro durante a geração: {str(ex)}", True))
                 finally:
                     # reset estado ao finalizar (se o diálogo ainda estiver aberto)
                     running_flag['value'] = False
@@ -2814,7 +3021,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             year_dropdown_ref.current.disabled = False
                         if include_inactive_ref.current:
                             include_inactive_ref.current.disabled = False
-                        page.update()
+                        safe_page_update(page)
                     except Exception:
                         pass
             
@@ -2916,7 +3123,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             progress_bar_ref.current.visible = True
             progress_text_ref.current.visible = True
             progress_text_ref.current.value = "Carregando critérios..."
-            page.update()
+            safe_page_update(page)
             
             # Carregar critérios da tabela criteria_table
             criterios_raw = db_manager.query(
@@ -2938,11 +3145,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     criterio_map["otif"] = valor
             
             if not all(k in criterio_map for k in ["package", "pickup", "nil", "otif"]):
-                page.run_thread(lambda: show_toast("Um ou mais critérios de pontuação estão faltando na tabela de critérios.", "red"))
+                page.run_thread(lambda: show_snack_bar("Um ou mais critérios de pontuação estão faltando na tabela de critérios.", True))
                 return
             
             progress_text_ref.current.value = "Carregando fornecedores..."
-            page.update()
+            safe_page_update(page)
             
             # Carregar fornecedores
             if include_inactive:
@@ -2956,12 +3163,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 )
             
             if not fornecedores:
-                page.run_thread(lambda: show_toast("Nenhum fornecedor encontrado no banco de dados.", "orange"))
+                page.run_thread(lambda: show_snack_bar("Nenhum fornecedor encontrado no banco de dados.", False))
                 return
 
             # Otimização: buscar todos os registros existentes de uma vez
             progress_text_ref.current.value = "Verificando registros existentes..."
-            page.update()
+            safe_page_update(page)
             
             existing_records = db_manager.query(
                 "SELECT supplier_id FROM supplier_score_records_table WHERE month = ? AND year = ?",
@@ -2972,7 +3179,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Configurar barra de progresso
             progress_bar_ref.current.value = 0
             total_fornecedores = len(fornecedores)
-            page.update()
+            safe_page_update(page)
             
             user = getpass.getuser()
             register_date = datetime.datetime.now()
@@ -2987,13 +3194,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             batch_inserts = []
             
             progress_text_ref.current.value = "Preparando dados para inserção..."
-            page.update()
+            safe_page_update(page)
             
             for i, fornecedor in enumerate(fornecedores):
                 # Cancelamento cooperativo
                 if cancel_event.is_set():
                     page.close(dialog)
-                    page.run_thread(lambda: show_toast("Operação cancelada pelo usuário.", "orange"))
+                    page.run_thread(lambda: show_snack_bar("Operação cancelada pelo usuário.", False))
                     return
                     
                 # Atualizar progresso de preparação
@@ -3001,7 +3208,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     progress = (i + 1) / total_fornecedores * 0.5  # 50% para preparação
                     progress_bar_ref.current.value = progress
                     progress_text_ref.current.value = f"Preparando dados... {i + 1} de {total_fornecedores}"
-                    page.update()
+                    safe_page_update(page)
                 
                 supplier_id = fornecedor.get('supplier_id') if isinstance(fornecedor, dict) else fornecedor[0]
                 supplier_name = fornecedor.get('vendor_name') if isinstance(fornecedor, dict) else fornecedor[1]
@@ -3049,7 +3256,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if batch_inserts:
                 progress_text_ref.current.value = f"Inserindo {len(batch_inserts)} registros..."
                 progress_bar_ref.current.value = 0.5  # 50% para inserção
-                page.update()
+                safe_page_update(page)
                 
                 query_insert = """
                     INSERT INTO supplier_score_records_table (
@@ -3071,7 +3278,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         for batch_num in range(total_batches):
                             if cancel_event.is_set():
                                 page.close(dialog)
-                                page.run_thread(lambda: show_toast("Operação cancelada pelo usuário.", "orange"))
+                                page.run_thread(lambda: show_snack_bar("Operação cancelada pelo usuário.", False))
                                 return
                                 
                             start_idx = batch_num * batch_size
@@ -3084,13 +3291,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             progress = 0.5 + (batch_num + 1) / total_batches * 0.5  # 50% base + 50% para inserção
                             progress_bar_ref.current.value = progress
                             progress_text_ref.current.value = f"Inserindo lote {batch_num + 1} de {total_batches}..."
-                            page.update()
+                            safe_page_update(page)
                         
                         conn.commit()
                         adicionados = len(batch_inserts)
                         
                 except Exception as batch_error:
-                    page.run_thread(lambda: show_toast(f"Erro durante inserção em batch: {str(batch_error)}", "red"))
+                    page.run_thread(lambda: show_snack_bar(f"Erro durante inserção em batch: {str(batch_error)}", True))
                     return
             
             # Exibir resultado no próprio diálogo (sem fechar)
@@ -3132,7 +3339,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         cancel_button_ref.current.text = "Fechar"
                     except Exception:
                         pass
-                page.update()
+                safe_page_update(page)
             except Exception as e:
                 # Fallback para texto simples se houver erro
                 summary = (
@@ -3160,7 +3367,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             cancel_button_ref.current.text = "Fechar"
                         except Exception:
                             pass
-                    page.update()
+                    safe_page_update(page)
                 except Exception:
                     pass
             
@@ -3172,7 +3379,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         except Exception as e:
             err_msg = f"Erro durante a geração de notas: {e}"
-            page.run_thread(lambda msg=err_msg: show_toast(msg, "red"))
+            page.run_thread(lambda msg=err_msg: show_snack_bar(msg, True))
     
     # --- Fim: Funções para Gerar Nota Cheia ---
 
@@ -3239,7 +3446,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Habilitar/desabilitar botão de importar
             if import_button_ref.current:
                 import_button_ref.current.disabled = not (month_ok and year_ok and file_ok and date_ok)
-                page.update()
+                safe_page_update(page)
             
             return date_ok
         
@@ -3331,7 +3538,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ])
                 
                 check_form_validity()
-                page.update()
+                safe_page_update(page)
         
         def remove_file():
             """Remove arquivo selecionado"""
@@ -3343,13 +3550,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             validation_status_ref.current.controls.clear()
             
             check_form_validity()
-            page.update()
+            safe_page_update(page)
         
         def select_file(e):
             """Abre seletor de arquivo"""
             import_file_picker = ft.FilePicker(on_result=handle_file_selection)
             page.overlay.append(import_file_picker)
-            page.update()
+            safe_page_update(page)
             
             import_file_picker.pick_files(
                 dialog_title="Selecione o arquivo Excel para importar",
@@ -3382,7 +3589,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             progress_text_ref.current.visible = True
             progress_text_ref.current.value = "Preparando importação..."
             progress_bar_ref.current.value = 0
-            page.update()
+            safe_page_update(page)
             
             def run_import():
                 try:
@@ -3453,7 +3660,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     border=ft.border.all(1, border_color)
                 )
             )
-            page.update()
+            safe_page_update(page)
         
         # Conteúdo do diálogo
         dialog_content = ft.Column([
@@ -3558,7 +3765,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Atualizar progresso
             if progress_text_ref and progress_text_ref.current:
                 page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Abrindo arquivo Excel...'))
-                page.run_thread(lambda: page.update())
+                page.run_thread(lambda: safe_page_update(page))
 
             # Abrir workbook
             wb = openpyxl.load_workbook(file_path)
@@ -3610,7 +3817,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Só mapear as colunas que o usuário tem permissão para acessar
             for score_type, possible_names in standard_score_names.items():
                 # Verificar se o usuário tem permissão para esta nota
-                if current_user_permissions.get(score_type, False):
+                if current_user_permissions.get(score_type):
                     for possible_name in possible_names:
                         if possible_name in header_map:
                             score_columns[score_type] = header_map[possible_name]
@@ -3626,7 +3833,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Obter critérios do banco - mesmo formato da geração de notas
             if progress_text_ref and progress_text_ref.current:
                 page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Carregando critérios...'))
-                page.run_thread(lambda: page.update())
+                page.run_thread(lambda: safe_page_update(page))
             
             criterios_raw = db_manager.query("SELECT criteria_category, value FROM criteria_table")
             criterio_map = {}
@@ -3657,7 +3864,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     page.run_thread(lambda p=current_progress: setattr(progress_bar_ref.current, 'value', p))
                 if progress_text_ref and progress_text_ref.current:
                     page.run_thread(lambda r=row_num-1, t=total_rows: setattr(progress_text_ref.current, 'value', f'Processando registro {r} de {t}...'))
-                page.run_thread(lambda: page.update())
+                page.run_thread(lambda: safe_page_update(page))
                 
                 try:
                     # Ler dados básicos
@@ -3860,7 +4067,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 page.run_thread(lambda: setattr(progress_bar_ref.current, 'value', 1.0))
             if progress_text_ref and progress_text_ref.current:
                 page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Importação concluída!'))
-            page.run_thread(lambda: page.update())
+            page.run_thread(lambda: safe_page_update(page))
             
             if processed_count == 0:
                 return False, "Nenhum dado válido encontrado no arquivo"
@@ -3883,13 +4090,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             from datetime import datetime
             import os
         except ImportError:
-            show_toast("❌ Biblioteca openpyxl não encontrada. Instale com: pip install openpyxl", "red")
+            show_snack_bar("❌ Biblioteca openpyxl não encontrada. Instale com: pip install openpyxl", True)
             return
 
         try:
             # Verificar se o arquivo existe
             if not os.path.exists(file_path):
-                show_toast("❌ Arquivo não encontrado.", "red")
+                show_snack_bar("❌ Arquivo não encontrado.", True)
                 return
 
             # Abrir workbook
@@ -3897,7 +4104,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             # Verificar se existe a aba de validação oculta
             if "ScoreApp_Validation" not in wb.sheetnames:
-                show_toast("❌ Arquivo inválido: não foi gerado pelo ScoreApp.", "red")
+                show_snack_bar("❌ Arquivo inválido: não foi gerado pelo ScoreApp.", True)
                 return
                 
             # Validar dados da aba de validação - apenas verificar o texto fixo
@@ -3906,16 +4113,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 validation_text = validation_ws["A1"].value
                 
                 if validation_text != "SCOREAPP_VALIDATION_123456":
-                    show_toast("❌ Arquivo inválido: não foi gerado pelo ScoreApp.", "red")
+                    show_snack_bar("❌ Arquivo inválido: não foi gerado pelo ScoreApp.", True)
                     return
                     
             except Exception as e:
-                show_toast("❌ Erro ao validar arquivo: dados de validação corrompidos.", "red")
+                show_snack_bar("❌ Erro ao validar arquivo: dados de validação corrompidos.", True)
                 return
             
             # Verificar se a aba "Import_score" existe
             if "Import_score" not in wb.sheetnames:
-                show_toast("❌ Aba 'Import_score' não encontrada no arquivo.", "red")
+                show_snack_bar("❌ Aba 'Import_score' não encontrada no arquivo.", True)
                 return
                 
             ws = wb["Import_score"]
@@ -3937,7 +4144,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             # Verificar se pelo menos Supplier ID, PO e Supplier Name estão presentes
             if len(actual_headers) < 3 or actual_headers[0] != "Supplier ID" or actual_headers[1] != "PO" or actual_headers[2] != "Supplier Name":
-                show_toast(f"❌ Headers incorretos. Esperados pelo menos: {expected_base_headers}", "red")
+                show_snack_bar(f"❌ Headers incorretos. Esperados pelo menos: {expected_base_headers}", True)
                 return
             
             # Mapear colunas de notas encontradas
@@ -3952,7 +4159,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             show_import_period_dialog(ws)
             
         except Exception as e:
-            show_toast(f"❌ Erro ao processar arquivo Excel: {str(e)}", "red")
+            show_snack_bar(f"❌ Erro ao processar arquivo Excel: {str(e)}", True)
 
     def show_import_period_dialog(worksheet):
         """Mostra diálogo para selecionar mês e ano da importação"""
@@ -3990,14 +4197,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             year = year_dropdown_ref.current.value if year_dropdown_ref.current else None
             
             if not month or not year:
-                show_toast("❌ Selecione o mês e ano para importação", "orange")
+                show_snack_bar("❌ Selecione o mês e ano para importação", False)
                 return
             
             try:
                 process_excel_import(worksheet, int(month), int(year))
                 close_dialog(e)
             except Exception as ex:
-                show_toast(f"❌ Erro ao importar dados: {ex}", "red")
+                show_snack_bar(f"❌ Erro ao importar dados: {ex}", True)
         
         # Conteúdo do diálogo
         dialog_content = ft.Column([
@@ -4088,7 +4295,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Buscar critérios atuais
             criteria = db_manager.query("SELECT * FROM criteria_table LIMIT 1")
             if not criteria:
-                show_toast("❌ Critérios de pontuação não encontrados na tabela de critérios.", "red")
+                show_snack_bar("❌ Critérios de pontuação não encontrados na tabela de critérios.", True)
                 return
                 
             criterio = criteria[0]
@@ -4212,7 +4419,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if errors:
                 result_msg += f"• {len(errors)} erro(s) encontrado(s)"
                 
-            show_toast(result_msg, "green" if not errors else "orange")
+            show_snack_bar(result_msg, False if not errors else False)
             
             # Atualizar interface
             load_scores()
@@ -4222,10 +4429,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 error_msg = "⚠️ Erros encontrados:\n" + "\n".join(errors[:5])  # Mostrar apenas os primeiros 5 erros
                 if len(errors) > 5:
                     error_msg += f"\n... e mais {len(errors) - 5} erro(s)"
-                show_toast(error_msg, "orange")
+                show_snack_bar(error_msg)
                 
         except Exception as e:
-            show_toast(f"❌ Erro durante a importação: {str(e)}", "red")
+            show_snack_bar(f"❌ Erro durante a importação: {str(e)}", True)
     
     def export_suppliers_to_excel(with_existing_scores=False, month=None, year=None, conditional_formatting=False):
         """Exporta suppliers ativos para Excel com proteção por senha e opcionalmente com notas existentes"""
@@ -4243,12 +4450,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except ImportError as e:
             error_msg = f"❌ Biblioteca openpyxl não encontrada. Erro: {e}"
             print(error_msg)
-            show_toast(error_msg, "red")
+            show_snack_bar(error_msg, True)
             return
         except Exception as e:
             error_msg = f"❌ Erro ao importar bibliotecas: {e}"
             print(error_msg)
-            show_toast(error_msg, "red")
+            show_snack_bar(error_msg, True)
             return
 
         try:
@@ -4265,7 +4472,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if not suppliers:
                 error_msg = "❌ Nenhum supplier ativo encontrado."
                 print(error_msg)
-                show_toast(error_msg, "orange")
+                show_snack_bar(error_msg)
                 return
 
             print(f"🔍 DEBUG: Encontrados {len(suppliers)} suppliers ativos")
@@ -4332,16 +4539,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             # Mapear permissões para nomes das colunas
             permission_columns = []
-            if current_user_permissions.get('otif', False):
+            if current_user_permissions.get('otif'):
                 headers.append("OTIF")
                 permission_columns.append("OTIF")
-            if current_user_permissions.get('nil', False):
+            if current_user_permissions.get('nil'):
                 headers.append("NIL") 
                 permission_columns.append("NIL")
-            if current_user_permissions.get('pickup', False):
+            if current_user_permissions.get('pickup'):
                 headers.append("Pickup")
                 permission_columns.append("Pickup")
-            if current_user_permissions.get('package', False):
+            if current_user_permissions.get('package'):
                 headers.append("Package")
                 permission_columns.append("Package")
             
@@ -4350,7 +4557,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if not permission_columns:
                 error_msg = "❌ Usuário não tem permissão para nenhuma coluna de nota."
                 print(error_msg)
-                show_toast(error_msg, "orange")
+                show_snack_bar(error_msg, False)
                 return
                 
             for col, header in enumerate(headers, 1):
@@ -4567,7 +4774,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         on_result=lambda e: save_selected_file(e)
                     )
                     page.overlay.append(file_picker)
-                    page.update()
+                    safe_page_update(page)
                     
                     # Abrir diálogo para salvar
                     file_picker.save_file(
@@ -4589,10 +4796,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         wb.save(full_path)
                         print(f"📁 DEBUG: Arquivo salvo em: {full_path}")
                         success_message = f"✅ Arquivo exportado com sucesso!\n{os.path.basename(full_path)}\nLocalização: {os.path.dirname(full_path)}"
-                        show_toast(success_message, "green")
+                        show_snack_bar(success_message)
                     else:
                         # Usuário cancelou
-                        show_toast("❌ Exportação cancelada pelo usuário", "orange")
+                        show_snack_bar("❌ Exportação cancelada pelo usuário")
                         
                 except Exception as save_error:
                     print(f"❌ Erro ao salvar no local selecionado: {save_error}")
@@ -4600,7 +4807,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 finally:
                     # Remover file picker do overlay
                     page.overlay.clear()
-                    page.update()
+                    safe_page_update(page)
             
             def save_to_desktop():
                 """Fallback: salvar na Desktop"""
@@ -4610,7 +4817,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     wb.save(full_path)
                     print(f"📁 DEBUG: Arquivo salvo em: {full_path}")
                     success_message = f"✅ Arquivo exportado com sucesso!\n{suggested_filename}\nLocalização: Desktop"
-                    show_toast(success_message, "green")
+                    show_snack_bar(success_message)
                 except Exception as desktop_error:
                     print(f"❌ Erro ao salvar na Desktop: {desktop_error}")
                     # Último fallback para pasta atual
@@ -4618,7 +4825,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         wb.save(suggested_filename)
                         print(f"📁 DEBUG: Arquivo salvo na pasta atual: {suggested_filename}")
                         fallback_message = f"✅ Arquivo exportado: {suggested_filename}\n(salvo na pasta do aplicativo)"
-                        show_toast(fallback_message, "green")
+                        show_snack_bar(fallback_message)
                     except Exception as fallback_error:
                         print(f"❌ Erro no fallback final: {fallback_error}")
                         raise fallback_error
@@ -4629,7 +4836,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             error_msg = f"❌ Erro ao exportar: {str(e)}"
             print(error_msg)
-            show_toast(error_msg, "red")
+            show_snack_bar(error_msg, True)
 
     def export_form_dialog():
         """Abre diálogo com opção para exportar suppliers ativos com ou sem notas existentes"""
@@ -4662,7 +4869,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             """Controla a visibilidade dos campos de mês e ano"""
             show_period = export_with_scores_switch_ref.current.value
             period_container_ref.current.visible = show_period
-            page.update()
+            safe_page_update(page)
         
         def close_dialog(e):
             page.close(dialog)
@@ -4680,7 +4887,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     selected_year = year_dropdown_ref.current.value
                     
                     if not selected_month or not selected_year:
-                        show_toast("❌ Selecione mês e ano para exportar com notas existentes", "red")
+                        show_snack_bar("❌ Selecione mês e ano para exportar com notas existentes", True)
                         return
                     
                     export_suppliers_to_excel(with_existing_scores=True, month=selected_month, year=selected_year, conditional_formatting=apply_conditional_formatting)
@@ -4689,7 +4896,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     
                 close_dialog(e)
             except Exception as ex:
-                show_toast(f"❌ Erro ao exportar: {ex}", "red")
+                show_snack_bar(f"❌ Erro ao exportar: {ex}", True)
         
         # Obter cores do tema atual
         theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
@@ -4947,34 +5154,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as ex:
             print(f"⚠️ Error updating Timeline metric cards: {ex}")
 
-        # --- Botões da Timeline ---
-        try:
-            if timeline_chart_button.current and timeline_table_button.current:
-                Colors = get_current_theme_colors(theme_mode)
-                if timeline_chart_tab.current:
-                    timeline_chart_button.current.bgcolor = Colors.get('primary')
-                    timeline_chart_button.current.color = Colors.get('on_primary', '#FFFFFF')
-                    timeline_table_button.current.bgcolor = None
-                    timeline_table_button.current.color = None
-                elif timeline_table_tab.current:
-                    timeline_table_button.current.bgcolor = Colors.get('primary')
-                    timeline_table_button.current.color = Colors.get('on_primary', '#FFFFFF')
-                    timeline_chart_button.current.bgcolor = None
-                    timeline_chart_button.current.color = None
-                timeline_chart_button.current.update()
-                timeline_table_button.current.update()
-        except Exception as ex:
-            print(f"⚠️ Error updating Timeline buttons: {ex}")
-
     # Confirmação via show_toast
-        show_toast(f"✅ Theme '{theme_mode}' applied and saved!", "green")
+        show_snack_bar(f"✅ Theme '{theme_mode}' applied and saved!", False)
 
     def set_selected(idx):
         def handler(e):
             # Verificar se o usuário tem acesso à aba
             if not is_tab_accessible(idx, current_user_privilege or "User"):
                 # Mostrar toast de erro e retornar sem alterar a seleção
-                show_toast("Acesso negado para esta funcionalidade", ft.Colors.RED)
+                show_snack_bar("Acesso negado para esta funcionalidade", True)
                 return
                 
             selected_index.current = idx
@@ -4988,8 +5176,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Carregar dados específicos da aba quando ela for selecionada
             if idx == 4:  # Aba Email
                 # O EmailManager já cuida de toda a inicialização
-                # Força atualização da página
-                page_ref.update()
+                # Força atualização da página de forma segura
+                safe_page_update(page_ref)
             
             # Limpar campos da aba Log quando sair da aba Configs
             if selected_index.current != 5 and idx != 5:
@@ -5048,7 +5236,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     risks_cards_container.current.update()
             except Exception as ex:
                 print(f"Aviso ao limpar cards da aba Risks: {ex}")
-            page.update()
+            safe_page_update(page)
         return handler
 
     # Dropdowns de mês e ano
@@ -5109,7 +5297,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def toggle_menu(e):
         menu_is_expanded.current = not menu_is_expanded.current
         update_menu()
-        page.update()
+        safe_page_update(page)
 
     # --- Início: Lógica do Banco de Dados e Pesquisa ---
 
@@ -5445,7 +5633,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         reload_single_list_with_style(key)
         
         # A atualização da página é necessária para que a lista seja redesenhada na tela.
-        page.update()
+        safe_page_update(page)
 
     def reload_single_list_with_style(key):
         """Recarrega uma lista específica mantendo o estilo da load_all_lists_data"""
@@ -5601,7 +5789,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                         score_texts[ui_name].update()
                                 except Exception as e:
                                     print(f"Erro ao limpar slider {ui_name}: {e}")
-            page.update()
+            safe_page_update(page)
             return
 
         if not db_conn: 
@@ -5746,7 +5934,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             except sqlite3.Error as e:
                 print(f"Erro ao carregar notas para o supplier_id {supplier_id}: {e}")
         
-        page.update()
+        safe_page_update(page)
 
     def create_result_widget(record):
         """Cria um card de resultado para um registro do banco.
@@ -5881,7 +6069,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Erro: Banco de dados não conectado.", "red", restore_control=save_button)
+                show_snack_bar("Erro: Banco de dados não conectado.", True)
                 return
                 
             if not selected_month.current or not selected_year.current:
@@ -5890,7 +6078,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Selecione mês e ano antes de salvar.", "orange", restore_control=save_button)
+                show_snack_bar("Selecione mês e ano antes de salvar.", False)
                 return
                 
             month_val = selected_month.current.value
@@ -5902,7 +6090,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Selecione mês e ano antes de salvar.", "orange", restore_control=save_button)
+                show_snack_bar("Selecione mês e ano antes de salvar.", False)
                 return
 
             # Validação de data futura baseada na lógica legacy
@@ -5921,7 +6109,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Valores de mês e ano inválidos.", "red", restore_control=save_button)
+                show_snack_bar("Valores de mês e ano inválidos.", True)
                 return
                 
             # Prevenir salvamento de scores para meses futuros
@@ -5931,7 +6119,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Não é possível salvar scores para meses futuros.", "orange", restore_control=save_button)
+                show_snack_bar("Não é possível salvar scores para meses futuros.")
                 return
 
             try:
@@ -5942,7 +6130,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     if current_status and str(current_status).strip().lower().startswith("inactive"):
                         # Restaurar botão e avisar
                         reset_button_state()
-                        show_toast("❌ Não é possível salvar para fornecedores inativos.", "red", restore_control=save_button)
+                        show_snack_bar("❌ Não é possível salvar para fornecedores inativos.", True)
                         return
                 except Exception as ex_status:
                     print(f"Aviso: falha ao verificar status do supplier antes de salvar: {ex_status}")
@@ -5962,7 +6150,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 total_score_calculation = 0.0
                 
                 # Verificar permissões e salvar valores originais, calcular total_score separadamente
-                if current_user_permissions.get('otif', False) and "OTIF" in spinbox_refs:
+                if current_user_permissions.get('otif') and "OTIF" in spinbox_refs:
                     raw_score = float(spinbox_refs["OTIF"].value or 0)
                     values_to_save['otif'] = raw_score  # Salvar valor original
                     
@@ -5972,7 +6160,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     total_score_calculation += weighted_value
                     print(f"  OTIF: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
-                if current_user_permissions.get('pickup', False) and "Pickup" in spinbox_refs:
+                if current_user_permissions.get('pickup') and "Pickup" in spinbox_refs:
                     raw_score = float(spinbox_refs["Pickup"].value or 0)
                     values_to_save['quality_pickup'] = raw_score  # Salvar valor original
                     
@@ -5982,7 +6170,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     total_score_calculation += weighted_value
                     print(f"  Pickup: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
-                if current_user_permissions.get('package', False) and "Package" in spinbox_refs:
+                if current_user_permissions.get('package') and "Package" in spinbox_refs:
                     raw_score = float(spinbox_refs["Package"].value or 0)
                     values_to_save['quality_package'] = raw_score  # Salvar valor original
                     
@@ -5992,7 +6180,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     total_score_calculation += weighted_value
                     print(f"  Package: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
-                if current_user_permissions.get('nil', False) and "NIL" in spinbox_refs:
+                if current_user_permissions.get('nil') and "NIL" in spinbox_refs:
                     raw_score = float(spinbox_refs["NIL"].value or 0)
                     values_to_save['nil'] = raw_score  # Salvar valor original
                     
@@ -6008,7 +6196,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     save_button.icon = original_icon
                     save_button.disabled = False
                     safe_update_control(save_button, page)
-                    show_toast("Você não tem permissão para salvar nenhum campo.", "red", restore_control=save_button)
+                    show_snack_bar("Você não tem permissão para salvar nenhum campo.", True)
                     return
                 
                 comment_val = comment_field.value or ""
@@ -6093,7 +6281,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     print(f"🔁 Rechecagem final de status antes do commit (spinbox): {final_status}")
                     if final_status and str(final_status).strip().lower().startswith("inactive"):
                         # Não efetuar commit em caso de fornecedor inativo
-                        show_toast("❌ Não é possível salvar para fornecedores inativos.", "red", restore_control=save_button)
+                        show_snack_bar("❌ Não é possível salvar para fornecedores inativos.", True)
                         # Restaurar botão e abortar
                         save_button.text = original_text
                         save_button.icon = original_icon
@@ -6118,7 +6306,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     if current_user_permissions.get(db_field, False) and field in spinbox_refs:
                         saved_fields.append(field)
                 
-                show_toast(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", "green")
+                show_snack_bar(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", False)
                 
                 # Restaurar botão após sucesso com ícone de confirmação temporário
                 save_button.text = "Salvo!"
@@ -6164,7 +6352,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button._is_processing = False  # Adicionar reset do flag
                 safe_update_control(save_button, page)
                 
-                show_toast(f"❌ Erro ao salvar: {str(ex)}", "red")
+                show_snack_bar(f"❌ Erro ao salvar: {str(ex)}", True)
                 print(f"❌ Erro detalhado ao salvar dados:")
                 print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
                 print(f"   Período: {month_val}/{year_val}")
@@ -6175,11 +6363,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         def toggle_favorite(e):
             global current_user_wwid
             if not current_user_wwid:
-                show_toast("Erro: Usuário não autenticado.", "red")
+                show_snack_bar("Erro: Usuário não autenticado.", True)
                 return
                 
             if not db_conn:
-                show_toast("Erro: Banco de dados não conectado.", "red")
+                show_snack_bar("Erro: Banco de dados não conectado.", True)
                 return
                 
             try:
@@ -6193,14 +6381,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     delete_query = "DELETE FROM favorites_table WHERE user_wwid=? AND supplier_id=?"
                     db_manager.execute(delete_query, (current_user_wwid, supplier_id))
                     e.control.selected = False
-                    show_toast(f"{vendor_name} removido dos favoritos", "orange")
+                    show_snack_bar(f"{vendor_name} removido dos favoritos")
                     print(f"Favorito removido: {vendor_name} (ID: {supplier_id})")
                 else:
                     # Adicionar aos favoritos
                     insert_query = "INSERT INTO favorites_table (user_wwid, supplier_id) VALUES (?, ?)"
                     db_manager.execute(insert_query, (current_user_wwid, supplier_id))
                     e.control.selected = True
-                    show_toast(f"{vendor_name} adicionado aos favoritos", "green")
+                    show_snack_bar(f"{vendor_name} adicionado aos favoritos")
                     print(f"Favorito adicionado: {vendor_name} (ID: {supplier_id})")
                 
                 # Atualização segura do controle
@@ -6209,27 +6397,35 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         e.control.update()
                     else:
                         # Se o controle não está vinculado à página, atualizar toda a página
-                        page.update()
+                        safe_page_update(page)
                 except Exception as update_error:
                     print(f"Aviso: Erro ao atualizar controle, atualizando página: {update_error}")
-                    page.update()
+                    safe_page_update(page)
                 
             except sqlite3.Error as db_error:
-                show_toast(f"Erro ao salvar favorito: {db_error}", "red")
+                show_snack_bar(f"Erro ao salvar favorito: {db_error}", True)
                 print(f"Erro no banco de dados: {db_error}")
             except Exception as ex:
-                show_toast(f"Erro inesperado: {ex}", "red")
+                show_snack_bar(f"Erro inesperado: {ex}", True)
                 print(f"Erro ao toggle favorite: {ex}")
 
         notas_col = ft.Column(spinboxes_rows, spacing=8, expand=1)  # Permite variação, mas com largura mínima
 
+        vendor_text = ft.Text(vendor_name, weight="bold", size=16)
+        bu_text = ft.Text(f"BU: {bu}")
+        po_text = ft.Text(f"PO: {supplier_po}")
+        ssid_text = ft.Text(f"SSID: {supplier_number}")
+        id_text = ft.Text(f"ID: {supplier_id}")
+        status_color = "green" if str(status).strip() == "Active" else "red" if str(status).strip() == "Inactive" else "gray"
+        status_text = ft.Text(f"Status: {status}", color=status_color)
+
         info_col = ft.Column([
-            ft.Text(vendor_name, weight="bold", size=16),
-            ft.Text(f"BU: {bu}"),
-            ft.Text(f"PO: {supplier_po}"),
-            ft.Text(f"SSID: {supplier_number}"),
-            ft.Text(f"ID: {supplier_id}"),
-            ft.Text(f"Status: {status}", color="green" if str(status).strip() == "Active" else "red" if str(status).strip() == "Inactive" else "gray"),
+            vendor_text,
+            bu_text,
+            po_text,
+            ssid_text,
+            id_text,
+            status_text,
         ], spacing=4, alignment=ft.MainAxisAlignment.START, expand=1)  # Permite variação de tamanho
 
         # Reorganizar a estrutura do card para posicionar os botões no canto inferior direito
@@ -6290,7 +6486,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         card.data = {
             "supplier_id": supplier_id, 
             "spinbox_refs": spinbox_refs,
-            "comment_field": comment_field
+            "comment_field": comment_field,
+            "info_refs": {
+                "vendor": vendor_text,
+                "bu": bu_text,
+                "po": po_text,
+                "ssid": ssid_text,
+                "id_label": id_text,
+                "status": status_text,
+            }
         }
         
         print(f"💾 Card data salvo para {vendor_name}:")
@@ -6300,6 +6504,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         print(f"  - score_control_type usado: {score_control_type}")
         
         return card
+
 
     search_field_ref = ft.Ref()
 
@@ -6329,10 +6534,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Uma única atualização de página no final é mais eficiente e garante que
             # tanto os campos de filtro limpos quanto a nova lista de resultados
             # sejam enviados para a interface do usuário de uma só vez.
-            page.update()
+            safe_page_update(page)
             
             # Mostrar mensagem de sucesso
-            show_snack_bar("Filtros limpos com sucesso!", False)
+            show_snack_bar("Filtros limpos com sucesso!")
             
         except Exception as ex:
             print(f"Erro ao limpar filtros: {ex}")
@@ -6538,7 +6743,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Erro: Banco de dados não conectado.", "red", restore_control=save_button)
+                show_snack_bar("Erro: Banco de dados não conectado.", True)
                 return
                 
             if not selected_month.current or not selected_year.current:
@@ -6547,7 +6752,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Selecione mês e ano antes de salvar.", "orange", restore_control=save_button)
+                show_snack_bar("Selecione mês e ano antes de salvar.", False)
                 return
                 
             month_val = selected_month.current.value
@@ -6559,7 +6764,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Selecione mês e ano antes de salvar.", "orange", restore_control=save_button)
+                show_snack_bar("Selecione mês e ano antes de salvar.", False)
                 return
 
             # Validação de data futura baseada na lógica legacy
@@ -6578,7 +6783,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Valores de mês e ano inválidos.", "red", restore_control=save_button)
+                show_snack_bar("Valores de mês e ano inválidos.", True)
                 return
                 
             # Prevenir salvamento de scores para meses futuros
@@ -6588,7 +6793,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_toast("Não é possível salvar scores para meses futuros.", "orange", restore_control=save_button)
+                show_snack_bar("Não é possível salvar scores para meses futuros.", False)
                 return
 
             try:
@@ -6609,7 +6814,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 total_score_calculation = 0.0
                 
                 # Verificar permissões e salvar valores originais, calcular total_score separadamente
-                if current_user_permissions.get('otif', False) and "OTIF" in score_sliders:
+                if current_user_permissions.get('otif') and "OTIF" in score_sliders:
                     raw_score = float(score_sliders["OTIF"].value or 0)
                     values_to_save['otif'] = raw_score  # Salvar valor original
                     
@@ -6619,7 +6824,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     total_score_calculation += weighted_value
                     print(f"  OTIF: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
-                if current_user_permissions.get('pickup', False) and "Pickup" in score_sliders:
+                if current_user_permissions.get('pickup') and "Pickup" in score_sliders:
                     raw_score = float(score_sliders["Pickup"].value or 0)
                     values_to_save['quality_pickup'] = raw_score  # Salvar valor original
                     
@@ -6629,7 +6834,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     total_score_calculation += weighted_value
                     print(f"  Pickup: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
-                if current_user_permissions.get('package', False) and "Package" in score_sliders:
+                if current_user_permissions.get('package') and "Package" in score_sliders:
                     raw_score = float(score_sliders["Package"].value or 0)
                     values_to_save['quality_package'] = raw_score  # Salvar valor original
                     
@@ -6639,7 +6844,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     total_score_calculation += weighted_value
                     print(f"  Package: {raw_score} (salvo) × {criteria_weight} = {weighted_value} (para total)")
                     
-                if current_user_permissions.get('nil', False) and "NIL" in score_sliders:
+                if current_user_permissions.get('nil') and "NIL" in score_sliders:
                     raw_score = float(score_sliders["NIL"].value or 0)
                     values_to_save['nil'] = raw_score  # Salvar valor original
                     
@@ -6655,7 +6860,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     save_button.icon = original_icon
                     save_button.disabled = False
                     safe_update_control(save_button, page)
-                    show_toast("Você não tem permissão para salvar nenhum campo.", "red")
+                    show_snack_bar("Você não tem permissão para salvar nenhum campo.", True)
                     return
                 
                 comment_val = comment_field.value or ""
@@ -6732,7 +6937,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     final_status = final_row_status['supplier_status'] if final_row_status else None
                     print(f"🔁 Rechecagem final de status antes do commit (slider): {final_status}")
                     if final_status and str(final_status).strip().lower().startswith("inactive"):
-                        show_toast("❌ Não é possível salvar para fornecedores inativos.", "red", restore_control=save_button)
+                        show_snack_bar("❌ Não é possível salvar para fornecedores inativos.", True)
                         save_button.text = original_text
                         save_button.icon = original_icon
                         save_button.disabled = False
@@ -6743,7 +6948,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     print(f"Aviso: falha na rechecagem final de status (slider): {ex_final_status}")
 
                 saved_fields = [k.replace('quality_', '').replace('_', ' ').title() for k in values_to_save.keys()]
-                show_toast(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", "green")
+                show_snack_bar(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", False)
                 
                 # Restaurar botão após sucesso com ícone de confirmação temporário
                 save_button.text = "Salvo!"
@@ -6789,7 +6994,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button._is_processing = False  # Adicionar reset do flag
                 safe_update_control(save_button, page)
                 
-                show_toast(f"❌ Erro ao salvar: {str(ex)}", "red")
+                show_snack_bar(f"❌ Erro ao salvar: {str(ex)}", True)
                 print(f"❌ Erro detalhado ao salvar dados:")
                 print(f"   Fornecedor: {vendor_name} (ID: {supplier_id})")
                 print(f"   Período: {month_val}/{year_val}")
@@ -6800,7 +7005,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         def toggle_favorite(e):
             global current_user_wwid
             if not current_user_wwid:
-                show_toast("Erro: Usuário não autenticado.", "red")
+                show_snack_bar("Erro: Usuário não autenticado.", True)
                 return
                 
             try:
@@ -6815,7 +7020,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     db_manager.execute(delete_query, (current_user_wwid, supplier_id))
                     is_favorite.current = False
                     e.control.selected = False
-                    show_toast(f"{vendor_name} removido dos favoritos", "orange")
+                    show_snack_bar(f"{vendor_name} removido dos favoritos")
                     print(f"Favorito removido: {vendor_name} (ID: {supplier_id})")
                 else:
                     # Adicionar aos favoritos
@@ -6823,7 +7028,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     db_manager.execute(insert_query, (current_user_wwid, supplier_id))
                     is_favorite.current = True
                     e.control.selected = True
-                    show_toast(f"{vendor_name} adicionado aos favoritos", "green")
+                    show_snack_bar(f"{vendor_name} adicionado aos favoritos")
                     print(f"Favorito adicionado: {vendor_name} (ID: {supplier_id})")
                 
                 # Atualização segura do controle
@@ -6832,16 +7037,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         e.control.update()
                     else:
                         # Se o controle não está vinculado à página, atualizar toda a página
-                        page.update()
+                        safe_page_update(page)
                 except Exception as update_error:
                     print(f"Aviso: Erro ao atualizar controle, atualizando página: {update_error}")
-                    page.update()
+                    safe_page_update(page)
                 
             except Exception as db_error:
-                show_toast(f"Erro ao salvar favorito: {db_error}", "red")
+                show_snack_bar(f"Erro ao salvar favorito: {db_error}", True)
                 print(f"Erro no banco de dados: {db_error}")
             except Exception as ex:
-                show_toast(f"Erro inesperado: {ex}", "red")
+                show_snack_bar(f"Erro inesperado: {ex}", True)
                 print(f"Erro ao toggle favorite: {ex}")
 
         # Montagem do layout do card
@@ -7340,7 +7545,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             accessible_indices = [tab_idx for _, _, tab_idx in accessible_tabs]
             
             if idx not in accessible_indices:
-                show_toast("Acesso negado para esta configuração", ft.Colors.RED)
+                show_snack_bar("Acesso negado para esta configuração", True)
                 return
                 
             # Limpar campos da aba Log quando sair dela (se estava na aba Log antes)
@@ -7358,6 +7563,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             lists_content.visible = idx == 4
             log_content.visible = idx == 5
             info_content.visible = idx == 6
+            data_content.visible = idx == 7
             # Ao abrir a aba Log, garantir que os dados sejam carregados
             if idx == 5:
                 try:
@@ -7365,7 +7571,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 except Exception:
                     pass
             update_config_tabs()
-            page.update()
+            safe_page_update(page)
         return handler
 
     def config_tab_item(icon, text, idx):
@@ -7394,14 +7600,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             (ft.Icons.LIST, "Lists", 4),
             (ft.Icons.HISTORY, "Log", 5),
             (ft.Icons.INFO_OUTLINED, "Info", 6),
+            (ft.Icons.STORAGE, "Data", 7),
         ]
         
         if privilege == "Super Admin":
             # Super Admin pode acessar tudo
             return all_tabs
         elif privilege == "Admin":
-            # Admin pode: Themes, Suppliers, Lists, Info (sem Users, Criteria, Log)
-            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 1, 4, 6]]
+            # Admin pode: Themes, Lists, Info (sem Users, Criteria, Log, Suppliers, Data)
+            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 4, 6]]
         else:  # User
             # User pode: Themes e Info
             return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 6]]
@@ -7427,7 +7634,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Atualizar UI de listas (se existir) e forçar recarregamento das listas exibidas
             for k in lists_controls.keys():
                 refresh_list_ui(k)
-            page.update()
+            safe_page_update(page)
         except Exception as ex:
             print(f"Erro ao atualizar comboboxes: {ex}")
 
@@ -7447,7 +7654,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         global score_control_type
         score_control_type = e.control.value
         save_score_control_type(score_control_type)
-        show_toast(f"⚙️ Tipo de controle alterado para: {score_control_type.capitalize()}", "blue")
+        show_snack_bar(f"⚙️ Tipo de controle alterado para: {score_control_type.capitalize()}")
         print(f"🔧 Tipo de controle alterado para: {score_control_type}")
         
         # Limpar os resultados existentes para forçar recriação com novo controle
@@ -7515,7 +7722,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         new_duration = int(e.control.value)
         app_settings['toast_duration'] = new_duration
         save_app_settings(app_settings)
-        show_toast(f"⚙️ Duração do show_toast alterada para {new_duration}s", "blue")
+        show_snack_bar(f"⚙️ Duração do show_toast alterada para {new_duration}s", False)
     
     toast_duration_slider.on_change = update_toast_duration
     
@@ -7532,7 +7739,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def update_spinbox_increment(e):
         new_increment = round(e.control.value, 1)
         save_spinbox_increment(new_increment)
-        show_toast(f"⚙️ Incremento do Spinbox alterado para {new_increment}", "blue")
+        show_snack_bar(f"⚙️ Incremento do Spinbox alterado para {new_increment}")
     
     spinbox_increment_slider.on_change = update_spinbox_increment
 
@@ -7889,7 +8096,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 refresh_list_ui(key)
                 update_all_comboboxes()
                 
-                show_toast("✅ Item atualizado com sucesso", "green")
+                show_snack_bar("✅ Item atualizado com sucesso", False)
                 
             except Exception as ex:
                 import sqlite3 as _sqlite
@@ -7898,12 +8105,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     error_text.visible = True
                     edit_dialog.update()
                 else:
-                    show_toast(f"❌ Erro ao atualizar: {ex}", "red")
-                    page.update()
+                    show_snack_bar(f"❌ Erro ao atualizar: {ex}", True)
+                    safe_page_update(page)
         
         def cancel_edit(e):
             page.close(edit_dialog)
-            page.update()
+            safe_page_update(page)
         
         # Criar diálogo
         edit_dialog = ft.AlertDialog(
@@ -7930,7 +8137,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         )
         
         page.open(edit_dialog)
-        page.update()
+        safe_page_update(page)
 
     def confirm_delete_list_item(key, item):
         """Confirma exclusão de item da lista"""
@@ -8002,7 +8209,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 if key in lists_controls and lists_controls[key]['selected_item']:
                     value = lists_controls[key]['selected_item']
                 else:
-                    show_toast("❌ Selecione um item da lista para excluir", "red")
+                    show_snack_bar("❌ Selecione um item da lista para excluir", True)
                     return
                     return
             
@@ -8041,8 +8248,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Fechar dialog
                     page.close(dialog)
                     
-                    show_toast(f"✅ Item '{value}' removido de {list_type}", "green")
-                    page.update()
+                    show_snack_bar(f"✅ Item '{value}' removido de {list_type}", False)
+                    safe_page_update(page)
                     
                 except Exception as ex:
                     # Fechar dialog mesmo se der erro
@@ -8051,16 +8258,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # mostrar mensagem amigável
                     import sqlite3 as _sqlite
                     if isinstance(ex, _sqlite.IntegrityError):
-                        show_toast(f"❌ Não foi possível excluir '{value}': restrição de integridade.", "red")
+                        show_snack_bar(f"❌ Não foi possível excluir '{value}': restrição de integridade.", True)
                     else:
-                        show_toast(f"❌ Erro ao deletar '{value}': {ex}", "red")
-                    page.update()
+                        show_snack_bar(f"❌ Erro ao deletar '{value}': {ex}", True)
+                    safe_page_update(page)
                     print(f"Erro ao deletar {value} em {table}: {ex}")
             
             # Função para cancelar
             def cancel_delete(e):
                 page.close(dialog)
-                page.update()
+                safe_page_update(page)
             
             # Criar e mostrar dialog de confirmação
             dialog = DeleteListItemConfirmationDialog(
@@ -8072,11 +8279,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             )
             
             page.open(dialog)
-            page.update()
+            safe_page_update(page)
             
         except Exception as ex:
-            show_toast(f"❌ Erro ao tentar excluir item: {ex}", "red")
-            page.update()
+            show_snack_bar(f"❌ Erro ao tentar excluir item: {ex}", True)
+            safe_page_update(page)
             print(f"Erro geral no delete_alias_handler: {ex}")
 
     def validate_input_exists(key):
@@ -8138,7 +8345,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 fb.value = (f"Já existe: {val}" if exists else f"Disponível: {val}")
                 fb.color = 'red' if exists else 'green'
                 fb.visible = True
-            page.update()
+            safe_page_update(page)
         except Exception as ex:
             print(f"Erro na validação de {key}: {ex}")
 
@@ -8151,7 +8358,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             lists_controls['sqie']['feedback'].value = 'Informe nome, alias e email para SQIE'
             lists_controls['sqie']['feedback'].color = 'red'
             lists_controls['sqie']['feedback'].visible = True
-            page.update()
+            safe_page_update(page)
             return
         try:
             insert_list_item('sqie_table', ['name','alias','email','register_date','registered_by'], (name, alias, email, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
@@ -8167,18 +8374,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             lists_controls['sqie']['feedback'].value = f"SQIE '{alias}' adicionado"
             lists_controls['sqie']['feedback'].color = 'green'
             lists_controls['sqie']['feedback'].visible = True
-            show_toast(f"✅ SQIE '{alias}' adicionado com sucesso", "green")
-            page.update()
+            show_snack_bar(f"✅ SQIE '{alias}' adicionado com sucesso", False)
+            safe_page_update(page)
         except Exception as ex:
             import sqlite3 as _sqlite
             if isinstance(ex, _sqlite.IntegrityError):
                 lists_controls['sqie']['feedback'].value = f"Alias '{alias}' já existe"
                 lists_controls['sqie']['feedback'].color = 'red'
                 lists_controls['sqie']['feedback'].visible = True
-                page.update()
+                safe_page_update(page)
             else:
-                show_toast(f"❌ Erro ao inserir sqie: {ex}", "red")
-                page.update()
+                show_snack_bar(f"❌ Erro ao inserir sqie: {ex}", True)
+                safe_page_update(page)
             print(f"Erro ao inserir sqie: {ex}")
         except Exception as ex:
             print(f"Erro ao inserir sqie: {ex}")
@@ -8201,7 +8408,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls['continuity']['feedback'].value = 'Informe nome, alias e email para Continuity'
                     lists_controls['continuity']['feedback'].color = 'red'
                     lists_controls['continuity']['feedback'].visible = True
-                    page.update()
+                    safe_page_update(page)
                     return
                 insert_list_item(table, ['name','alias','email','register_date','registered_by'], (name, alias, email, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
                 lists_controls['continuity']['email'].value = ''
@@ -8211,7 +8418,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls['planner']['feedback'].value = 'Informe nome, alias e email para Planner'
                     lists_controls['planner']['feedback'].color = 'red'
                     lists_controls['planner']['feedback'].visible = True
-                    page.update()
+                    safe_page_update(page)
                     return
                 insert_list_item(table, ['name','alias','email','register_date','registered_by'], (name, alias, email, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
                 lists_controls['planner']['email'].value = ''
@@ -8221,7 +8428,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls['sourcing']['feedback'].value = 'Informe nome, alias e email para Sourcing'
                     lists_controls['sourcing']['feedback'].color = 'red'
                     lists_controls['sourcing']['feedback'].visible = True
-                    page.update()
+                    safe_page_update(page)
                     return
                 insert_list_item(table, ['name','alias','email','register_date','registered_by'], (name, alias, email, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'system'))
                 lists_controls['sourcing']['email'].value = ''
@@ -8245,8 +8452,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 lists_controls[key]['feedback'].value = f"Item adicionado em {key}"
                 lists_controls[key]['feedback'].color = 'green'
                 lists_controls[key]['feedback'].visible = True
-                show_toast(f"✅ Item adicionado com sucesso em {key}", "green")
-                page.update()
+                show_snack_bar(f"✅ Item adicionado com sucesso em {key}", False)
+                safe_page_update(page)
         except Exception as ex:
             import sqlite3 as _sqlite
             if isinstance(ex, _sqlite.IntegrityError):
@@ -8255,12 +8462,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls[key]['feedback'].value = f"Item já existe"
                     lists_controls[key]['feedback'].color = 'red'
                     lists_controls[key]['feedback'].visible = True
-                    page.update()
+                    safe_page_update(page)
                 else:
-                    show_toast(f"❌ Erro ao inserir item: {ex}", "red")
-                    page.update()
+                    show_snack_bar(f"❌ Erro ao inserir item: {ex}", True)
+                    safe_page_update(page)
             print(f"Erro ao inserir item em {table}: {ex}")
-            page.update()
+            safe_page_update(page)
         except Exception as ex:
             import sqlite3 as _sqlite
             if isinstance(ex, _sqlite.IntegrityError):
@@ -8269,10 +8476,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     lists_controls[key]['feedback'].value = f"Item já existe em {key}"
                     lists_controls[key]['feedback'].color = 'red'
                     lists_controls[key]['feedback'].visible = True
-                    page.update()
+                    safe_page_update(page)
                 else:
-                    show_toast(f"❌ Erro ao inserir em {table}: {ex}", "red")
-                    page.update()
+                    show_snack_bar(f"❌ Erro ao inserir em {table}: {ex}", True)
+                    safe_page_update(page)
             print(f"Erro ao inserir em {table}: {ex}")
         except Exception as ex:
             print(f"Erro ao inserir em {table}: {ex}")
@@ -8642,7 +8849,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 e.control.color = "red"
             else:
                 e.control.color = get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
-            page.update()
+            safe_page_update(page)
 
         # Campos editáveis
         fields = {
@@ -8762,8 +8969,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             nonlocal supplier_id
             print(f"🔧 DEBUG: save_supplier chamada para supplier ID: {supplier_id}")
             
+            # Verificar permissão - apenas Super Admin
+            if current_user_privilege != "Super Admin":
+                show_snack_bar("❌ Acesso negado. Apenas Super Admin pode gerenciar suppliers.", True, page)
+                return
+            
             if not db_conn:
-                show_toast("❌ Erro: Banco de dados não conectado.", "red")
+                show_snack_bar("❌ Erro: Banco de dados não conectado.", True, page)
                 return
 
             # Função auxiliar para tratar valores
@@ -8774,18 +8986,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             # Validações básicas
             if not safe_strip(fields["vendor_name"].value):
-                show_toast("❌ Campo Vendor Name é obrigatório!", "red")
+                show_snack_bar("❌ Campo Vendor Name é obrigatório!", True, page)
                 return
             
             if not safe_strip(fields["supplier_origin"].value):
-                show_toast("❌ Campo Origem é obrigatório!", "red")
+                show_snack_bar("❌ Campo Origem é obrigatório!", True, page)
                 return
 
             try:
                 print(f"🔧 DEBUG: Iniciando salvamento...")
                 e.control.disabled = True
                 e.control.text = "Salvando..."
-                page.update()
+                safe_page_update(page)
 
                 cursor = db_conn.cursor()
                 print(f"🔧 DEBUG: Cursor criado")
@@ -8883,30 +9095,35 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             timeline_bu_dropdown.current.update()
                     except Exception:
                         pass
-                    page.update()
+                    safe_page_update(page)
                 except Exception as upd_ex:
                     print(f"🔧 WARN: falha ao atualizar dropdowns da Timeline: {upd_ex}")
 
-                show_toast(f"✅ Supplier {safe_strip(fields['vendor_name'].value)} {action} com sucesso!", "green")
+                show_snack_bar(f"✅ Supplier {safe_strip(fields['vendor_name'].value)} {action} com sucesso!", False, page)
                 print(f"Supplier {supplier_id} {action}")
 
             except Exception as ex:
-                show_toast(f"❌ Erro ao salvar: {str(ex)}", "red")
+                show_snack_bar(f"❌ Erro ao salvar: {str(ex)}", True, page)
                 print(f"Erro ao salvar supplier: {ex}")
             finally:
                 e.control.disabled = False
                 e.control.text = "Update"
-                page.update()
+                safe_page_update(page)
 
         def delete_supplier(e):
             """Deleta supplier após confirmação com código de 5 letras."""
             print(f"🗑️ DEBUG: delete_supplier chamada para supplier ID: {supplier_id}")
             
+            # Verificar permissão - apenas Super Admin
+            if current_user_privilege != "Super Admin":
+                show_snack_bar("❌ Acesso negado. Apenas Super Admin pode deletar suppliers.", True)
+                return
+            
             def handle_confirm(e):
                 """Callback para confirmar a exclusão"""
                 try:
                     if not db_conn:
-                        show_toast("❌ Erro: Banco de dados não conectado.", "red")
+                        show_snack_bar("❌ Erro: Banco de dados não conectado.", True)
                         return
                     cursor = db_conn.cursor()
                     db_manager.execute("DELETE FROM supplier_score_records_table WHERE supplier_id = ?", (supplier_id,))
@@ -8914,10 +9131,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     db_manager.execute("DELETE FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
                     if card in suppliers_results_list.controls:
                         suppliers_results_list.controls.remove(card)
-                    show_toast(f"✅ Supplier {vendor_name} deletado com sucesso!", "green")
+                    show_snack_bar(f"✅ Supplier {vendor_name} deletado com sucesso!")
                     print(f"Supplier {supplier_id} deletado com sucesso")
                 except Exception as ex:
-                    show_toast(f"❌ Erro ao deletar: {str(ex)}", "red")
+                    show_snack_bar(f"❌ Erro ao deletar: {str(ex)}", True)
                     print(f"Erro ao deletar supplier: {ex}")
                 page.close(delete_dialog)
             
@@ -9016,6 +9233,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         """Abre dialog para adicionar um novo supplier."""
         print("➕ DEBUG: add_new_supplier chamada")
         
+        # Verificar permissão - apenas Super Admin
+        if current_user_privilege != "Super Admin":
+            show_snack_bar("❌ Acesso negado. Apenas Super Admin pode adicionar suppliers.", True)
+            return
+        
         def handle_confirm(e):
             """Callback para confirmar a criação do supplier"""
             print("🔍 DEBUG: handle_confirm chamado")
@@ -9052,7 +9274,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             if not db_conn:
                 print("🔍 DEBUG: Banco de dados não conectado")
-                show_toast("❌ Erro: Banco de dados não conectado.", "red")
+                show_snack_bar("❌ Erro: Banco de dados não conectado.", True)
                 return
             
             print("🔍 DEBUG: Preparando para inserir no banco")
@@ -9093,12 +9315,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Atualizar lista de suppliers
                 search_suppliers_config()
                 
-                show_toast(f"✅ Supplier {vendor_name} criado com sucesso!", "green")
+                show_snack_bar(f"✅ Supplier {vendor_name} criado com sucesso!", False)
                 page.close(add_dialog)
                 
             except Exception as ex:
                 print(f"🔍 DEBUG: Erro ao inserir: {ex}")
-                show_toast(f"❌ Erro ao criar supplier: {str(ex)}", "red")
+                show_snack_bar(f"❌ Erro ao criar supplier: {str(ex)}", True)
                 print(f"Erro ao criar supplier: {ex}")
         
         def handle_cancel(e):
@@ -9184,14 +9406,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Buscando suppliers para edição: '{search_term}'")
 
             suppliers_results_list.controls.clear()
-            page.update()
+            safe_page_update(page)
         finally:
             suppliers_search_lock = False
 
         # Se o campo de pesquisa estiver vazio, limpar todos os cards e retornar
         if not search_term:
             print("Campo de pesquisa vazio, limpando todos os cards")
-            page.update()
+            safe_page_update(page)
             return
 
         if not db_conn:
@@ -9201,7 +9423,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     padding=20
                 )
             )
-            page.update()
+            safe_page_update(page)
             return
 
         try:
@@ -9252,7 +9474,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             )
 
         try:
-            page.update()
+            safe_page_update(page)
         except Exception as update_error:
             print(f"Erro ao atualizar página: {update_error}")
 
@@ -9358,7 +9580,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         update_weight_sum()
         
         # Atualizar UI
-        page.update()
+        safe_page_update(page)
         
         # Toast de sucesso
         page.overlay.append(
@@ -9373,7 +9595,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 animate_opacity=300,
             )
         )
-        page.update()
+        safe_page_update(page)
         
         # Remover show_toast após 3 segundos
         import threading
@@ -9382,7 +9604,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             time.sleep(3)
             if page.overlay:
                 page.overlay.pop()
-                page.update()
+                safe_page_update(page)
         
         threading.Thread(target=remove_auto_toast, daemon=True).start()
 
@@ -9423,8 +9645,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         if not db_conn:
             print("❌ Erro: Conexão com banco não disponível")
-            show_toast("❌ Erro: Conexão com banco não disponível", "red")
-            page.update()
+            show_snack_bar("❌ Erro: Conexão com banco não disponível", True)
+            safe_page_update(page)
             return
         
         criteria_values = {
@@ -9447,7 +9669,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         if round(total_weight, 2) != 1.0:  # Deve ser exatamente 1.00
             print(f"⚠️ Validação falhou: soma {total_weight:.2f} não é exatamente 1.00")
-            show_toast(f"❌ ERRO: A soma dos 4 pesos é {total_weight:.2f} - DEVE ser exatamente 1.00!", "red")
+            show_snack_bar(f"❌ ERRO: A soma dos 4 pesos é {total_weight:.2f} - DEVE ser exatamente 1.00!", True)
             return
         
         try:
@@ -9469,12 +9691,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 )
                 print("✅ Atualização em lote realizada com sucesso!")
             
-            show_toast("✅ Critérios atualizados com sucesso!", "green")
+            show_snack_bar("✅ Critérios atualizados com sucesso!", False, page)
             
         except Exception as ex:
             print(f"❌ Erro ao atualizar critérios: {ex}")
-            show_toast("❌ Erro ao atualizar critérios!", "red")
-            page.update()
+            show_snack_bar("❌ Erro ao atualizar critérios!", True, page)
+            safe_page_update(page)
 
     # Criar títulos fixos para Criteria (fora do scroll)
     criteria_header = ft.Column([
@@ -9930,16 +10152,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     if globals().get('selected_user') == w:
                                         clear_users_fields()
                                     refresh_users_list()
-                                    show_toast(f"✅ Usuário '{w}' removido com sucesso", "green")
-                                    page.update()
+                                    show_snack_bar(f"✅ Usuário '{w}' removido com sucesso", False)
+                                    safe_page_update(page)
                                 except Exception as ex:
                                     page.close(dialog)
-                                    show_toast(f"❌ Erro ao excluir usuário: {ex}", "red")
-                                    page.update()
+                                    show_snack_bar(f"❌ Erro ao excluir usuário: {ex}", True)
+                                    safe_page_update(page)
 
                             def cancel_delete(evt):
                                 page.close(dialog)
-                                page.update()
+                                safe_page_update(page)
 
                             dialog = DeleteListItemConfirmationDialog(
                                 item_name=w,
@@ -9949,10 +10171,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 scale_func=lambda x: x
                             )
                             page.open(dialog)
-                            page.update()
+                            safe_page_update(page)
                         except Exception as ex:
-                            show_toast(f"❌ Erro ao tentar excluir usuário: {ex}", "red")
-                            page.update()
+                            show_snack_bar(f"❌ Erro ao tentar excluir usuário: {ex}", True)
+                            safe_page_update(page)
 
                     delete_btn = ft.TextButton(
                         "Apagar",
@@ -10048,15 +10270,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Atualizar botão de ação
                 update_action_button()
 
-                page.update()
+                safe_page_update(page)
             
             # Atualizar lista visual
             refresh_users_list()
             
         except Exception as ex:
             print(f"Erro ao selecionar usuário: {ex}")
-            show_toast(f"❌ Erro ao carregar usuário: {ex}", "red")
-            page.update()
+            show_snack_bar(f"❌ Erro ao carregar usuário: {ex}", True)
+            safe_page_update(page)
 
     def clear_users_fields(e=None):
         """Limpa todos os campos do formulário de usuários."""
@@ -10136,7 +10358,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             # Atualizar página por fim
             try:
-                page.update()
+                safe_page_update(page)
             except Exception as e:
                 print(f"Erro ao atualizar página: {e}")
 
@@ -10180,8 +10402,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Valores para o banco: otif={otif}, nil={nil}, pickup={pickup}, package={package}")
             
             if not wwid or not password or not privilege:
-                show_toast("❌ Preencha WWID, Senha e Privilégio", "red", restore_control=save_button)
-                page.update()
+                show_snack_bar("❌ Preencha WWID, Senha e Privilégio", True)
+                safe_page_update(page)
                 return
             
             # Verifica se já existe o usuário
@@ -10204,7 +10426,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     """, (name, password, privilege, otif, nil, pickup, package, current_user_wwid, wwid))
                     
                     print(f"✅ Usuário {wwid} atualizado com sucesso!")
-                    show_toast(f"✅ Usuário '{wwid}' atualizado com sucesso", "green", restore_control=save_button)
+                    show_snack_bar(f"✅ Usuário '{wwid}' atualizado com sucesso")
                 else:
                     # Cria novo usuário
                     print(f"💾 Inserindo NOVO usuário {wwid} no banco de dados...")
@@ -10215,22 +10437,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     """, (wwid, name, password, privilege, otif, nil, pickup, package, current_user_wwid))
                     
                     print(f"✅ Usuário {wwid} inserido com sucesso!")
-                    show_toast(f"✅ Usuário '{wwid}' criado com sucesso", "green", restore_control=save_button)
+                    show_snack_bar(f"✅ Usuário '{wwid}' criado com sucesso", False)
                     # Limpar campos do formulário e atualizar lista imediatamente
                     try:
                         clear_users_fields()
                         refresh_users_list()
-                        page.update()
+                        safe_page_update(page)
                     except Exception as _e:
                         print(f"Aviso: falha ao limpar/atualizar lista após inserir usuário: {_e}")
-            page.update()
+            safe_page_update(page)
             
             print(f"Lista atualizada com {len(load_users_full())} usuários!")
             # Atualizar lista
             refresh_users_list()
             
         except Exception as ex:
-            show_toast(f"❌ Erro ao salvar usuário: {ex}", "red")
+            show_snack_bar(f"❌ Erro ao salvar usuário: {ex}", True)
             # Garantir que o botão seja restaurado se ocorrer erro
             try:
                 if save_button is not None:
@@ -10239,7 +10461,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     save_button.update()
             except Exception:
                 pass
-            page.update()
+            safe_page_update(page)
             print(f"Erro ao adicionar/atualizar usuário: {ex}")
         finally:
             # Certificar-se de limpar flag de processamento caso não tenha sido restaurada pelo show_toast
@@ -10259,14 +10481,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             
             if not wwid:
-                show_toast("❌ Digite um WWID para excluir", "red")
-                page.update()
+                show_snack_bar("❌ Digite um WWID para excluir", True)
+                safe_page_update(page)
                 return
             
             # Verificar se o usuário existe no banco
             if not check_user_exists(wwid):
-                show_toast(f"❌ Usuário '{wwid}' não encontrado", "red")
-                page.update()
+                show_snack_bar(f"❌ Usuário '{wwid}' não encontrado", True)
+                safe_page_update(page)
                 return
             
             # Função para confirmar e executar a exclusão
@@ -10283,21 +10505,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Atualizar lista
                     refresh_users_list()
                     
-                    show_toast(f"✅ Usuário '{wwid}' removido com sucesso", "green")
-                    page.update()
+                    show_snack_bar(f"✅ Usuário '{wwid}' removido com sucesso", False)
+                    safe_page_update(page)
                     
                 except Exception as ex:
                     # Fechar dialog mesmo se der erro
                     page.close(dialog)
                     
-                    show_toast(f"❌ Erro ao excluir usuário: {ex}", "red")
-                    page.update()
+                    show_snack_bar(f"❌ Erro ao excluir usuário: {ex}", True)
+                    safe_page_update(page)
                     print(f"Erro ao deletar usuário {wwid}: {ex}")
             
             # Função para cancelar
             def cancel_delete_user(e):
                 page.close(dialog)
-                page.update()
+                safe_page_update(page)
             
             # Criar e mostrar dialog de confirmação
             dialog = DeleteListItemConfirmationDialog(
@@ -10309,11 +10531,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             )
             
             page.open(dialog)
-            page.update()
+            safe_page_update(page)
             
         except Exception as ex:
-            show_toast(f"❌ Erro ao tentar excluir usuário: {ex}", "red")
-            page.update()
+            show_snack_bar(f"❌ Erro ao tentar excluir usuário: {ex}", True)
+            safe_page_update(page)
             print(f"Erro geral no delete_user: {ex}")
 
     # Referências para os controles da aba Log
@@ -10489,6 +10711,233 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         expand=True,
     )
 
+    # --- Conteúdo da aba Data (Importar/Exportar banco de dados) ---
+    def export_database_to_excel(e):
+        """Exporta todo o banco de dados para um arquivo Excel"""
+        # Verificar permissão - apenas Super Admin
+        if current_user_privilege != "Super Admin":
+            show_snack_bar("❌ Acesso negado. Apenas Super Admin pode exportar o banco de dados.", True)
+            return
+            
+        try:
+            import pandas as pd
+            from datetime import datetime
+            from tkinter import Tk, filedialog
+            import os
+            
+            # Mostrar progresso
+            show_snack_bar("Exportando banco de dados...", False)
+            
+            # Abrir diálogo para selecionar local de salvamento
+            root = Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            
+            # Nome padrão do arquivo com timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"database_export_{timestamp}.xlsx"
+            
+            filepath = filedialog.asksaveasfilename(
+                title="Salvar banco de dados exportado",
+                defaultextension=".xlsx",
+                initialfile=default_filename,
+                filetypes=[("Excel files", "*.xlsx")]
+            )
+            
+            root.destroy()
+            
+            if not filepath:
+                show_snack_bar("Exportação cancelada")
+                return
+            
+            # Obter todas as tabelas do banco
+            tables_query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            tables = db_manager.query(tables_query)
+            
+            if not tables:
+                show_snack_bar("Nenhuma tabela encontrada no banco de dados", True)
+                return
+            
+            # Criar escritor Excel
+            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+                for table_row in tables:
+                    table_name = table_row['name'] if isinstance(table_row, dict) else table_row[0]
+                    
+                    # Ler dados da tabela
+                    query = f"SELECT * FROM {table_name}"
+                    data = db_manager.query(query)
+                    
+                    if data:
+                        # Converter para DataFrame
+                        df = pd.DataFrame(data)
+                        # Escrever no Excel (nome da aba limitado a 31 caracteres)
+                        sheet_name = table_name[:31]
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            filename = os.path.basename(filepath)
+            show_snack_bar(f"✅ Banco de dados exportado: {filename}")
+            
+        except ImportError:
+            show_snack_bar("❌ Erro: pandas ou openpyxl não instalados", True)
+        except Exception as ex:
+            show_snack_bar(f"❌ Erro ao exportar: {str(ex)}", ft.Colors.RED)
+            print(f"Erro detalhado: {ex}")
+            import traceback
+            traceback.print_exc()
+
+    def import_database_from_excel(e):
+        """Importa dados de um arquivo Excel para o banco de dados"""
+        # Verificar permissão - apenas Super Admin
+        if current_user_privilege != "Super Admin":
+            show_snack_bar("❌ Acesso negado. Apenas Super Admin pode importar o banco de dados.", True)
+            return
+            
+        try:
+            import pandas as pd
+            from tkinter import Tk, filedialog
+            
+            # Abrir diálogo para selecionar arquivo
+            root = Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            
+            filepath = filedialog.askopenfilename(
+                title="Selecione o arquivo Excel para importar",
+                filetypes=[("Excel files", "*.xlsx *.xls")]
+            )
+            
+            root.destroy()
+            
+            if not filepath:
+                return
+            
+            show_snack_bar("Importando banco de dados...", False)
+            
+            # Ler o arquivo Excel
+            excel_file = pd.ExcelFile(filepath)
+            
+            imported_tables = 0
+            for sheet_name in excel_file.sheet_names:
+                try:
+                    # Ler a planilha
+                    df = pd.read_excel(filepath, sheet_name=sheet_name)
+                    
+                    if df.empty:
+                        continue
+                    
+                    # Limpar a tabela existente
+                    db_manager.execute(f"DELETE FROM {sheet_name}")
+                    
+                    # Inserir dados
+                    columns = df.columns.tolist()
+                    placeholders = ','.join(['?' for _ in columns])
+                    insert_query = f"INSERT INTO {sheet_name} ({','.join(columns)}) VALUES ({placeholders})"
+                    
+                    for _, row in df.iterrows():
+                        values = tuple(row[col] for col in columns)
+                        db_manager.execute(insert_query, values)
+                    
+                    imported_tables += 1
+                    
+                except Exception as table_ex:
+                    print(f"Erro ao importar tabela {sheet_name}: {table_ex}")
+                    continue
+            
+            if imported_tables > 0:
+                show_snack_bar(f"✅ {imported_tables} tabelas importadas com sucesso!", False)
+                # Recarregar dados na interface se estiver na aba Suppliers
+                try:
+                    search_suppliers_config()
+                except:
+                    pass  # Se não estiver na aba, ignora
+            else:
+                show_snack_bar("⚠️ Nenhuma tabela foi importada", False)
+            
+        except ImportError:
+            show_snack_bar("❌ Erro: pandas ou openpyxl não instalados", True)
+        except Exception as ex:
+            show_snack_bar(f"❌ Erro ao importar: {str(ex)}", True)
+            print(f"Erro detalhado: {ex}")
+            import traceback
+            traceback.print_exc()
+
+    data_content = ft.Container(
+        content=ft.Column([
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.STORAGE, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=24),
+                        ft.Text("Gerenciamento de Dados", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ], spacing=10),
+                    ft.Divider(color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+                ]),
+                margin=ft.margin.only(bottom=20),
+            ),
+            
+            # Card de Exportar
+            ft.Card(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.UPLOAD_FILE, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=20),
+                            ft.Text("Exportar Banco de Dados", size=18, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ], spacing=10),
+                        ft.Container(height=10),
+                        ft.Text(
+                            "Exporta todas as tabelas do banco de dados para um arquivo Excel. "
+                            "Cada tabela será exportada como uma planilha separada.",
+                            size=14,
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        ),
+                        ft.Container(height=15),
+                        ft.ElevatedButton(
+                            "Exportar para Excel",
+                            icon=ft.Icons.DOWNLOAD,
+                            on_click=export_database_to_excel,
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                            color=ft.Colors.WHITE,
+                        ),
+                    ]),
+                    padding=20,
+                ),
+                elevation=2,
+                margin=ft.margin.only(bottom=20),
+            ),
+            
+            # Card de Importar
+            ft.Card(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.DOWNLOAD, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=20),
+                            ft.Text("Importar Banco de Dados", size=18, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ], spacing=10),
+                        ft.Container(height=10),
+                        ft.Text(
+                            "Importa dados de um arquivo Excel para o banco de dados. "
+                            "⚠️ ATENÇÃO: Esta operação irá substituir os dados existentes nas tabelas.",
+                            size=14,
+                            color=ft.Colors.ORANGE,
+                            weight="bold",
+                        ),
+                        ft.Container(height=15),
+                        ft.ElevatedButton(
+                            "Importar do Excel",
+                            icon=ft.Icons.UPLOAD,
+                            on_click=import_database_from_excel,
+                            bgcolor=ft.Colors.ORANGE,
+                            color=ft.Colors.WHITE,
+                        ),
+                    ]),
+                    padding=20,
+                ),
+                elevation=2,
+            ),
+        ], scroll=ft.ScrollMode.AUTO),
+        padding=20,
+        visible=False,
+        expand=True,
+    )
 
     # Variável global para controlar paginação do log
     log_pagination = {
@@ -10819,7 +11268,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 users_content,
                 lists_content,
                 log_content,
-                info_content
+                info_content,
+                data_content
             ]),
             expand=True
         )
@@ -11040,27 +11490,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         # Permissões de avaliação
                         ft.Text("🔐 Permissões de Avaliação", size=16, weight="bold", color=theme_colors.get('secondary', '#388E3C')),
                         ft.Row([
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('otif', False) else ft.Icons.CANCEL, 
-                                   size=18, color="#4CAF50" if current_user_permissions.get('otif', False) else "#F44336"),
-                            ft.Text(f"OTIF: {'Permitido' if current_user_permissions.get('otif', False) else 'Negado'}", 
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('otif') else ft.Icons.CANCEL, 
+                                   size=18, color="#4CAF50" if current_user_permissions.get('otif') else "#F44336"),
+                            ft.Text(f"OTIF: {'Permitido' if current_user_permissions.get('otif') else 'Negado'}", 
                                    size=14, color=theme_colors.get('on_surface', '#000000'))
                         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                         ft.Row([
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('nil', False) else ft.Icons.CANCEL, 
-                                   size=18, color="#4CAF50" if current_user_permissions.get('nil', False) else "#F44336"),
-                            ft.Text(f"NIL: {'Permitido' if current_user_permissions.get('nil', False) else 'Negado'}", 
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('nil') else ft.Icons.CANCEL, 
+                                   size=18, color="#4CAF50" if current_user_permissions.get('nil') else "#F44336"),
+                            ft.Text(f"NIL: {'Permitido' if current_user_permissions.get('nil') else 'Negado'}", 
                                    size=14, color=theme_colors.get('on_surface', '#000000'))
                         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                         ft.Row([
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('pickup', False) else ft.Icons.CANCEL, 
-                                   size=18, color="#4CAF50" if current_user_permissions.get('pickup', False) else "#F44336"),
-                            ft.Text(f"Pickup: {'Permitido' if current_user_permissions.get('pickup', False) else 'Negado'}", 
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('pickup') else ft.Icons.CANCEL, 
+                                   size=18, color="#4CAF50" if current_user_permissions.get('pickup') else "#F44336"),
+                            ft.Text(f"Pickup: {'Permitido' if current_user_permissions.get('pickup') else 'Negado'}", 
                                    size=14, color=theme_colors.get('on_surface', '#000000'))
                         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                         ft.Row([
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('package', False) else ft.Icons.CANCEL, 
-                                   size=18, color="#4CAF50" if current_user_permissions.get('package', False) else "#F44336"),
-                            ft.Text(f"Package: {'Permitido' if current_user_permissions.get('package', False) else 'Negado'}", 
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('package') else ft.Icons.CANCEL, 
+                                   size=18, color="#4CAF50" if current_user_permissions.get('package') else "#F44336"),
+                            ft.Text(f"Package: {'Permitido' if current_user_permissions.get('package') else 'Negado'}", 
                                    size=14, color=theme_colors.get('on_surface', '#000000'))
                         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                         
@@ -11201,22 +11651,23 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Ref para o container do display de Target (borda/背景 especial)
     target_display_container = ft.Ref[ft.Container]()
     
-    # Referências para as abas de visualização
-    timeline_chart_tab = ft.Ref[bool]()
-    timeline_table_tab = ft.Ref[bool]()
-    timeline_chart_tab.current = True
-    timeline_table_tab.current = False
-    
-    # Referências para os botões de gráfico e tabela
-    timeline_chart_button = ft.Ref[ft.ElevatedButton]()
-    timeline_table_button = ft.Ref[ft.ElevatedButton]()
-    
     # Container para o gráfico e tabela
     timeline_chart_container = ft.Ref[ft.Container]()
     timeline_table_container = ft.Ref[ft.Container]()
+    timeline_analytics_container = ft.Ref[ft.Container]()
+    timeline_content_container = ft.Ref[ft.Container]()
+    timeline_scrollable_content = ft.Ref[ft.Column]()
+    timeline_tabs = ft.Ref[ft.Tabs]()
     
     # Referência para a linha que contém os cards de métricas
     timeline_metrics_row = ft.Ref[ft.Row]()
+    
+    # Referências para o card de informações do fornecedor
+    supplier_info_container = ft.Ref[ft.Container]()
+    supplier_name_text = ft.Ref[ft.Text]()
+    supplier_bu_text = ft.Ref[ft.Text]()
+    supplier_number_text = ft.Ref[ft.Text]()
+    supplier_po_text = ft.Ref[ft.Text]()
 
     # Dicionário de referências para os componentes dos cards de métricas
     timeline_cards_refs = {
@@ -11286,18 +11737,67 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             q2_avg_card.current.value = "--"
             q3_avg_card.current.value = "--"
             q4_avg_card.current.value = "--"
-            page.update()
+            
+            # Esconder card de informações do fornecedor
+            if supplier_info_container.current:
+                supplier_info_container.current.visible = False
+            
+            safe_page_update(page)
             return
+        
+        # Atualizar informações do fornecedor
+        update_supplier_info(vendor_id)
             
         calculate_overall_average(vendor_id)
         calculate_twelve_month_average(vendor_id)
         calculate_year_average(vendor_id, year)
         calculate_quarterly_averages(vendor_id, year)
         update_timeline_chart(vendor_id, year)
+        update_timeline_analytics(vendor_id, year)
         
         # Atualizar a página após todos os cálculos
-        page.update()
+        safe_page_update(page)
         
+    def update_supplier_info(vendor_id):
+        """Atualiza as informações do fornecedor selecionado"""
+        try:
+            if not db_conn or not vendor_id:
+                if supplier_info_container.current:
+                    supplier_info_container.current.visible = False
+                return
+            
+            query = "SELECT vendor_name, bu, supplier_number, supplier_po FROM supplier_database_table WHERE supplier_id = ?"
+            results = db_manager.query(query, (vendor_id,))
+            
+            if results and len(results) > 0:
+                supplier = results[0]
+                vendor_name = supplier['vendor_name'] or "N/A"
+                bu = supplier['bu'] or "N/A"
+                supplier_number = supplier['supplier_number'] or "N/A"
+                supplier_po = supplier['supplier_po'] or "N/A"
+                
+                # Atualizar os textos
+                if supplier_name_text.current:
+                    supplier_name_text.current.value = vendor_name
+                if supplier_bu_text.current:
+                    supplier_bu_text.current.value = bu
+                if supplier_number_text.current:
+                    supplier_number_text.current.value = supplier_number
+                if supplier_po_text.current:
+                    supplier_po_text.current.value = supplier_po
+                
+                # Mostrar o card
+                if supplier_info_container.current:
+                    supplier_info_container.current.visible = True
+            else:
+                if supplier_info_container.current:
+                    supplier_info_container.current.visible = False
+                    
+        except Exception as e:
+            print(f"Erro ao atualizar informações do fornecedor: {e}")
+            if supplier_info_container.current:
+                supplier_info_container.current.visible = False
+    
     def calculate_overall_average(vendor_id):
         """Calcula a média geral de todos os scores do vendor"""
         try:
@@ -11574,8 +12074,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         try:
             if not db_conn or not vendor_id:
                 timeline_chart_container.current.content = ft.Container(
-                    content=ft.Text("Selecione um fornecedor para visualizar o gráfico", size=16, text_align=ft.TextAlign.CENTER),
-                    alignment=ft.alignment.center, expand=True, height=400
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.SHOW_CHART, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar o gráfico", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
                 )
                 timeline_chart_container.current.update()
                 return
@@ -11607,8 +12113,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             if not any(data.get("total_score") is not None for data in monthly_data.values()):
                 timeline_chart_container.current.content = ft.Container(
-                    content=ft.Text(f"Nenhum dado de score encontrado para {analysis_year}", size=16, text_align=ft.TextAlign.CENTER),
-                    alignment=ft.alignment.center, expand=True, height=400
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.CALENDAR_TODAY, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text(f"Nenhum dado de score encontrado para {analysis_year}", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
                 )
                 timeline_chart_container.current.update()
                 return
@@ -11693,24 +12205,368 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             chart_with_legend = ft.Column([
                 line_chart,
-                ft.Container(height=10),  # Espaço
-                ft.Row(legend_items, spacing=10, alignment=ft.MainAxisAlignment.START)
-            ], spacing=5)
+                ft.Container(height=10),
+                ft.Row(legend_items, spacing=10, alignment=ft.MainAxisAlignment.START, wrap=True)
+            ], spacing=5, expand=True)
             
             timeline_chart_container.current.content = chart_with_legend
             timeline_chart_container.current.update()
+            
         except Exception as e:
             print(f"Erro ao atualizar gráfico: {e}")
             import traceback
             traceback.print_exc()
-            timeline_chart_container.current.content = ft.Text(f"Erro ao gerar gráfico: {e}")
+            timeline_chart_container.current.content = ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ft.Colors.RED_400),
+                    ft.Container(height=10),
+                    ft.Text(f"Erro ao gerar gráfico: {e}", size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_600),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                alignment=ft.alignment.center,
+                expand=True,
+            )
             timeline_chart_container.current.update()
+    
+    def update_timeline_analytics(vendor_id, year=None):
+        """Atualiza a aba de Analytics com análises de tendência para todas as métricas"""
+        try:
+            if not db_conn or not vendor_id:
+                timeline_analytics_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.ANALYTICS, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar as análises", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+                timeline_analytics_container.current.update()
+                return
+            
+            analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
+            
+            # Buscar dados do ano
+            query = "SELECT month, total_score, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ? ORDER BY month"
+            results = db_manager.query(query, (vendor_id, analysis_year))
+            
+            if not results:
+                timeline_analytics_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.INBOX, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text(f"Nenhum dado encontrado para {analysis_year}", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+                timeline_analytics_container.current.update()
+                return
+            
+            # Organizar dados por métrica
+            metrics_data = {
+                "Total Score": [],
+                "OTIF": [],
+                "NIL": [],
+                "Quality Pickup": [],
+                "Quality Package": []
+            }
+            
+            for row in results:
+                month = row['month']
+                try:
+                    month_int = int(month)
+                    if row['total_score'] is not None:
+                        metrics_data["Total Score"].append((month_int - 1, float(row['total_score'])))
+                    if row['otif'] is not None:
+                        metrics_data["OTIF"].append((month_int - 1, float(row['otif'])))
+                    if row['nil'] is not None:
+                        metrics_data["NIL"].append((month_int - 1, float(row['nil'])))
+                    if row['quality_pickup'] is not None:
+                        metrics_data["Quality Pickup"].append((month_int - 1, float(row['quality_pickup'])))
+                    if row['quality_package'] is not None:
+                        metrics_data["Quality Package"].append((month_int - 1, float(row['quality_package'])))
+                except (ValueError, TypeError):
+                    continue
+            
+            # Função auxiliar para calcular regressão
+            def calculate_regression(points):
+                if not points or len(points) < 2:
+                    return None
+                
+                x_values = [p[0] for p in points]
+                y_values = [p[1] for p in points]
+                n = len(x_values)
+                
+                x_mean = sum(x_values) / n
+                y_mean = sum(y_values) / n
+                
+                numerator = sum((x_values[i] - x_mean) * (y_values[i] - y_mean) for i in range(n))
+                denominator = sum((x_values[i] - x_mean) ** 2 for i in range(n))
+                
+                if denominator == 0:
+                    return None
+                
+                m = numerator / denominator
+                b = y_mean - m * x_mean
+                
+                y_predicted = [m * x + b for x in x_values]
+                ss_res = sum((y_values[i] - y_predicted[i]) ** 2 for i in range(n))
+                ss_tot = sum((y_values[i] - y_mean) ** 2 for i in range(n))
+                r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+                
+                return {
+                    'm': m,
+                    'b': b,
+                    'r_squared': r_squared,
+                    'n': n,
+                    'x_values': x_values,
+                    'y_values': y_values,
+                    'x_mean': x_mean,
+                    'y_mean': y_mean,
+                    'y_predicted': y_predicted
+                }
+            
+            # Criar cards de análise para cada métrica
+            theme_name = get_theme_name_from_page(page)
+            theme_colors = get_current_theme_colors(theme_name)
+            primary_color = theme_colors.get('primary', ft.Colors.BLUE)
+            text_color = theme_colors.get('on_surface', ft.Colors.BLACK)
+            
+            analysis_cards = []
+            
+            metric_colors = {
+                "Total Score": ft.Colors.GREEN_600,
+                "OTIF": ft.Colors.ORANGE_ACCENT_700,
+                "NIL": ft.Colors.PURPLE_ACCENT_700,
+                "Quality Pickup": ft.Colors.CYAN_700,
+                "Quality Package": ft.Colors.PINK_ACCENT_700
+            }
+            
+            for metric_name, points in metrics_data.items():
+                regression = calculate_regression(points)
+                
+                if regression:
+                    m, b, r_squared = regression['m'], regression['b'], regression['r_squared']
+                    
+                    # Determinar tendência
+                    if m > 0.05:
+                        trend = "↗ Crescimento"
+                        trend_color = ft.Colors.GREEN_600
+                    elif m < -0.05:
+                        trend = "↘ Queda"
+                        trend_color = ft.Colors.RED_600
+                    else:
+                        trend = "→ Estável"
+                        trend_color = ft.Colors.BLUE_600
+                    
+                    # Criar card expandível com memorial de cálculo
+                    def create_info_dialog(metric, reg_data):
+                        def show_info(e):
+                            months_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+                            
+                            # Criar tabela com dados observados vs preditos
+                            data_rows = []
+                            for i, (x, y_obs, y_pred) in enumerate(zip(reg_data['x_values'], reg_data['y_values'], reg_data['y_predicted'])):
+                                residual = y_obs - y_pred
+                                data_rows.append(
+                                    ft.DataRow(cells=[
+                                        ft.DataCell(ft.Text(months_labels[int(x)], size=12)),
+                                        ft.DataCell(ft.Text(f"{y_obs:.2f}", size=12)),
+                                        ft.DataCell(ft.Text(f"{y_pred:.2f}", size=12)),
+                                        ft.DataCell(ft.Text(f"{residual:.2f}", size=12, color=ft.Colors.RED if abs(residual) > 0.5 else ft.Colors.GREY)),
+                                    ])
+                                )
+                            
+                            dialog_content = ft.Column([
+                                ft.Text(f"Memorial de Cálculo - {metric}", size=18, weight="bold"),
+                                ft.Divider(),
+                                
+                                ft.Text("📊 Dados da Regressão Linear", size=14, weight="bold"),
+                                ft.Container(
+                                    content=ft.Column([
+                                        ft.Text(f"• Número de observações (n): {reg_data['n']}", size=12),
+                                        ft.Text(f"• Média de X (meses): {reg_data['x_mean']:.2f}", size=12),
+                                        ft.Text(f"• Média de Y (scores): {reg_data['y_mean']:.2f}", size=12),
+                                        ft.Container(height=10),
+                                        ft.Text("📐 Equação da Reta: y = mx + b", size=13, weight="bold", color=primary_color),
+                                        ft.Text(f"• Coeficiente Angular (m): {reg_data['m']:.4f}", size=12),
+                                        ft.Text(f"• Coeficiente Linear (b): {reg_data['b']:.4f}", size=12),
+                                        ft.Text(f"• Equação final: y = {reg_data['m']:.4f}x + {reg_data['b']:.2f}", size=12, italic=True),
+                                        ft.Container(height=10),
+                                        ft.Text(f"📈 Coeficiente de Determinação (R²): {reg_data['r_squared']:.4f}", size=12, weight="bold"),
+                                        ft.Text(f"   → O modelo explica {reg_data['r_squared']*100:.1f}% da variação dos dados", size=11, italic=True),
+                                    ], spacing=5),
+                                    padding=10,
+                                    bgcolor=ft.Colors.with_opacity(0.05, primary_color),
+                                    border_radius=8,
+                                ),
+                                
+                                ft.Container(height=10),
+                                ft.Text("📋 Valores Observados vs Preditos", size=14, weight="bold"),
+                                ft.Container(
+                                    content=ft.DataTable(
+                                        columns=[
+                                            ft.DataColumn(ft.Text("Mês", size=12, weight="bold")),
+                                            ft.DataColumn(ft.Text("Observado", size=12, weight="bold")),
+                                            ft.DataColumn(ft.Text("Predito", size=12, weight="bold")),
+                                            ft.DataColumn(ft.Text("Resíduo", size=12, weight="bold")),
+                                        ],
+                                        rows=data_rows,
+                                    ),
+                                    border=ft.border.all(1, ft.Colors.with_opacity(0.2, text_color)),
+                                    border_radius=8,
+                                    padding=10,
+                                ),
+                            ], spacing=10, scroll=ft.ScrollMode.AUTO, height=500)
+                            
+                            dialog = ft.AlertDialog(
+                                title=ft.Row([
+                                    ft.Icon(ft.Icons.CALCULATE, color=primary_color),
+                                    ft.Text("Detalhes do Cálculo", color=primary_color),
+                                ]),
+                                content=dialog_content,
+                                actions=[
+                                    ft.TextButton("Fechar", on_click=lambda e: page.close(dialog))
+                                ],
+                                actions_alignment=ft.MainAxisAlignment.END,
+                            )
+                            page.open(dialog)
+                        return show_info
+                    
+                    card = ft.Card(
+                        content=ft.Container(
+                            content=ft.Column([
+                                ft.Row([
+                                    ft.Text(metric_name, size=16, weight="bold", color=text_color),
+                                    ft.Container(expand=True),
+                                    ft.IconButton(
+                                        icon=ft.Icons.INFO_OUTLINE,
+                                        icon_size=20,
+                                        tooltip="Ver memorial de cálculo",
+                                        on_click=create_info_dialog(metric_name, regression),
+                                        icon_color=primary_color,
+                                    ),
+                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                                ft.Divider(height=1),
+                                ft.Row([
+                                    ft.Column([
+                                        ft.Text("Tendência:", size=12, color=ft.Colors.GREY_600),
+                                        ft.Text(trend, size=15, weight="bold", color=trend_color),
+                                    ], spacing=2),
+                                    ft.Container(width=20),
+                                    ft.Column([
+                                        ft.Text("Equação:", size=12, color=ft.Colors.GREY_600),
+                                        ft.Text(f"y = {m:.3f}x + {b:.2f}", size=14, weight="w500"),
+                                    ], spacing=2),
+                                    ft.Container(width=20),
+                                    ft.Column([
+                                        ft.Text("R²:", size=12, color=ft.Colors.GREY_600),
+                                        ft.Text(f"{r_squared:.3f}", size=14, weight="w500"),
+                                    ], spacing=2),
+                                ], spacing=10),
+                            ], spacing=8),
+                            padding=ft.padding.all(16),
+                        ),
+                        elevation=2,
+                    )
+                    analysis_cards.append(card)
+                else:
+                    # Sem dados suficientes
+                    card = ft.Card(
+                        content=ft.Container(
+                            content=ft.Column([
+                                ft.Text(metric_name, size=16, weight="bold", color=text_color),
+                                ft.Divider(height=1),
+                                ft.Text("Dados insuficientes para análise", size=13, color=ft.Colors.GREY_600, italic=True),
+                            ], spacing=8),
+                            padding=ft.padding.all(16),
+                        ),
+                        elevation=1,
+                    )
+                    analysis_cards.append(card)
+            
+            # Montar layout final em grid 2x3
+            # Verificar se é mobile
+            is_mobile = page.window.width < 900 if page.window else False
+            
+            if is_mobile:
+                # Layout em coluna única para mobile
+                cards_layout = ft.Column(
+                    controls=analysis_cards,
+                    spacing=15,
+                )
+            else:
+                # Layout em grid 2 colunas para desktop
+                rows = []
+                for i in range(0, len(analysis_cards), 2):
+                    row_cards = analysis_cards[i:i+2]
+                    if len(row_cards) == 2:
+                        rows.append(
+                            ft.Row(
+                                controls=[
+                                    ft.Container(content=row_cards[0], expand=True),
+                                    ft.Container(width=15),
+                                    ft.Container(content=row_cards[1], expand=True),
+                                ],
+                                alignment=ft.MainAxisAlignment.START,
+                            )
+                        )
+                    else:
+                        rows.append(
+                            ft.Row(
+                                controls=[
+                                    ft.Container(content=row_cards[0], expand=True),
+                                    ft.Container(expand=True),
+                                ],
+                                alignment=ft.MainAxisAlignment.START,
+                            )
+                        )
+                cards_layout = ft.Column(controls=rows, spacing=15)
+            
+            analytics_content = ft.Column(
+                controls=[
+                    ft.Row([
+                        ft.Icon(ft.Icons.ANALYTICS, color=primary_color, size=24),
+                        ft.Text(f"Análise de Tendências - {analysis_year}", size=18, weight="bold", color=primary_color),
+                    ], spacing=10),
+                    ft.Divider(height=1, color=ft.Colors.with_opacity(0.2, text_color)),
+                    ft.Container(height=5),
+                    cards_layout,
+                ],
+                spacing=10,
+                scroll=ft.ScrollMode.AUTO,
+                expand=True,
+            )
+            
+            timeline_analytics_container.current.content = ft.Container(
+                content=analytics_content,
+                padding=ft.padding.all(20),
+                expand=True,
+            )
+            timeline_analytics_container.current.update()
+            
+        except Exception as e:
+            print(f"Erro ao atualizar analytics: {e}")
+            import traceback
+            traceback.print_exc()
+            timeline_analytics_container.current.content = ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ft.Colors.RED_400),
+                    ft.Container(height=10),
+                    ft.Text(f"Erro ao gerar análises: {e}", size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_600),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                alignment=ft.alignment.center,
+                expand=True,
+            )
+            timeline_analytics_container.current.update()
             
     def show_timeline_snackbar(message):
         """Mostra snackbar na timeline"""
         # Substituído por show_toast para notificações consistentes
-        show_toast(message)
-        page.update()
+        show_snack_bar(message, False)
+        safe_page_update(page)
 
     def delete_timeline_record(month, year_data, vendor_id):
         """Deleta um registro específico da timeline"""
@@ -11789,84 +12645,83 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if year and year.strip():
                 query = """SELECT month, year, otif, nil, quality_pickup, quality_package, 
                           total_score, comment FROM supplier_score_records_table 
-                          WHERE supplier_id = ? AND year = ? ORDER BY year DESC, month DESC"""
+                          WHERE supplier_id = ? AND year = ? ORDER BY year DESC, CAST(month AS INTEGER) ASC"""
                 results = db_manager.query(query, (vendor_id, year))
             else:
                 query = """SELECT month, year, otif, nil, quality_pickup, quality_package, 
                           total_score, comment FROM supplier_score_records_table 
-                          WHERE supplier_id = ? ORDER BY year DESC, month DESC"""
+                          WHERE supplier_id = ? ORDER BY year DESC, CAST(month AS INTEGER) ASC"""
                 results = db_manager.query(query, (vendor_id,))
             
             if not results:
                 timeline_table_container.current.content = ft.Container(
-                    content=ft.Text("Nenhum dado encontrado para este fornecedor", 
-                                   size=16, text_align=ft.TextAlign.CENTER),
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.INBOX, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Nenhum dado encontrado para este fornecedor", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
                     alignment=ft.alignment.center,
-                    height=400,
-                    expand=True
+                    expand=True,
                 )
                 timeline_table_container.current.update()
                 return
             
             # Verificar largura da tela para layout responsivo
-            is_mobile = page.window.width < 1000 if page.window else False
-            
-            # Criar cabeçalho da tabela - responsivo
-            # Aumentar fontes e ajustar tamanhos para melhor leitura
-            header_font_size = 14 if not is_mobile else 13
-            row_font_size = 13 if not is_mobile else 12
+            is_mobile = page.window.width < 900 if page.window else False
 
-            if is_mobile:
-                header_row = ft.Row([
-                    ft.Container(ft.Text("Período", weight="bold", size=header_font_size), width=90),
-                    ft.Container(ft.Text("OTIF", weight="bold", size=header_font_size), width=60),
-                    ft.Container(ft.Text("NIL", weight="bold", size=header_font_size), width=60),
-                    ft.Container(ft.Text("Total", weight="bold", size=header_font_size), width=60),
-                    ft.Container(ft.Text("Ações", weight="bold", size=header_font_size), width=110),
-                ])
-            else:
-                header_row = ft.Row([
-                    ft.Container(ft.Text("Mês/Ano", weight="bold", size=header_font_size), width=80),
-                    ft.Container(ft.Text("OTIF", weight="bold", size=header_font_size), width=60),
-                    ft.Container(ft.Text("NIL", weight="bold", size=header_font_size), width=60),
-                    ft.Container(ft.Text("Pickup", weight="bold", size=header_font_size), width=65),
-                    ft.Container(ft.Text("Package", weight="bold", size=header_font_size), width=70),
-                    ft.Container(ft.Text("Total", weight="bold", size=header_font_size), width=60),
-                    ft.Container(ft.Text("Comentário", weight="bold", size=header_font_size), expand=True),
-                    ft.Container(ft.Text("Ações", weight="bold", size=header_font_size), width=120),
-                ])
-            
-            # Criar linhas de dados
-            data_rows = []
-            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
-                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-                     
-            for i, row in enumerate(results):
-                month = row['month']
-                year_data = row['year']
-                otif = row['otif']
-                nil = row['nil']
-                pickup = row['quality_pickup']
-                package = row['quality_package']
-                total = row['total_score']
-                comment = row['comment']
+            theme_name = get_theme_name_from_page(page)
+            theme_colors = get_current_theme_colors(theme_name)
+            primary_color = theme_colors.get('primary', ft.Colors.BLUE)
+            chip_bgcolor = theme_colors.get('primary_container') or ft.Colors.with_opacity(0.08, primary_color)
+            card_bgcolor = theme_colors.get('field_background') if theme_name == 'dracula' else theme_colors.get('surface_variant')
+            if not card_bgcolor:
+                card_bgcolor = ft.Colors.with_opacity(0.05, primary_color)
+            text_color = theme_colors.get('on_surface', ft.Colors.BLACK)
+
+            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+            # Criar cabeçalho da tabela
+            header_row = ft.Container(
+                content=ft.Row([
+                    ft.Container(ft.Text("Período", size=12, weight="bold", color=text_color, no_wrap=True), width=100, alignment=ft.alignment.center_left),
+                    ft.Container(ft.Text("OTIF", size=12, weight="bold", color=text_color, no_wrap=True), width=80, alignment=ft.alignment.center),
+                    ft.Container(ft.Text("NIL", size=12, weight="bold", color=text_color, no_wrap=True), width=80, alignment=ft.alignment.center),
+                    ft.Container(ft.Text("Pickup", size=12, weight="bold", color=text_color, no_wrap=True), width=80, alignment=ft.alignment.center),
+                    ft.Container(ft.Text("Package", size=12, weight="bold", color=text_color, no_wrap=True), width=80, alignment=ft.alignment.center),
+                    ft.Container(ft.Text("Total", size=12, weight="bold", color=text_color, no_wrap=True), width=80, alignment=ft.alignment.center),
+                    ft.Container(ft.Text("Comentário", size=12, weight="bold", color=text_color, no_wrap=True), expand=True, alignment=ft.alignment.center_left),
+                    ft.Container(ft.Text("Ações", size=12, weight="bold", color=text_color, no_wrap=True), width=100, alignment=ft.alignment.center),
+                ], spacing=10, tight=True),
+                padding=ft.padding.symmetric(horizontal=16, vertical=12),
+                bgcolor=ft.Colors.with_opacity(0.1, primary_color),
+                border_radius=ft.border_radius.only(top_left=8, top_right=8),
+            )
+
+            table_rows = []  # Não incluir o header aqui
+
+            for i, result in enumerate(results):
+                # Suporta tanto tupla quanto dicionário
+                if isinstance(result, dict):
+                    month = result['month']
+                    year_data = result['year']
+                    otif = result['otif']
+                    nil = result['nil']
+                    pickup = result['quality_pickup']
+                    package = result['quality_package']
+                    total = result['total_score']
+                    comment = result['comment']
+                else:
+                    month, year_data, otif, nil, pickup, package, total, comment = result
+                
                 try:
                     month_int = int(month)
                     month_name = months[month_int-1] if 1 <= month_int <= 12 else str(month)
                 except (ValueError, TypeError):
                     month_name = str(month)
-                
-                bgcolor = "lightgray" if i % 2 == 0 else None
-                
-                def on_hover_row(e, original_bgcolor):
-                    theme_name = get_theme_name_from_page(page)
-                    Colors = get_current_theme_colors(theme_name)
-                    hover_color = Colors.get('surface_variant', ft.Colors.BLUE_50)
-                    if e.data == 'true':
-                        e.control.bgcolor = hover_color
-                    else:
-                        e.control.bgcolor = original_bgcolor
-                    e.control.update()
+                total_display = f"{float(total):.1f}" if total is not None else "--"
+                bgcolor = ft.Colors.with_opacity(0.04, primary_color) if i % 2 == 0 and not is_mobile else None
                 
                 # Função para editar este registro específico
                 def create_edit_handler(record_row):
@@ -11893,180 +12748,136 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Verificar se usuário pode editar (apenas Admin e Super Admin)
                 can_edit = current_user_privilege in ["Admin", "Super Admin"]
                 
-                edit_btn = ft.IconButton(
-                    icon=ft.Icons.EDIT,
-                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary') if can_edit else ft.Colors.GREY_400,
-                    tooltip="Editar registro" if can_edit else "Sem permissão para editar",
-                    icon_size=16,
-                    on_click=create_edit_handler(record_tuple) if can_edit else None,
-                    disabled=not can_edit
+                # Formatação dos valores
+                otif_display = f"{float(otif):.1f}" if otif is not None else "--"
+                nil_display = f"{float(nil):.1f}" if nil is not None else "--"
+                pickup_display = f"{float(pickup):.1f}" if pickup is not None else "--"
+                package_display = f"{float(package):.1f}" if package is not None else "--"
+                total_display = f"{float(total):.1f}" if total is not None else "--"
+                
+                comment_text = comment.strip() if isinstance(comment, str) else comment
+                comment_display = comment_text if comment_text else "Sem comentários"
+
+                # Botões de ação
+                action_buttons = []
+                if can_edit:
+                    action_buttons.append(ft.IconButton(
+                        icon=ft.Icons.EDIT,
+                        icon_size=16,
+                        tooltip="Editar",
+                        on_click=create_edit_handler(record_tuple),
+                        icon_color=primary_color
+                    ))
+                    
+                    def create_delete_handler(m, y, vid):
+                        def handle_delete(e):
+                            def handle_confirm(e):
+                                delete_timeline_record(m, y, vid)
+                                page.close(delete_dialog)
+                            
+                            def handle_cancel(e):
+                                page.close(delete_dialog)
+                            
+                            delete_dialog = DeleteListItemConfirmationDialog(
+                                item_name=f"{months[int(m)-1] if 1 <= int(m) <= 12 else str(m)}/{y}",
+                                item_type="Registro Timeline",
+                                on_confirm=handle_confirm,
+                                on_cancel=handle_cancel
+                            )
+                            page.open(delete_dialog)
+                        return handle_delete
+                    
+                    action_buttons.append(ft.IconButton(
+                        icon=ft.Icons.DELETE,
+                        icon_size=16,
+                        tooltip="Deletar",
+                        on_click=create_delete_handler(month, year_data, vendor_id),
+                        icon_color=ft.Colors.RED_400
+                    ))
+
+                # Cor alternada para linhas
+                row_index = results.index(result)
+                row_bgcolor = ft.Colors.with_opacity(0.03, text_color) if row_index % 2 == 0 else None
+
+                # Linha da tabela
+                table_row = ft.Container(
+                    content=ft.Row([
+                        ft.Container(ft.Text(f"{month_name}/{year_data}", size=13, color=text_color), width=100, alignment=ft.alignment.center_left),
+                        ft.Container(ft.Text(otif_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(ft.Text(nil_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(ft.Text(pickup_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(ft.Text(package_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(ft.Text(total_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(
+                            ft.Text(comment_display, size=12, color=ft.Colors.with_opacity(0.7, text_color), max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                            expand=True,
+                            alignment=ft.alignment.center_left
+                        ),
+                        ft.Container(
+                            ft.Row(action_buttons, spacing=0, tight=True),
+                            width=100,
+                            alignment=ft.alignment.center
+                        ),
+                    ], spacing=10, tight=True),
+                    padding=ft.padding.symmetric(horizontal=16, vertical=10),
+                    bgcolor=row_bgcolor,
+                    border=ft.border.only(bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.1, text_color))),
                 )
-                
-                # Função para deletar este registro específico
-                def create_delete_handler(m, y, vid):
-                    def handle_delete(e):
-                        def handle_confirm(e):
-                            delete_timeline_record(m, y, vid)
-                            page.close(delete_dialog)
-                        
-                        def handle_cancel(e):
-                            page.close(delete_dialog)
-                        
-                        delete_dialog = DeleteListItemConfirmationDialog(
-                            item_name=f"{months[int(m)-1] if 1 <= int(m) <= 12 else str(m)}/{y}",
-                            item_type="Registro Timeline",
-                            on_confirm=handle_confirm,
-                            on_cancel=handle_cancel
-                        )
-                        page.open(delete_dialog)
-                    return handle_delete
-                
-                delete_btn = ft.IconButton(
-                    icon=ft.Icons.DELETE,
-                    icon_color="red" if can_edit else ft.Colors.GREY_400,
-                    tooltip="Deletar registro" if can_edit else "Sem permissão para deletar",
-                    icon_size=16,
-                    on_click=create_delete_handler(month, year_data, vendor_id) if can_edit else None,
-                    disabled=not can_edit
-                )
-                
-                # Layout responsivo das linhas
-                if is_mobile:
-                    # Layout compacto para mobile
-                    data_row = ft.Container(
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Container(ft.Text(f"{month_name}/{year_data}", size=11, weight="bold"), width=80),
-                                ft.Container(ft.Text(f"{float(otif):.1f}" if otif is not None else "--", size=11), width=50),
-                                ft.Container(ft.Text(f"{float(nil):.1f}" if nil is not None else "--", size=11), width=50),
-                                ft.Container(ft.Text(f"{float(total):.1f}" if total is not None else "--", size=11, weight="bold"), width=50),
-                                ft.Container(ft.Row([edit_btn, delete_btn], spacing=5), width=100),
-                            ]),
-                            # Segunda linha com detalhes extras em mobile
-                            ft.Row([
-                                ft.Container(ft.Text(f"P:{float(pickup):.1f}" if pickup is not None else "P:--", size=10, color="gray"), width=60),
-                                ft.Container(ft.Text(f"Pk:{float(package):.1f}" if package is not None else "Pk:--", size=10, color="gray"), width=60),
-                                ft.Container(ft.Text(comment or "--", size=9, color="gray", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS), expand=True),
-                            ]),
-                        ], spacing=2),
-                        bgcolor=bgcolor,
-                        padding=5,
-                        on_hover=lambda e, bg=bgcolor: on_hover_row(e, bg)
-                    )
-                else:
-                    # Layout completo para desktop
-                    data_row = ft.Container(
-                        content=ft.Row([
-                                ft.Container(ft.Text(f"{month_name}/{year_data}", size=row_font_size), width=80),
-                                ft.Container(ft.Text(f"{float(otif):.1f}" if otif is not None else "--", size=row_font_size), width=60),
-                                ft.Container(ft.Text(f"{float(nil):.1f}" if nil is not None else "--", size=row_font_size), width=60),
-                                ft.Container(ft.Text(f"{float(pickup):.1f}" if pickup is not None else "--", size=row_font_size), width=65),
-                                ft.Container(ft.Text(f"{float(package):.1f}" if package is not None else "--", size=row_font_size), width=70),
-                                ft.Container(ft.Text(f"{float(total):.1f}" if total is not None else "--", size=row_font_size, weight="bold"), width=60),
-                                ft.Container(ft.Text(comment or "--", size=row_font_size - 1, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS), expand=True),
-                                ft.Container(ft.Row([edit_btn, delete_btn], spacing=5), width=120),
-                        ]),
-                        bgcolor=bgcolor,
-                        padding=5,
-                        on_hover=lambda e, bg=bgcolor: on_hover_row(e, bg)
-                    )
-                data_rows.append(data_row)
-            
-            # Envolver em um container com scroll horizontal se necessário
-            table_inner = ft.Container(
+
+                table_rows.append(table_row)
+
+            # Container da tabela com header fixo e corpo scrollável
+            table_container = ft.Container(
                 content=ft.Column([
+                    # Header fixo
                     header_row,
-                    ft.Divider(),
+                    # Corpo da tabela com scroll
                     ft.Container(
-                        content=ft.Column(data_rows, spacing=2, scroll=ft.ScrollMode.AUTO),
-                        expand=True
-                    )
-                ], expand=True),
-                expand=True
+                        content=ft.Column(
+                            controls=table_rows,  # Agora table_rows não contém o header
+                            spacing=0,
+                            scroll=ft.ScrollMode.AUTO,
+                        ),
+                        expand=True,
+                    ),
+                ], spacing=0, expand=True),
+                border=ft.border.all(1, ft.Colors.with_opacity(0.12, text_color)),
+                border_radius=8,
+                bgcolor=ft.Colors.with_opacity(0.02, text_color),
+                expand=True,
             )
-            
-            table_content = ft.Container(
-                content=ft.ListView([table_inner], expand=True, auto_scroll=False),
-                padding=ft.padding.all(20),
-                border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
-                border_radius=10,
-                expand=True
-            )
-            
-            timeline_table_container.current.content = table_content
+
+            timeline_table_container.current.content = table_container
             timeline_table_container.current.update()
             
         except Exception as e:
             print(f"Erro ao atualizar tabela: {e}")
-            timeline_table_container.current.content = ft.Text(f"Erro: {e}")
+            timeline_table_container.current.content = ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ft.Colors.RED_400),
+                    ft.Container(height=10),
+                    ft.Text(f"Erro: {e}", size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_600),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                alignment=ft.alignment.center,
+                expand=True,
+            )
             timeline_table_container.current.update()
             
     def on_timeline_vendor_change(e):
         """Callback quando o vendor é alterado"""
         update_timeline_metrics()
-        if timeline_table_tab.current:
-            vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
-            year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
-            update_timeline_table(vendor_id, year)
+        # Como não há mais abas, sempre atualizar a tabela quando há mudança
+        vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
+        year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
+        update_timeline_table(vendor_id, year)
             
     def on_timeline_year_change(e):
         """Callback quando o ano é alterado"""
         update_timeline_metrics()
-        if timeline_table_tab.current:
-            vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
-            year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
-            update_timeline_table(vendor_id, year)
-    
-    def switch_to_chart_tab(e):
-        """Muda para a aba do gráfico"""
-        timeline_chart_tab.current = True
-        timeline_table_tab.current = False
-        
-        # Obter cores do tema atual
-        theme_name = get_theme_name_from_page(page)
-        Colors = get_current_theme_colors(theme_name)
-        
-        # Atualizar aparência dos botões
-        if timeline_chart_button.current:
-            timeline_chart_button.current.bgcolor = Colors.get('primary')
-            timeline_chart_button.current.color = Colors.get('on_primary', '#FFFFFF')
-        if timeline_table_button.current:
-            timeline_table_button.current.bgcolor = None
-            timeline_table_button.current.color = None
-        
-        # Mostrar/esconder containers
-        timeline_chart_container.current.visible = True
-        timeline_table_container.current.visible = False
-        
-        page.update()
-        
-    def switch_to_table_tab(e):
-        """Muda para a aba da tabela"""
-        timeline_chart_tab.current = False  
-        timeline_table_tab.current = True
-        
-        # Obter cores do tema atual
-        theme_name = get_theme_name_from_page(page)
-        Colors = get_current_theme_colors(theme_name)
-        
-        # Atualizar aparência dos botões
-        if timeline_table_button.current:
-            timeline_table_button.current.bgcolor = Colors.get('primary')
-            timeline_table_button.current.color = Colors.get('on_primary', '#FFFFFF')
-        if timeline_chart_button.current:
-            timeline_chart_button.current.bgcolor = None
-            timeline_chart_button.current.color = None
-        
-        # Mostrar/esconder containers
-        timeline_chart_container.current.visible = False
-        timeline_table_container.current.visible = True
-        
-        # Atualizar dados da tabela
+        # Como não há mais abas, apenas atualizar os dados diretamente
         vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
         year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
         update_timeline_table(vendor_id, year)
-        
-        page.update()
 
     # Criar conteúdo da aba Timeline
     # Obter cores do tema para a criação inicial dos componentes
@@ -12085,347 +12896,332 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         content=ft.Column([
             # Título da seção
             ft.Container(
-                content=ft.Text("Timeline Analytics", size=24, weight="bold"),
+                content=ft.Text("Timeline Analytics", size=28, weight="bold"),
                 alignment=ft.alignment.top_left,
+                padding=ft.padding.only(bottom=10),
             ),
-            ft.Divider(),
             
-            # Campos de seleção no topo - centralizados em um container
+            # Campos de seleção - mais clean e minimalista
+            ft.Row([
+                ft.Dropdown(
+                    label="Fornecedor",
+                    hint_text="Selecione um fornecedor",
+                    ref=timeline_vendor_dropdown,
+                    on_change=on_timeline_vendor_change,
+                    options=load_suppliers_for_timeline(),
+                    expand=True,
+                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                ),
+                ft.Dropdown(
+                    label="Ano",
+                    ref=timeline_year_dropdown,
+                    on_change=on_timeline_year_change,
+                    options=[ft.dropdown.Option("", "(Ano Atual)")] + [ft.dropdown.Option(str(y)) for y in range(2024, 2040)],
+                    value="",
+                    width=150,
+                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                ),
+            ], spacing=15, ref=timeline_search_container),
+            
+            ft.Container(height=20),
+            
+            # Card com informações do fornecedor selecionado
             ft.Container(
-                content=ft.Column([
-                    # (Campo de pesquisa removido)
-                    # Row com dropdowns
-                    ft.Row([
-                        ft.Dropdown(
-                            label="Supplier",
-                            hint_text="Selecione um fornecedor",
-                            ref=timeline_vendor_dropdown,
-                            on_change=on_timeline_vendor_change,
-                            options=load_suppliers_for_timeline(),
-                            expand=True,
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                        ),
-                        ft.Dropdown(
-                            label="Ano",
-                            ref=timeline_year_dropdown,
-                            on_change=on_timeline_year_change,
-                            options=[ft.dropdown.Option("", "(Ano Atual)")] + [ft.dropdown.Option(str(y)) for y in range(2024, 2040)],
-                            value="",
-                            width=150,
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                        ),
-                    ], alignment=ft.MainAxisAlignment.CENTER, spacing=20),
-                ], horizontal_alignment=ft.CrossAxisAlignment.START),
-                padding=ft.padding.symmetric(horizontal=20, vertical=15),
-                border=None,  # Remover borda inicial
-                border_radius=12,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
-                width=700,
-                alignment=ft.alignment.center,
-                ref=timeline_search_container
+                ref=supplier_info_container,
+                visible=False,
+                content=ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.BUSINESS, size=20, color=primary_color_for_timeline),
+                                ft.Text("Informações do Fornecedor", size=14, weight="bold", color=primary_color_for_timeline),
+                            ], spacing=8),
+                            ft.Divider(height=1, thickness=1),
+                            ft.Row([
+                                ft.Column([
+                                    ft.Text("Nome:", size=11, weight="w500", color=ft.Colors.with_opacity(0.6, label_color)),
+                                    ft.Text("--", ref=supplier_name_text, size=14, weight="bold", color=label_color),
+                                ], spacing=2, expand=2),
+                                ft.Column([
+                                    ft.Text("BU:", size=11, weight="w500", color=ft.Colors.with_opacity(0.6, label_color)),
+                                    ft.Text("--", ref=supplier_bu_text, size=14, weight="bold", color=label_color),
+                                ], spacing=2, expand=1),
+                                ft.Column([
+                                    ft.Text("Supplier #:", size=11, weight="w500", color=ft.Colors.with_opacity(0.6, label_color)),
+                                    ft.Text("--", ref=supplier_number_text, size=14, weight="bold", color=label_color),
+                                ], spacing=2, expand=1),
+                                ft.Column([
+                                    ft.Text("PO:", size=11, weight="w500", color=ft.Colors.with_opacity(0.6, label_color)),
+                                    ft.Text("--", ref=supplier_po_text, size=14, weight="bold", color=label_color),
+                                ], spacing=2, expand=1),
+                            ], spacing=20),
+                        ], spacing=10),
+                        padding=ft.padding.all(16),
+                        bgcolor=timeline_card_bg,
+                        border_radius=12,
+                    ),
+                    elevation=2,
+                ),
+            ),
+            
+            ft.Container(height=15),
+            
+            # Cards de métricas - layout clean com scroll horizontal
+            ft.Container(
+                ref=timeline_metrics_row,
+                content=ft.Row(
+                    controls=[
+                # Card Overall Average
+                ft.Card(
+                    ref=timeline_cards_refs["overall"]["card"],
+                    content=ft.Container(
+                        ref=timeline_cards_refs["overall"]["gradient"],
+                        content=ft.Column([
+                            ft.Text("Overall", size=11, weight="w600", color=label_color),
+                            ft.Container(expand=True),
+                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=overall_avg_card),
+                        ], spacing=4),
+                        padding=ft.padding.all(14),
+                        bgcolor=timeline_card_bg,
+                        width=135,
+                        height=90,
+                        border_radius=10
+                    ),
+                    elevation=2,
+                    surface_tint_color=primary_color_for_timeline
+                ),
+                # Card 12 Month Average
+                ft.Card(
+                    ref=timeline_cards_refs["12m"]["card"],
+                    content=ft.Container(
+                        ref=timeline_cards_refs["12m"]["gradient"],
+                        content=ft.Column([
+                            ft.Text("12M Avg", size=11, weight="w600", color=label_color),
+                            ft.Container(expand=True),
+                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=twelve_month_avg_card),
+                        ], spacing=4),
+                        padding=ft.padding.all(14),
+                        bgcolor=timeline_card_bg,
+                        width=135,
+                        height=90,
+                        border_radius=10
+                    ),
+                    elevation=2,
+                    surface_tint_color=primary_color_for_timeline
+                ),
+                # Card Year Average
+                ft.Card(
+                    ref=timeline_cards_refs["year"]["card"],
+                    content=ft.Container(
+                        ref=timeline_cards_refs["year"]["gradient"],
+                        content=ft.Column([
+                            ft.Text("Year Avg", size=11, weight="w600", color=label_color),
+                            ft.Container(expand=True),
+                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=year_avg_card),
+                        ], spacing=4),
+                        padding=ft.padding.all(14),
+                        bgcolor=timeline_card_bg,
+                        width=135,
+                        height=90,
+                        border_radius=10
+                    ),
+                    elevation=2,
+                    surface_tint_color=primary_color_for_timeline
+                ),
+                # Card Q1
+                ft.Card(
+                    ref=timeline_cards_refs["q1"]["card"],
+                    content=ft.Container(
+                        ref=timeline_cards_refs["q1"]["gradient"],
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Text("Q1", size=11, weight="w600", color=label_color),
+                                ft.Container(expand=True),
+                                ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q1_arrow_icon),
+                            ], spacing=6),
+                            ft.Container(expand=True),
+                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q1_avg_card),
+                        ], spacing=4),
+                        padding=ft.padding.all(14),
+                        bgcolor=timeline_card_bg,
+                        width=135,
+                        height=90,
+                        border_radius=10
+                    ),
+                    elevation=2,
+                    surface_tint_color=primary_color_for_timeline
+                ),
+                # Card Q2
+                ft.Card(
+                    ref=timeline_cards_refs["q2"]["card"],
+                    content=ft.Container(
+                        ref=timeline_cards_refs["q2"]["gradient"],
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Text("Q2", size=11, weight="w600", color=label_color),
+                                ft.Container(expand=True),
+                                ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q2_arrow_icon),
+                            ], spacing=6),
+                            ft.Container(expand=True),
+                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q2_avg_card),
+                        ], spacing=4),
+                        padding=ft.padding.all(14),
+                        bgcolor=timeline_card_bg,
+                        width=135,
+                        height=90,
+                        border_radius=10
+                    ),
+                    elevation=2,
+                    surface_tint_color=primary_color_for_timeline
+                ),
+                # Card Q3
+                ft.Card(
+                    ref=timeline_cards_refs["q3"]["card"],
+                    content=ft.Container(
+                    ref=timeline_cards_refs["q3"]["gradient"],
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Text("Q3", size=11, weight="w600", color=label_color),
+                                ft.Container(expand=True),
+                                ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q3_arrow_icon),
+                            ], spacing=6),
+                            ft.Container(expand=True),
+                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q3_avg_card),
+                        ], spacing=4),
+                        padding=ft.padding.all(14),
+                        bgcolor=timeline_card_bg,
+                        width=135,
+                        height=90,
+                        border_radius=10
+                    ),
+                    elevation=2,
+                    surface_tint_color=primary_color_for_timeline
+                ),
+                # Card Q4
+                ft.Card(
+                    ref=timeline_cards_refs["q4"]["card"],
+                    content=ft.Container(
+                        ref=timeline_cards_refs["q4"]["gradient"],
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Text("Q4", size=11, weight="w600", color=label_color),
+                                ft.Container(expand=True),
+                                ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q4_arrow_icon),
+                            ], spacing=6),
+                            ft.Container(expand=True),
+                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q4_avg_card),
+                        ], spacing=4),
+                        padding=ft.padding.all(14),
+                        bgcolor=timeline_card_bg,
+                        width=135,
+                        height=90,
+                        border_radius=10
+                    ),
+                    elevation=2,
+                    surface_tint_color=primary_color_for_timeline
+                ),
+            ], spacing=12, scroll=ft.ScrollMode.AUTO),
             ),
             
             ft.Container(height=20),
             
-            # Cards de métricas - com scroll horizontal
-            ft.Column([
-                ft.Text("Métricas de Performance", size=18, weight="bold", text_align=ft.TextAlign.CENTER, color=ft.Colors.ON_SURFACE),
-                ft.Container(height=15),
-                ft.Container(
-                    ref=timeline_metrics_row,
-                    content=ft.Row(
-                        controls=[
-                    # Card Overall Average
-                    ft.Card(
-                        ref=timeline_cards_refs["overall"]["card"],
-                        content=ft.Container(
-                            ref=timeline_cards_refs["overall"]["gradient"],
-                            content=ft.Stack([
-                                # Top-left: icon + label
-                                ft.Container(
-                                    content=ft.Row([
-                                        ft.Icon(ft.Icons.ANALYTICS, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["overall"]["icon"]),
-                                        ft.Text("Overall", size=11, weight="bold", color=label_color),
-                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
-                                    alignment=ft.alignment.top_left,
-                                    padding=ft.padding.only(left=4, top=4)
-                                ),
-                                # Top-right: (removed - only Q cards show arrows)
-                                # Bottom-right: value
-                                ft.Container(
-                                    content=ft.Text("--", size=18, weight="bold", color=primary_color_for_timeline, ref=overall_avg_card),
-                                    alignment=ft.alignment.bottom_right,
-                                    padding=ft.padding.only(right=6, bottom=6)
-                                )
-                            ]),
-                            padding=ft.padding.all(12),
-                            bgcolor=timeline_card_bg,
-                            width=140,
-                            height=85,
-                            border_radius=12
-                        ),
-                        elevation=3,
-                        surface_tint_color=primary_color_for_timeline
-                    ),
-                    # Card 12 Month Average
-                    ft.Card(
-                        ref=timeline_cards_refs["12m"]["card"],
-                        content=ft.Container(
-                            ref=timeline_cards_refs["12m"]["gradient"],
-                            content=ft.Stack([
-                                ft.Container(
-                                    content=ft.Row([
-                                        ft.Icon(ft.Icons.CALENDAR_MONTH, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["12m"]["icon"]),
-                                        ft.Text("12M Avg", size=11, weight="bold", color=label_color),
-                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
-                                    alignment=ft.alignment.top_left,
-                                    padding=ft.padding.only(left=4, top=4)
-                                ),
-                                # Top-right: (removed - only Q cards show arrows)
-                                ft.Container(
-                                    content=ft.Text("--", size=18, weight="bold", color=primary_color_for_timeline, ref=twelve_month_avg_card),
-                                    alignment=ft.alignment.bottom_right,
-                                    padding=ft.padding.only(right=6, bottom=6)
-                                )
-                            ]),
-                            padding=ft.padding.all(12),
-                            bgcolor=timeline_card_bg,
-                            width=140,
-                            height=85,
-                            border_radius=12
-                        ),
-                        elevation=3,
-                        surface_tint_color=primary_color_for_timeline
-                    ),
-                    # Card Year Average
-                    ft.Card(
-                        ref=timeline_cards_refs["year"]["card"],
-                        content=ft.Container(
-                            ref=timeline_cards_refs["year"]["gradient"],
-                            content=ft.Stack([
-                                ft.Container(
-                                    content=ft.Row([
-                                        ft.Icon(ft.Icons.CALENDAR_TODAY, color=primary_color_for_timeline, size=20, ref=timeline_cards_refs["year"]["icon"]),
-                                        ft.Text("Year Avg", size=11, weight="bold", color=label_color),
-                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
-                                    alignment=ft.alignment.top_left,
-                                    padding=ft.padding.only(left=4, top=4)
-                                ),
-                                # Top-right: (removed - only Q cards show arrows)
-                                ft.Container(
-                                    content=ft.Text("--", size=18, weight="bold", color=primary_color_for_timeline, ref=year_avg_card),
-                                    alignment=ft.alignment.bottom_right,
-                                    padding=ft.padding.only(right=6, bottom=6)
-                                )
-                            ]),
-                            padding=ft.padding.all(12),
-                            bgcolor=timeline_card_bg,
-                            width=140,
-                            height=85,
-                            border_radius=12
-                        ),
-                        elevation=3,
-                        surface_tint_color=primary_color_for_timeline
-                    ),
-                    ft.Card(
-                        ref=timeline_cards_refs["q1"]["card"],
-                        content=ft.Container(
-                            ref=timeline_cards_refs["q1"]["gradient"],
-                            content=ft.Stack([
-                                ft.Container(
-                                    content=ft.Row([
-                                        ft.Icon(ft.Icons.LOOKS_ONE, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q1"]["icon"]),
-                                        ft.Text("Q1", size=11, weight="bold", color=label_color),
-                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
-                                    alignment=ft.alignment.top_left,
-                                    padding=ft.padding.only(left=4, top=4)
-                                ),
-                                ft.Container(
-                                    content=ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY, size=16, ref=q1_arrow_icon),
-                                    alignment=ft.alignment.top_right,
-                                    padding=ft.padding.all(5),
-                                ),
-                                ft.Container(
-                                    content=ft.Text("--", size=16, weight="bold", color=primary_color_for_timeline, ref=q1_avg_card),
-                                    alignment=ft.alignment.bottom_right,
-                                    padding=ft.padding.only(right=6, bottom=6)
-                                )
-                            ]),
-                            padding=ft.padding.all(12),
-                            bgcolor=timeline_card_bg,
-                            width=140,
-                            height=85,
-                            border_radius=12
-                        ),
-                        elevation=3,
-                        surface_tint_color=primary_color_for_timeline
-                    ),
-                    # Card Q2
-                    ft.Card(
-                        ref=timeline_cards_refs["q2"]["card"],
-                        content=ft.Container(
-                            ref=timeline_cards_refs["q2"]["gradient"],
-                            content=ft.Stack([
-                                ft.Container(
-                                    content=ft.Row([
-                                        ft.Icon(ft.Icons.LOOKS_TWO, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q2"]["icon"]),
-                                        ft.Text("Q2", size=11, weight="bold", color=label_color),
-                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
-                                    alignment=ft.alignment.top_left,
-                                    padding=ft.padding.only(left=4, top=4)
-                                ),
-                                ft.Container(
-                                    content=ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY, size=16, ref=q2_arrow_icon),
-                                    alignment=ft.alignment.top_right,
-                                    padding=ft.padding.all(5),
-                                ),
-                                ft.Container(
-                                    content=ft.Text("--", size=16, weight="bold", color=primary_color_for_timeline, ref=q2_avg_card),
-                                    alignment=ft.alignment.bottom_right,
-                                    padding=ft.padding.only(right=6, bottom=6)
-                                )
-                            ]),
-                            padding=ft.padding.all(12),
-                            bgcolor=timeline_card_bg,
-                            width=140,
-                            height=85,
-                            border_radius=12
-                        ),
-                        elevation=3,
-                        surface_tint_color=primary_color_for_timeline
-                    ),
-                    # Card Q3
-                    ft.Card(
-                        ref=timeline_cards_refs["q3"]["card"],
-                        content=ft.Container(
-                            ref=timeline_cards_refs["q3"]["gradient"],
-                            content=ft.Stack([
-                                ft.Container(
-                                    content=ft.Row([
-                                        ft.Icon(ft.Icons.LOOKS_3, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q3"]["icon"]),
-                                        ft.Text("Q3", size=11, weight="bold", color=label_color),
-                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
-                                    alignment=ft.alignment.top_left,
-                                    padding=ft.padding.only(left=4, top=4)
-                                ),
-                                ft.Container(
-                                    content=ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY, size=16, ref=q3_arrow_icon),
-                                    alignment=ft.alignment.top_right,
-                                    padding=ft.padding.all(5),
-                                ),
-                                ft.Container(
-                                    content=ft.Text("--", size=16, weight="bold", color=primary_color_for_timeline, ref=q3_avg_card),
-                                    alignment=ft.alignment.bottom_right,
-                                    padding=ft.padding.only(right=6, bottom=6)
-                                )
-                            ]),
-                            padding=ft.padding.all(12),
-                            bgcolor=timeline_card_bg,
-                            width=140,
-                            height=85,
-                            border_radius=12
-                        ),
-                        elevation=3,
-                        surface_tint_color=primary_color_for_timeline
-                    ),
-                    # Card Q4
-                    ft.Card(
-                        ref=timeline_cards_refs["q4"]["card"],
-                        content=ft.Container(
-                            ref=timeline_cards_refs["q4"]["gradient"],
-                            content=ft.Stack([
-                                ft.Container(
-                                    content=ft.Row([
-                                        ft.Icon(ft.Icons.LOOKS_4, color=primary_color_for_timeline, size=18, ref=timeline_cards_refs["q4"]["icon"]),
-                                        ft.Text("Q4", size=11, weight="bold", color=label_color),
-                                    ], alignment=ft.MainAxisAlignment.START, spacing=8),
-                                    alignment=ft.alignment.top_left,
-                                    padding=ft.padding.only(left=4, top=4)
-                                ),
-                                ft.Container(
-                                    content=ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY, size=16, ref=q4_arrow_icon),
-                                    alignment=ft.alignment.top_right,
-                                    padding=ft.padding.all(5),
-                                ),
-                                ft.Container(
-                                    content=ft.Text("--", size=16, weight="bold", color=primary_color_for_timeline, ref=q4_avg_card),
-                                    alignment=ft.alignment.bottom_right,
-                                    padding=ft.padding.only(right=6, bottom=6)
-                                )
-                            ]),
-                            padding=ft.padding.all(12),
-                            bgcolor=timeline_card_bg,
-                            width=140,
-                            height=85,
-                            border_radius=12
-                        ),
-                        elevation=3,
-                        surface_tint_color=primary_color_for_timeline
-                    ),
-                ], spacing=15, tight=True, scroll=ft.ScrollMode.AUTO),
-                    height=100
-                ),
-            ]),
-            
-            ft.Container(height=15),
-            
-            # Abas para gráfico e tabela com checkboxes na mesma linha
-            ft.Row([
-                ft.ElevatedButton(
-                    "Gráfico de Linha",
-                    icon=ft.Icons.SHOW_CHART,
-                    on_click=switch_to_chart_tab,
-                    ref=timeline_chart_button
-                ),
-                ft.ElevatedButton(
-                    "Tabela de Dados",
-                    icon=ft.Icons.TABLE_CHART,
-                    on_click=switch_to_table_tab,
-                    ref=timeline_table_button
-                ),
-                ft.Container(width=20),  # Espaçamento
-                ft.Checkbox(label="OTIF", value=False, ref=timeline_otif_check, on_change=on_timeline_vendor_change),
-                ft.Checkbox(label="NIL", value=False, ref=timeline_nil_check, on_change=on_timeline_vendor_change),
-                ft.Checkbox(label="Pickup", value=False, ref=timeline_pickup_check, on_change=on_timeline_vendor_change),
-                ft.Checkbox(label="Package", value=False, ref=timeline_package_check, on_change=on_timeline_vendor_change),
-            ], spacing=10, alignment=ft.MainAxisAlignment.START),
-            
-            ft.Container(height=15),
-            
-            # Container para gráfico
+            # Tabs para alternar entre gráfico e tabela
             ft.Container(
-                content=ft.Container(
-                    content=ft.Text("Selecione um fornecedor para visualizar o gráfico", 
-                                   size=16, text_align=ft.TextAlign.CENTER),
-                    alignment=ft.alignment.center,
-                    height=400,
-                    expand=True
+                content=ft.Tabs(
+                    ref=timeline_tabs,
+                    selected_index=0,
+                    animation_duration=300,
+                    tabs=[
+                        # Tab do Gráfico
+                        ft.Tab(
+                            text="Performance Chart",
+                            icon=ft.Icons.SHOW_CHART,
+                            content=ft.Container(
+                                content=ft.Card(
+                                    content=ft.Container(
+                                        ref=timeline_chart_container,
+                                        content=ft.Container(
+                                            content=ft.Column([
+                                                ft.Icon(ft.Icons.SHOW_CHART, size=48, color=ft.Colors.GREY_400),
+                                                ft.Container(height=10),
+                                                ft.Text("Selecione um fornecedor para visualizar o gráfico", 
+                                                       size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                            alignment=ft.alignment.center,
+                                        ),
+                                        padding=ft.padding.all(20),
+                                        expand=True,
+                                    ),
+                                    elevation=1,
+                                ),
+                                padding=ft.padding.only(top=10),
+                                expand=True,
+                            ),
+                        ),
+                        # Tab da Tabela
+                        ft.Tab(
+                            text="Detailed Records",
+                            icon=ft.Icons.TABLE_CHART,
+                            content=ft.Container(
+                                content=ft.Card(
+                                    content=ft.Container(
+                                        ref=timeline_table_container,
+                                        content=ft.Container(
+                                            content=ft.Column([
+                                                ft.Icon(ft.Icons.TABLE_CHART, size=48, color=ft.Colors.GREY_400),
+                                                ft.Container(height=10),
+                                                ft.Text("Selecione um fornecedor para visualizar a tabela", 
+                                                       size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                            alignment=ft.alignment.center,
+                                        ),
+                                        padding=ft.padding.all(20),
+                                        expand=True,
+                                    ),
+                                    elevation=1,
+                                ),
+                                padding=ft.padding.only(top=10),
+                                expand=True,
+                            ),
+                        ),
+                        # Tab de Analytics
+                        ft.Tab(
+                            text="Analytics",
+                            icon=ft.Icons.ANALYTICS,
+                            content=ft.Container(
+                                content=ft.Card(
+                                    content=ft.Container(
+                                        ref=timeline_analytics_container,
+                                        content=ft.Container(
+                                            content=ft.Column([
+                                                ft.Icon(ft.Icons.ANALYTICS, size=48, color=ft.Colors.GREY_400),
+                                                ft.Container(height=10),
+                                                ft.Text("Selecione um fornecedor para visualizar as análises", 
+                                                       size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                            alignment=ft.alignment.center,
+                                        ),
+                                        padding=ft.padding.all(20),
+                                        expand=True,
+                                    ),
+                                    elevation=1,
+                                ),
+                                padding=ft.padding.only(top=10),
+                                expand=True,
+                            ),
+                        ),
+                    ],
+                    expand=True,
                 ),
-                ref=timeline_chart_container,
-                visible=True,
-                expand=True
+                expand=True,
             ),
             
-            # Container para tabela  
-            ft.Container(
-                content=ft.Container(
-                    content=ft.Text("Selecione um fornecedor para visualizar a tabela", 
-                                   size=16, text_align=ft.TextAlign.CENTER),
-                    alignment=ft.alignment.center,
-                    height=400,
-                    expand=True
-                ),
-                ref=timeline_table_container,
-                visible=False,
-                expand=True
-            ),
-            
-        ], spacing=10),
-        padding=20,
+        ], spacing=0),
+        padding=ft.padding.symmetric(horizontal=20, vertical=20),
         expand=True,
         visible=False
     )
@@ -12564,26 +13360,81 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 q_avgs = {q: sum(s_list) / len(s_list) if s_list else None for q, s_list in q_scores.items()}
                 q1, q2, q3, q4 = q_avgs.get('Q1'), q_avgs.get('Q2'), q_avgs.get('Q3'), q_avgs.get('Q4')
 
-                # Criar mini-gráfico
-                # O gráfico mostrará a evolução da média geral ao longo do ano.
-                cumulative_sum = 0
-                cumulative_count = 0
-                chart_points = []
-                for month, score in monthly_scores: # monthly_scores já está ordenado por mês
-                    cumulative_sum += score
-                    cumulative_count += 1
-                    chart_points.append((month - 1, cumulative_sum / cumulative_count))
-                chart_series = create_colored_line_series(chart_points, meta)
-
+                # Criar mini-gráfico - mostrar apenas total_score sem hover
+                # Eixo X: meses de 1 a 12, cada mês tem apenas uma nota
+                # Se houver múltiplos valores para o mesmo mês (de anos diferentes), usar a média
+                month_scores_dict = {}
+                for month, score in monthly_scores:
+                    if month in month_scores_dict:
+                        # Se já existe, fazer média
+                        existing_scores = month_scores_dict[month] if isinstance(month_scores_dict[month], list) else [month_scores_dict[month]]
+                        existing_scores.append(score)
+                        month_scores_dict[month] = existing_scores
+                    else:
+                        month_scores_dict[month] = [score]
+                
+                # Criar pontos ordenados por mês, com média se houver duplicatas
+                sorted_months = sorted(month_scores_dict.keys())
+                
+                # Criar segmentos coloridos baseado no target
+                chart_series = []
+                current_segment = []
+                current_color = None
+                
+                for i, month in enumerate(sorted_months):
+                    scores = month_scores_dict[month]
+                    avg_score = sum(scores) / len(scores)
+                    point = ft.LineChartDataPoint(month, avg_score)
+                    
+                    # Determinar cor do ponto
+                    point_color = ft.Colors.GREEN_600 if avg_score >= meta else ft.Colors.RED_600
+                    
+                    if current_color is None:
+                        # Primeiro ponto
+                        current_color = point_color
+                        current_segment.append(point)
+                    elif current_color == point_color:
+                        # Mesma cor, adicionar ao segmento atual
+                        current_segment.append(point)
+                    else:
+                        # Mudança de cor - adicionar ponto ao segmento atual para continuidade
+                        current_segment.append(point)
+                        
+                        # Finalizar segmento atual
+                        if len(current_segment) > 0:
+                            chart_series.append(ft.LineChartData(
+                                data_points=current_segment,
+                                color=current_color,
+                                stroke_width=2,
+                                curved=False,
+                                prevent_curve_over_shooting=True,
+                            ))
+                        
+                        # Começar novo segmento com o mesmo ponto para continuidade
+                        current_segment = [point]
+                        current_color = point_color
+                
+                # Adicionar último segmento
+                if len(current_segment) > 0:
+                    chart_series.append(ft.LineChartData(
+                        data_points=current_segment,
+                        color=current_color,
+                        stroke_width=2,
+                        curved=False,
+                        prevent_curve_over_shooting=True,
+                    ))
+                
                 mini_chart = ft.LineChart(
                     data_series=chart_series,
-                    min_y=0, max_y=10, min_x=0, max_x=11,
+                    min_y=0, max_y=10, min_x=1, max_x=12,
                     left_axis=ft.ChartAxis(show_labels=False),
                     bottom_axis=ft.ChartAxis(show_labels=False),
                     horizontal_grid_lines=ft.ChartGridLines(width=0),
                     vertical_grid_lines=ft.ChartGridLines(width=0),
                     border=None,
                     expand=True,
+                    interactive=False,
+                    tooltip_bgcolor=ft.Colors.TRANSPARENT,
                 )
 
                 # Helper para criar ícone de tendência
@@ -12627,8 +13478,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             # 4. Atualizar as métricas e o conteúdo da aba Timeline
                             on_timeline_vendor_change(None)
 
-                            # 5. Garantir que a visualização de tabela esteja ativa
-                            switch_to_table_tab(None)
+                            # Ambos gráfico e tabela já estão visíveis, então não precisa alternar abas
 
                         except Exception as ex:
                             print(f"Erro ao navegar para Timeline: {ex}")
@@ -12917,6 +13767,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     responsive_app_manager.initialize_menu_controls(menu_is_expanded, update_menu)
     responsive_app_manager.check_initial_window_state()  # Verificar estado inicial da janela
     print("📱 Gerenciador responsivo inicializado e estado inicial verificado")
+    
+    # Aplicar layout inicial da timeline
+    window_width = page.window.width or 1200
+    responsive_app_manager.update_timeline_layout(window_width)
 
     def update_interface_for_user_privileges():
         """Atualiza a interface baseado nos privilégios do usuário atual"""
@@ -12989,7 +13843,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Atualizar a soma dos pesos após carregar
         update_weight_sum()
-        page.update()
+        safe_page_update(page)
         print(f"Critérios carregados: {saved_criteria}")
     else:
         # Mesmo com valores padrão, atualizar a soma
@@ -12999,7 +13853,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Atualizar o texto do target na aba Risks
     if target_risks_text.current:
         target_risks_text.current.value = f"{target_slider.value:.2f}"
-        page.update()
+        safe_page_update(page)
 def main():
     """Função principal que inicia com tela de login"""
     ft.app(target=login_screen)
