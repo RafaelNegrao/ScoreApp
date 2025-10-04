@@ -39,13 +39,14 @@ def ensure_supplier_po_column():
                 if "duplicate column name" not in str(e2).lower():
                     print(f"❌ Falha ao criar coluna supplier_po: {e2}")
 
-def show_snack_bar(message, is_error=False, page=None):
+def show_snack_bar(message, is_error=False, is_warning=False, page=None):
     """
     Mostra uma mensagem snack bar na interface de forma thread-safe
     
     Args:
         message: Mensagem a ser exibida
-        is_error: True para erro (vermelho), False para sucesso (verde)
+        is_error: True para erro (vermelho), False para outros tipos
+        is_warning: True para aviso (laranja), False para outros tipos
         page: Instância do page (opcional, usa page_ref global se não fornecido)
     """
     global page_ref
@@ -55,7 +56,13 @@ def show_snack_bar(message, is_error=False, page=None):
     
     try:
         if target_page is not None and hasattr(target_page, 'open'):
-            color = ft.Colors.RED if is_error else ft.Colors.GREEN
+            # Definir cor: vermelho para erro, laranja para aviso, verde para sucesso
+            if is_error:
+                color = ft.Colors.RED
+            elif is_warning:
+                color = ft.Colors.ORANGE
+            else:
+                color = ft.Colors.GREEN
             
             # Criar SnackBar conforme documentação do Flet
             snack_bar = ft.SnackBar(
@@ -83,6 +90,35 @@ def load_spinbox_increment():
     except Exception:
         return 0.1
 
+def format_po_ssid(value):
+    """Formata valores de PO e SSID para exibir sem decimais"""
+    if value is None or value == '' or value == '?' or str(value).lower() == 'none':
+        return ''
+    try:
+        # Tentar converter para número e retornar como inteiro
+        num_value = float(value)
+        return str(int(num_value))
+    except (ValueError, TypeError):
+        # Se não for número, retornar como string
+        return str(value)
+
+def format_po_ssid_for_save(value):
+    """Formata valores de PO e SSID antes de salvar no banco (remove decimais)"""
+    if value is None or value == '' or value == '?' or str(value).lower() == 'none':
+        return ''
+    try:
+        # Tentar converter para número e retornar como inteiro em formato string
+        num_value = float(value)
+        return str(int(num_value))
+    except (ValueError, TypeError):
+        # Se não for número, retornar como string removendo espaços
+        return str(value).strip()
+
+def format_display_value(value):
+    """Formata qualquer valor para exibição, evitando mostrar None ou ?"""
+    if value is None or value == '' or value == '?' or str(value).lower() == 'none':
+        return ''
+    return str(value)
 
 
 # ===== CLASSE DE GERENCIAMENTO RESPONSIVO =====
@@ -209,6 +245,13 @@ class ResponsiveAppManager:
         
         if not hasattr(self.results_container, 'controls'):
             return
+        
+        # Verificar se já está em layout de duas colunas
+        if len(self.results_container.controls) > 0:
+            first_control = self.results_container.controls[0]
+            if isinstance(first_control, ft.Row):
+                print("📱 Já está em layout de duas colunas, pulando reorganização")
+                return  # Já está em layout double
             
         # Pegar todos os cards existentes
         cards = list(self.results_container.controls)
@@ -237,8 +280,10 @@ class ResponsiveAppManager:
         for i, card in enumerate(cards):
             if i % 2 == 0:
                 left_column.controls.append(card)
+                print(f"   ✅ Card {i+1} -> coluna esquerda")
             else:
                 right_column.controls.append(card)
+                print(f"   ✅ Card {i+1} -> coluna direita")
         
         # Criar linha com as duas colunas com alinhamento estável
         double_column_row = ft.Row([
@@ -253,6 +298,7 @@ class ResponsiveAppManager:
         
         # Adicionar ao container principal
         self.results_container.controls.append(double_column_row)
+        print(f"📱 Layout de duas colunas aplicado")
     
     def _apply_single_column_layout(self):
         """Aplica layout de uma coluna para a aba Score"""
@@ -265,6 +311,7 @@ class ResponsiveAppManager:
         if len(self.results_container.controls) > 0:
             first_control = self.results_container.controls[0]
             if not isinstance(first_control, ft.Row):
+                print("📱 Já está em layout de uma coluna, pulando reorganização")
                 return  # Já está em layout single
         
         # Coletar todos os cards das colunas
@@ -279,10 +326,13 @@ class ResponsiveAppManager:
                 # São cards individuais
                 all_cards.append(control)
         
+        print(f"📱 Reorganizando {len(all_cards)} cards para layout de uma coluna")
+        
         # Limpar container e readicionar cards em coluna única
         self.results_container.controls.clear()
-        for card in all_cards:
+        for i, card in enumerate(all_cards):
             self.results_container.controls.append(card)
+            print(f"   ✅ Card {i+1}/{len(all_cards)} readicionado")
 
     def render_cards(self, cards):
         """Substitui os cards exibidos reaproveitando instâncias existentes."""
@@ -373,27 +423,29 @@ class ResponsiveAppManager:
             print(f"🔧 Card adicionado em layout single (total: {len(self.results_container.controls)})")
     
     def update_supplier_cards_layout(self, window_width):
-        """Atualiza o layout interno dos cards de suppliers baseado na largura da janela"""
-        try:
-            # Encontrar a lista de suppliers (suppliers_results_list)
-            # Esta função será chamada globalmente, então precisamos acessar a lista de suppliers
-            # de forma indireta através da página
-            global suppliers_results_list
-            if 'suppliers_results_list' in globals() and suppliers_results_list:
-                should_use_single_column = window_width < 1000
-                
-                # Percorrer todos os cards de suppliers e atualizar seu layout interno
-                for card_control in suppliers_results_list.controls:
-                    if isinstance(card_control, ft.Card):
-                        # Recrear o conteúdo do card com o novo layout
-                        self._update_single_supplier_card_layout(card_control, should_use_single_column)
-                
-                # Atualizar a interface
-                suppliers_results_list.update()
-                print(f"📱 Layout dos cards de suppliers atualizado: {'uma coluna' if should_use_single_column else 'duas colunas'}")
-                
-        except Exception as e:
-            print(f"❌ Erro ao atualizar layout dos cards de suppliers: {e}")
+        """Atualiza o layout interno dos cards de suppliers baseado na largura da janela
+        
+        DESABILITADO: O layout interno dos campos não deve mudar automaticamente.
+        Apenas o layout de distribuição dos cards (uma/duas colunas de cards) deve ser responsivo.
+        """
+        # FUNÇÃO DESABILITADA - não alterar layout interno dos campos
+        return
+        
+        # Código original comentado abaixo caso precise ser restaurado
+        # try:
+        #     global suppliers_results_list
+        #     if 'suppliers_results_list' in globals() and suppliers_results_list:
+        #         should_use_single_column = window_width < 1000
+        #         
+        #         for card_control in suppliers_results_list.controls:
+        #             if isinstance(card_control, ft.Card):
+        #                 self._update_single_supplier_card_layout(card_control, should_use_single_column)
+        #         
+        #         suppliers_results_list.update()
+        #         print(f"📱 Layout dos cards de suppliers atualizado: {'uma coluna' if should_use_single_column else 'duas colunas'}")
+        #         
+        # except Exception as e:
+        #     print(f"❌ Erro ao atualizar layout dos cards de suppliers: {e}")
     
     def _update_single_supplier_card_layout(self, card, use_single_column):
         """Atualiza o layout interno de um único card de supplier"""
@@ -646,7 +698,7 @@ current_user_privilege = None
 current_user_permissions = {}
 selected_user = None  # Para controlar a seleção de usuários na aba Users
 suppliers_results_list = None  # Lista global dos cards de suppliers
-score_control_type = "slider"  # Tipo de controle: "slider", "spinbox" ou "cupertino"
+score_control_type = "slider"  # Tipo de controle: "slider" ou "spinbox"
 
 # ===== FUNÇÕES AUXILIARES =====
 
@@ -812,6 +864,128 @@ def get_primary_darker_color(theme_name="white"):
         return "#4D3377"  # Versão mais escura de #BD93F9
     else:  # white
         return "#93B7E2"  # Versão mais escura de #0066CC
+
+def get_score_color(score):
+    """
+    Retorna uma cor baseada no valor da nota (0.0 a 10.0)
+    - Nota 0: Vermelho (#FF0000)
+    - Nota 10: Verde (#00FF00)
+    - Valores intermediários: Gradação de vermelho para verde
+    """
+    try:
+        # Garantir que o score está entre 0 e 10
+        score = max(0.0, min(10.0, float(score)))
+        
+        # Calcular a proporção (0.0 = vermelho, 1.0 = verde)
+        ratio = score / 10.0
+        
+        # Gradação de vermelho para verde passando por amarelo
+        if ratio <= 0.5:
+            # De vermelho (255,0,0) para amarelo (255,255,0)
+            r = 255
+            g = int(255 * (ratio * 2))
+            b = 0
+        else:
+            # De amarelo (255,255,0) para verde (0,255,0)
+            r = int(255 * (1 - (ratio - 0.5) * 2))
+            g = 255
+            b = 0
+        
+        # Retornar cor em formato hexadecimal
+        return f"#{r:02x}{g:02x}{b:02x}"
+    except (ValueError, TypeError):
+        # Se houver erro, retornar cor neutra
+        return "#808080"  # Cinza
+
+def analyze_data_consistency(otif, nil, pickup, package):
+    """
+    Analisa a consistência dos dados das métricas e retorna um score de confiabilidade (0-100)
+    e uma lista de inconsistências encontradas.
+    
+    Retorna: (score, issues_list, icon, color)
+    - score: 0-100 (100 = totalmente consistente)
+    - issues_list: lista de problemas encontrados
+    - icon: ícone do termômetro (THERMOSTAT, THERMOSTAT_AUTO, AC_UNIT)
+    - color: cor do indicador (verde, amarelo, vermelho)
+    """
+    try:
+        # Distinguir entre NULL (sem entrega) e 0 (entrega péssima)
+        otif_is_null = otif is None or otif == ''
+        nil_is_null = nil is None or nil == ''
+        pickup_is_null = pickup is None or pickup == ''
+        package_is_null = package is None or package == ''
+        
+        # Converter para float depois de verificar NULL
+        otif = float(otif) if not otif_is_null else None
+        nil = float(nil) if not nil_is_null else None
+        pickup = float(pickup) if not pickup_is_null else None
+        package = float(package) if not package_is_null else None
+        
+        issues = []
+        score = 100  # Começar com confiabilidade máxima
+        
+        # Regra 1: Se não teve entrega (OTIF é NULL), as outras também devem ser NULL
+        if otif_is_null:
+            if not nil_is_null or not pickup_is_null or not package_is_null:
+                issues.append("Sem entrega mas com avaliações")
+                score -= 40
+        
+        # Regra 2: Se teve entrega (OTIF não é NULL), verificar consistências
+        if not otif_is_null:
+            # Se NIL muito baixo (≤ 3), PICKUP provavelmente será baixo
+            if nil is not None and pickup is not None:
+                if nil <= 3 and pickup >= 8:
+                    issues.append("Logística ruim mas inspeção OK")
+                    score -= 20
+            
+            # Se PACKAGE muito baixo (≤ 3), PICKUP não pode ser muito alto
+            if package is not None and pickup is not None:
+                if package <= 3 and pickup >= 8:
+                    issues.append("Embalagem péssima mas produto OK")
+                    score -= 25
+            
+            # Se OTIF alto mas NIL zerado (entregou mas logística péssima?)
+            if otif >= 8 and nil == 0:
+                issues.append("OTIF alto mas logística zerada")
+                score -= 30
+            
+            # Se PICKUP = 0 mas PACKAGE alto (produto ruim mas embalagem OK?)
+            if pickup == 0 and package is not None and package >= 8:
+                issues.append("Reprovou inspeção mas embalagem OK")
+                score -= 20
+        
+        # Regra 3: Se todas as métricas não-NULL são idênticas (possível erro de digitação)
+        non_null_values = [x for x in [otif, nil, pickup, package] if x is not None]
+        if len(non_null_values) >= 3:
+            if all(x == 10 for x in non_null_values):
+                # Tudo perfeito é aceitável, sem penalidade
+                pass
+            elif all(x == 0 for x in non_null_values):
+                # Tudo zero significa entrega péssima, pode ser legítimo
+                pass
+            elif len(set(non_null_values)) == 1 and non_null_values[0] not in [0, 10]:
+                issues.append("Todas as notas idênticas (suspeito)")
+                score -= 15
+        
+        # Garantir que score não fique negativo
+        score = max(0, score)
+        
+        # Definir ícone e cor baseado no score
+        if score >= 80:
+            icon = ft.Icons.THERMOSTAT  # Termômetro normal - tudo OK
+            color = ft.Colors.GREEN_600
+        elif score >= 50:
+            icon = ft.Icons.THERMOSTAT_AUTO  # Termômetro auto - atenção
+            color = ft.Colors.ORANGE_600
+        else:
+            icon = ft.Icons.AC_UNIT  # Congelado - dados suspeitos
+            color = ft.Colors.RED_600
+        
+        return score, issues, icon, color
+        
+    except Exception as e:
+        print(f"Erro ao analisar consistência: {e}")
+        return 100, [], ft.Icons.THERMOSTAT, ft.Colors.GREY
 
 def get_card_color(theme_name="white"):
     """Retorna a cor dos cards baseada no tema"""
@@ -1589,8 +1763,15 @@ class EditTimelineRecordDialog(ft.AlertDialog):
             norm_value = None
 
         if score_control_type == "slider":
-            # Criar slider
-            score_text = ft.Text(f"{norm_value:.1f}" if norm_value is not None else "0.0", width=40, text_align=ft.TextAlign.CENTER)
+            # Criar slider Material
+            score_text = ft.Text(
+                f"{norm_value:.1f}" if norm_value is not None else "0.0", 
+                width=40, 
+                text_align=ft.TextAlign.CENTER,
+                size=18,
+                weight=ft.FontWeight.W_300,
+                font_family="Roboto"
+            )
             score_slider = ft.Slider(
                 min=0,
                 max=10,
@@ -1706,7 +1887,7 @@ class EditTimelineRecordDialog(ft.AlertDialog):
         """Extrai o valor do controle (slider ou spinbox)"""
         try:
             if score_control_type == "slider":
-                # Para slider: Column[Slider, Container[Text]]
+                # Para slider Material: Column[Text, Slider, Container[Text]]
                 if hasattr(control, 'controls') and len(control.controls) >= 2:
                     slider = control.controls[1]  # O slider é o segundo controle
                     if hasattr(slider, 'value'):
@@ -5246,6 +5427,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     selected_year = ft.Ref()
     selected_bu = ft.Ref()
     selected_po = ft.Ref()
+    selected_card_limit = ft.Ref()  # Nova variável para limitar quantidade de cards
+    show_inactive_switch = ft.Ref()  # Switch para mostrar/ocultar cards inativos
 
     def on_month_year_change(e):
         # A busca é chamada sempre que um dropdown muda. A função de busca verificará os valores.
@@ -5257,8 +5440,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Super Admin pode acessar tudo
             return [0, 1, 2, 3, 4, 5]  # Home, Score, Timeline, Risks, Email, Configs
         elif privilege == "Admin":
-            # Admin pode: Home, Score, Timeline, Risks, Configs (sem Email)
-            return [0, 1, 2, 3, 5]  # Home, Score, Timeline, Risks, Configs
+            # Admin pode: Home, Score, Timeline, Risks, Email, Configs
+            return [0, 1, 2, 3, 4, 5]  # Home, Score, Timeline, Risks, Email, Configs
         else:  # User
             # User pode: Home, Timeline, Risks, Configs limitado
             return [0, 2, 3, 5]  # Home, Timeline, Risks, Configs
@@ -5279,7 +5462,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ("timeline_outlined", "Timeline", 2),
                 ("warning_outlined", "Risks", 3),
                 ("email_outlined", "Email", 4),
-                ("settings_outlined", "Configs", 5),
+                ("settings_outlined", "Settings", 5),
             ]
             
             # Filtrar itens baseado no privilégio do usuário
@@ -5564,6 +5747,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 v = e.control.value
                 if v is None or str(v).strip() == "":
                     e.control.value = "0.0"
+                    e.control.color = get_score_color(0.0)
                     e.control.update()
                     return
                 
@@ -5573,10 +5757,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 num = max(0, min(10, num))
                 # Formatar com 1 casa decimal
                 e.control.value = f"{num:.1f}"
+                # Aplicar cor baseada no valor
+                e.control.color = get_score_color(num)
                 e.control.update()
             except (ValueError, TypeError):
                 # Se não conseguir converter, voltar para 0.0
                 e.control.value = "0.0"
+                e.control.color = get_score_color(0.0)
                 e.control.update()
 
         # Usar on_blur em vez de on_change para não interferir durante a digitação
@@ -5592,16 +5779,116 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Garantir que não seja negativo e limitar a 10
                 new_value = max(0, min(10, current_value))
                 score_field.value = str(round(new_value, 1))
-                score_field.update()
+                # Aplicar cor baseada no valor
+                score_field.color = get_score_color(new_value)
+                # Tentar atualizar o campo
+                try:
+                    if hasattr(score_field, 'page') and score_field.page is not None:
+                        score_field.update()
+                    else:
+                        # Se não estiver na página, tentar atualizar via botão que acionou
+                        if hasattr(e.control, 'page') and e.control.page is not None:
+                            e.control.page.update()
+                except Exception as update_error:
+                    print(f"Aviso: não foi possível atualizar o campo: {update_error}")
             except ValueError:
                 score_field.value = "0.0"
-                score_field.update()
+                score_field.color = get_score_color(0.0)
+                # Tentar atualizar o campo
+                try:
+                    if hasattr(score_field, 'page') and score_field.page is not None:
+                        score_field.update()
+                    else:
+                        # Se não estiver na página, tentar atualizar via botão que acionou
+                        if hasattr(e.control, 'page') and e.control.page is not None:
+                            e.control.page.update()
+                except Exception as update_error:
+                    print(f"Aviso: não foi possível atualizar o campo: {update_error}")
 
         return ft.Row([
             ft.IconButton(ft.Icons.REMOVE, on_click=adjust_score, data="-"),
             score_field,
             ft.IconButton(ft.Icons.ADD, on_click=adjust_score, data="+"),
         ], alignment=ft.MainAxisAlignment.CENTER)
+
+    def create_score_textfield():
+        """Cria um TextField simples para notas com validação de 0.00 a 10.00"""
+        score_field = ft.TextField(
+            value="0.00", 
+            text_align=ft.TextAlign.CENTER, 
+            width=100,
+            height=50,
+            border_radius=8,
+            text_size=16,
+            # Usar cores do tema
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
+            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+            # Teclado numérico
+            keyboard_type=ft.KeyboardType.NUMBER,
+            # Placeholder para indicar o formato
+            hint_text="0.00"
+        )
+
+        def on_field_change(e):
+            """Validação em tempo real durante a digitação"""
+            try:
+                v = e.control.value
+                if v is None or v == "":
+                    return  # Permitir campo vazio durante digitação
+                
+                # Permitir entrada parcial (ex: "5.", "5.5")
+                # Apenas validar se for um número válido
+                try:
+                    num = float(v)
+                    # Se o número estiver fora do range, corrigir
+                    if num > 10:
+                        e.control.value = "10.00"
+                        e.control.color = get_score_color(10.0)
+                        e.control.update()
+                    elif num < 0:
+                        e.control.value = "0.00"
+                        e.control.color = get_score_color(0.0)
+                        e.control.update()
+                    else:
+                        # Aplicar cor baseada no valor
+                        e.control.color = get_score_color(num)
+                        e.control.update()
+                except ValueError:
+                    # Se não for um número válido, não fazer nada (permitir digitação)
+                    pass
+            except Exception as ex:
+                print(f"Erro na validação do campo: {ex}")
+
+        def on_field_blur(e):
+            """Validação e formatação quando o usuário termina de editar"""
+            try:
+                v = e.control.value
+                if v is None or str(v).strip() == "":
+                    e.control.value = "0.00"
+                    e.control.color = get_score_color(0.0)
+                    e.control.update()
+                    return
+                
+                # Converter para float
+                num = float(str(v).strip())
+                # Limitar entre 0 e 10
+                num = max(0.0, min(10.0, num))
+                # Formatar com 2 casas decimais
+                e.control.value = f"{num:.2f}"
+                # Aplicar cor baseada no valor
+                e.control.color = get_score_color(num)
+                e.control.update()
+            except (ValueError, TypeError):
+                # Se não conseguir converter, voltar para 0.00
+                e.control.value = "0.00"
+                e.control.color = get_score_color(0.0)
+                e.control.update()
+
+        score_field.on_change = on_field_change
+        score_field.on_blur = on_field_blur
+
+        return score_field
 
     # ---------- Utilitários para listas (sqie, planner, sourcing, continuity, bu, category) ----------
     
@@ -5753,13 +6040,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         month_val = selected_month.current.value
         year_val = selected_year.current.value
 
-        # Se o ano for uma string vazia ("(Ano Atual)"), usar o ano atual
-        if year_val == "":
-            import datetime
-            year_val = str(datetime.date.today().year)
-
         # A função só executa se ambos, mês e ano, estiverem selecionados.
-        if not month_val or not year_val:
+        # Se qualquer um estiver vazio, limpar as notas e não buscar nada
+        if not month_val or not year_val or month_val == "" or year_val == "":
             # Limpar as notas se a data for desmarcada
             all_cards = get_all_cards()
             for card in all_cards:
@@ -5769,6 +6052,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         for ref in card.data["spinbox_refs"].values():
                             try:
                                 ref.value = "0.0"
+                                ref.color = get_score_color(0.0)
                                 if hasattr(ref, 'page') and ref.page is not None:
                                     ref.update()
                             except Exception as e:
@@ -5778,13 +6062,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     if "score_sliders" in card.data and "score_texts" in card.data:
                         score_sliders = card.data["score_sliders"]
                         score_texts = card.data["score_texts"]
+                        score_controls = card.data.get("score_controls")
+                        
                         for ui_name in ["OTIF", "Pickup", "Package", "NIL"]:
                             if ui_name in score_sliders and ui_name in score_texts:
                                 try:
-                                    score_sliders[ui_name].value = 0.0
+                                    # Para sliders normais
+                                    if hasattr(score_sliders[ui_name], 'value'):
+                                        score_sliders[ui_name].value = 0.0
+                                        if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
+                                            score_sliders[ui_name].update()
+                                    
+                                    # Atualizar texto
                                     score_texts[ui_name].value = "0.0"
-                                    if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
-                                        score_sliders[ui_name].update()
+                                    score_texts[ui_name].color = get_score_color(0.0)
                                     if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
                                         score_texts[ui_name].update()
                                 except Exception as e:
@@ -5835,21 +6126,46 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     comment_value = score_record['comment'] if score_record['comment'] is not None else ""
                     
                     # Atualizar valores nos sliders (se existirem)
-                    if score_sliders and score_texts:
+                    if score_sliders:
                         for ui_name, score_value in scores.items():
                             if ui_name in score_sliders:
                                 try:
                                     val = float(score_value)
-                                    score_sliders[ui_name].value = val
-                                    score_texts[ui_name].value = f"{val:.1f}"
+                                    print(f"🔍 DEBUG carregando {ui_name} = {val:.1f}")
+                                    print(f"   Tipo do controle: {type(score_sliders[ui_name])}")
                                     
-                                    # Verificar se o slider está na página antes de atualizar
+                                    # Para sliders, textfields e outros controles
+                                    # Se for TextField (tipo str para value), formatar com 2 casas decimais
+                                    if isinstance(score_sliders[ui_name].value, str) or score_control_type == "textfield":
+                                        score_sliders[ui_name].value = f"{val:.2f}"
+                                        score_sliders[ui_name].color = get_score_color(val)
+                                        print(f"   ✅ Valor do TextField setado: {score_sliders[ui_name].value}")
+                                    else:
+                                        score_sliders[ui_name].value = val
+                                        print(f"   ✅ Valor do slider setado: {score_sliders[ui_name].value}")
+                                    
+                                    # Atualizar também o campo de texto se existir (para sliders)
+                                    if ui_name in score_texts:
+                                        score_texts[ui_name].value = f"{val:.1f}"
+                                        score_texts[ui_name].color = get_score_color(val)
+                                        print(f"   ✅ Valor do texto setado: {score_texts[ui_name].value}")
+                                        
+                                        # Atualizar texto se estiver na página
+                                        if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
+                                            score_texts[ui_name].update()
+                                            print(f"   ✅ Campo de texto {ui_name} atualizado na página")
+                                    
+                                    # Verificar se o controle está na página antes de atualizar
                                     if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
                                         score_sliders[ui_name].update()
-                                    if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
-                                        score_texts[ui_name].update()
+                                        print(f"   ✅ Controle {ui_name} atualizado na página")
+                                    else:
+                                        print(f"   ⚠️ Slider {ui_name} não está na página ainda")
+                                    
                                 except Exception as e:
-                                    print(f"Erro ao atualizar slider {ui_name}: {e}")
+                                    print(f"❌ Erro ao atualizar {ui_name}: {e}")
+                                    import traceback
+                                    traceback.print_exc()
                                     continue
                     
                     # Atualizar valores nos spinboxes (se existirem)
@@ -5863,6 +6179,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     print(f"🔍 DEBUG tipo do spinbox_refs[{ui_name}]: {type(spinbox_refs[ui_name])}")
                                     
                                     spinbox_refs[ui_name].value = f"{val:.1f}"
+                                    spinbox_refs[ui_name].color = get_score_color(val)
                                     print(f"🔍 DEBUG valor definido: {spinbox_refs[ui_name].value}")
                                     
                                     # Verificar se o spinbox está na página antes de atualizar
@@ -5896,12 +6213,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         for ui_name in ["OTIF", "Pickup", "Package", "NIL"]:
                             if ui_name in score_sliders:
                                 try:
-                                    score_sliders[ui_name].value = 0.0
-                                    score_texts[ui_name].value = "0.0"
+                                    print(f"🔄 Zerando {ui_name} (sem registro no banco)")
+                                    # Para sliders normais
+                                    if hasattr(score_sliders[ui_name], 'value'):
+                                        score_sliders[ui_name].value = 0.0
+                                        if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
+                                            score_sliders[ui_name].update()
                                     
-                                    # Verificar se o slider está na página antes de atualizar
-                                    if hasattr(score_sliders[ui_name], 'page') and score_sliders[ui_name].page is not None:
-                                        score_sliders[ui_name].update()
+                                    # Atualizar texto
+                                    score_texts[ui_name].value = "0.0"
+                                    score_texts[ui_name].color = get_score_color(0.0)
                                     if hasattr(score_texts[ui_name], 'page') and score_texts[ui_name].page is not None:
                                         score_texts[ui_name].update()
                                 except Exception as e:
@@ -5914,6 +6235,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             if ui_name in spinbox_refs:
                                 try:
                                     spinbox_refs[ui_name].value = "0.0"
+                                    spinbox_refs[ui_name].color = get_score_color(0.0)
                                     
                                     # Verificar se o spinbox está na página antes de atualizar
                                     if hasattr(spinbox_refs[ui_name], 'page') and spinbox_refs[ui_name].page is not None:
@@ -5940,13 +6262,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         """Cria um card de resultado para um registro do banco.
         Dicionário esperado com chaves: supplier_id, vendor_name, BU, supplier_status, supplier_number, supplier_name, supplier_po
         """
-        supplier_id = record.get('supplier_id', '?')
-        vendor_name = record.get('vendor_name', '?')
-        bu = record.get('bu', '?')
-        status = record.get('supplier_status', '?')
-        supplier_number = record.get('supplier_number', '?')
-        supplier_po = record.get('supplier_po', '?')
-        supplier_name = record.get('supplier_name', '?')
+        supplier_id = record.get('supplier_id', '')
+        vendor_name = record.get('vendor_name', '')
+        bu = record.get('bu', '')
+        status = record.get('supplier_status', '')
+        supplier_number = record.get('supplier_number', '')
+        supplier_po = record.get('supplier_po', '')
+        supplier_name = record.get('supplier_name', '')
 
         print(f"🏗️ CRIANDO CARD: {vendor_name} (ID: {supplier_id}) com TIPO: {score_control_type}")
         print(f"🔍 DEBUG PERMISSÕES NO CARD:")
@@ -6078,7 +6400,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_snack_bar("Selecione mês e ano antes de salvar.", False)
+                show_snack_bar("Selecione mês e ano antes de salvar.", is_warning=True)
                 return
                 
             month_val = selected_month.current.value
@@ -6090,7 +6412,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_snack_bar("Selecione mês e ano antes de salvar.", False)
+                show_snack_bar("Selecione mês e ano antes de salvar.", is_warning=True)
                 return
 
             # Validação de data futura baseada na lógica legacy
@@ -6250,7 +6572,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         values.extend([supplier_id, int(month_val), int(year_val)])
                         db_manager.execute(update_query, values)
                 else:
-                    # Inserir novo registro com campos zerados para campos sem permissão
+                    # Inserir novo registro - NULL para campos sem permissão
                     insert_query = """
                         INSERT INTO supplier_score_records_table 
                         (supplier_id, month, year, otif, quality_pickup, quality_package, nil, total_score, registered_by, register_date, changed_by, supplier_name, comment)
@@ -6260,10 +6582,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         supplier_id, 
                         int(month_val), 
                         int(year_val), 
-                        values_to_save.get('otif', 0),
-                        values_to_save.get('quality_pickup', 0), 
-                        values_to_save.get('quality_package', 0), 
-                        values_to_save.get('nil', 0),
+                        values_to_save.get('otif', None),  # NULL se não tiver permissão
+                        values_to_save.get('quality_pickup', None),  # NULL se não tiver permissão
+                        values_to_save.get('quality_package', None),  # NULL se não tiver permissão
+                        values_to_save.get('nil', None),  # NULL se não tiver permissão
                         total_score,
                         new_registered_by,
                         register_date,
@@ -6411,13 +6733,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         notas_col = ft.Column(spinboxes_rows, spacing=8, expand=1)  # Permite variação, mas com largura mínima
 
-        vendor_text = ft.Text(vendor_name, weight="bold", size=16)
-        bu_text = ft.Text(f"BU: {bu}")
-        po_text = ft.Text(f"PO: {supplier_po}")
-        ssid_text = ft.Text(f"SSID: {supplier_number}")
-        id_text = ft.Text(f"ID: {supplier_id}")
+        vendor_text = ft.Text(format_display_value(vendor_name), weight="bold", size=16)
+        bu_text = ft.Text(f"BU: {format_display_value(bu)}")
+        po_text = ft.Text(f"PO: {format_po_ssid(supplier_po)}")
+        ssid_text = ft.Text(f"SSID: {format_po_ssid(supplier_number)}")
+        id_text = ft.Text(f"ID: {format_display_value(supplier_id)}")
         status_color = "green" if str(status).strip() == "Active" else "red" if str(status).strip() == "Inactive" else "gray"
-        status_text = ft.Text(f"Status: {status}", color=status_color)
+        status_text = ft.Text(f"Status: {format_display_value(status)}", color=status_color)
 
         info_col = ft.Column([
             vendor_text,
@@ -6509,57 +6831,91 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     search_field_ref = ft.Ref()
 
     def clear_score_filters(e=None):
-        """Limpa todos os filtros da aba Score e mostra os favoritos"""
+        """Limpa todos os filtros da aba Score, limpa os cards e mostra apenas os favoritos"""
         try:
-            # Limpa os valores dos campos de filtro no backend.
+            print("🔄 Iniciando limpeza dos filtros e cards da aba Score...")
+            
+            # Limpar todos os campos de filtro e comboboxes
             if search_field_ref.current:
                 search_field_ref.current.value = ""
+                search_field_ref.current.update()
             
             if selected_po.current:
                 selected_po.current.value = ""
+                selected_po.current.update()
             
             if selected_bu.current:
                 selected_bu.current.value = None
+                selected_bu.current.update()
             
             if selected_month.current:
-                selected_month.current.value = ""
+                selected_month.current.value = None
+                selected_month.current.update()
             
             if selected_year.current:
-                selected_year.current.value = ""
+                selected_year.current.value = None
+                selected_year.current.update()
             
-            # A função show_favorites_only() é chamada para limpar a lista de resultados
-            # e exibir apenas os fornecedores favoritos.
+            if selected_card_limit.current:
+                selected_card_limit.current.value = "6"  # Resetar para padrão
+                selected_card_limit.current.update()
+            
+            if show_inactive_switch.current:
+                show_inactive_switch.current.value = False  # Resetar para não mostrar inativos
+                show_inactive_switch.current.update()
+            
+            # Limpar todos os cards de resultados primeiro
+            print("🗑️ Limpando cards de resultados...")
+            try:
+                if responsive_app_manager and responsive_app_manager.results_container:
+                    responsive_app_manager.clear_results()
+                    print("✅ Cards limpos via responsive_app_manager")
+            except Exception as clear_ex:
+                print(f"⚠️ Falha ao limpar via responsive_app_manager: {clear_ex}")
+                # Fallback: limpar diretamente via results_list
+                if results_list and hasattr(results_list, 'controls'):
+                    results_list.controls.clear()
+                    print("✅ Cards limpos via results_list")
+            
+            # Agora mostrar apenas os favoritos
+            print("⭐ Carregando favoritos...")
             show_favorites_only()
             
-            # Uma única atualização de página no final é mais eficiente e garante que
-            # tanto os campos de filtro limpos quanto a nova lista de resultados
-            # sejam enviados para a interface do usuário de uma só vez.
+            # Atualizar a página uma vez no final
             safe_page_update(page)
             
-            # Mostrar mensagem de sucesso
-            show_snack_bar("Filtros limpos com sucesso!")
+            print("✅ Filtros limpos e favoritos carregados com sucesso")
             
         except Exception as ex:
-            print(f"Erro ao limpar filtros: {ex}")
-            show_snack_bar(f"Erro ao limpar filtros: {ex}", True)
+            print(f"❌ Erro ao limpar filtros: {ex}")
+            import traceback
+            traceback.print_exc()
 
     def create_score_slider(page_ref=None):
         """Cria um widget de slider customizado para notas de 0 a 10."""
         
-        # O texto que exibirá o valor do slider
-        score_text = ft.Text("0.0", width=40, text_align=ft.TextAlign.RIGHT)
+        # O texto que exibirá o valor do slider com fonte maior e Roboto
+        score_text = ft.Text(
+            "0.0", 
+            width=60, 
+            text_align=ft.TextAlign.CENTER, 
+            color=get_score_color(0.0),
+            size=20,
+            weight=ft.FontWeight.W_400,
+            font_family="Roboto"
+        )
 
         # Obter a cor mais escura baseada no tema atual
         theme_name = get_theme_name_from_page(page_ref) if page_ref else "white"
         darker_color = get_primary_darker_color(theme_name)
 
-        # O slider
+        # O slider - totalmente flexível para se ajustar ao espaço disponível do card
         score_slider = ft.Slider(
             min=0,
             max=10,
             divisions=100,  # (10 - 0) / 0.1 = 100
             value=0,
-            width=250,  # Largura mínima do slider (removido expand=True que conflitava)
+            expand=True,  # Expandir para preencher o espaço disponível sem ultrapassar
             # Cores do slider: ativa primária; inativa mais escura baseada no tema
             active_color="primary",
             inactive_color=darker_color
@@ -6567,10 +6923,38 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         def on_slider_change(e):
             # Formata o valor para ter uma casa decimal
-            score_text.value = f"{e.control.value:.1f}"
-            # Apenas atualizar se o controle estiver na página
-            if hasattr(score_text, 'page') and score_text.page is not None:
-                score_text.update()
+            new_value = f"{e.control.value:.1f}"
+            print(f"🔄 Slider mudou para: {new_value}")
+            score_text.value = new_value
+            # Aplicar cor baseada no valor
+            score_text.color = get_score_color(e.control.value)
+            
+            # Tentar atualizar o controle - com fallback para layout responsivo
+            updated = False
+            try:
+                if hasattr(score_text, 'page') and score_text.page is not None:
+                    print(f"   ✅ Atualizando via score_text.update()")
+                    score_text.update()
+                    updated = True
+                elif hasattr(e.control, 'page') and e.control.page is not None:
+                    # Fallback: atualizar via página do slider
+                    print(f"   ✅ Atualizando via e.control.page.update()")
+                    e.control.page.update()
+                    updated = True
+                else:
+                    print(f"   ⚠️ score_text.page={getattr(score_text, 'page', None)}, e.control.page={getattr(e.control, 'page', None)}")
+            except Exception as update_error:
+                print(f"⚠️ Erro ao atualizar slider text: {update_error}")
+            
+            # Último recurso: tentar atualizar a página diretamente
+            if not updated:
+                print(f"   🔄 Tentando fallback via page_ref")
+                try:
+                    if page_ref and hasattr(page_ref, 'update'):
+                        page_ref.update()
+                        print(f"   ✅ Atualizado via page_ref")
+                except Exception as fallback_error:
+                    print(f"   ❌ Fallback falhou: {fallback_error}")
         
         score_slider.on_change = on_slider_change
         
@@ -6580,22 +6964,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ft.Container(
                 content=score_text,
                 alignment=ft.alignment.center,
-                width=200,  # Mesma largura do slider para centralizar perfeitamente
+                expand=True,  # Usar expand ao invés de largura fixa
                 margin=ft.margin.only(top=-20)  # Margem negativa para aproximar do slider
             )
-        ], spacing=0, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        ], spacing=0, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True)
         
         return slider_column, score_slider, score_text
 
     def create_result_widget(record):
         """Cria um card de resultado otimizado para um registro do banco."""
-        supplier_id = record.get('supplier_id', '?')
-        vendor_name = record.get('vendor_name', '?')
-        bu = record.get('BU', '?')
-        status = record.get('supplier_status', '?')
-        supplier_number = record.get('supplier_number', '?')
-        supplier_po = record.get('supplier_po', '?')
-        supplier_origin = record.get('supplier_name', 'N/A')
+        global score_control_type
+        
+        supplier_id = record.get('supplier_id', '')
+        vendor_name = record.get('vendor_name', '')
+        bu = record.get('BU', '')
+        status = record.get('supplier_status', '')
+        supplier_number = record.get('supplier_number', '')
+        supplier_po = record.get('supplier_po', '')
+        supplier_origin = record.get('supplier_name', '')
 
         print(f"Criando card para: {vendor_name} (ID: {supplier_id})")
         print(f"🔍 DEBUG PERMISSÕES NO CARD (SLIDER VERSION):")
@@ -6614,6 +7000,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             "OTIF": "otif"
         }
 
+        # Criar controles individuais (não em rows ainda)
+        score_controls = {}
+        
         for ui_name in ["NIL", "Pickup", "Package", "OTIF"]:
             # Verificar se o usuário tem permissão para este campo
             permission_key = permission_map.get(ui_name)
@@ -6635,6 +7024,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 score_sliders[ui_name] = slider_control
                 score_texts[ui_name] = text_control
                 control_widget = slider_row
+            elif score_control_type == "textfield":
+                # TextField simples para notas
+                textfield_control = create_score_textfield()
+                # Desabilitar textfield se não tiver permissão
+                if not has_permission:
+                    textfield_control.disabled = True
+                    textfield_control.opacity = 0.5
+                score_sliders[ui_name] = textfield_control
+                control_widget = textfield_control
             else:  # spinbox
                 spinbox_control = create_spinbox()
                 spinbox_field = spinbox_control.controls[1]  # O TextField é o segundo controle
@@ -6650,33 +7048,49 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 score_sliders[ui_name] = spinbox_field
                 control_widget = spinbox_control
             
-            row = ft.Row([
-                ft.Container(
-                    content=ft.Text(
-                        ui_name, 
-                        weight="bold", 
-                        size=14, 
-                        opacity=0.5 if not has_permission else 1.0
-                    ),
-                    alignment=ft.alignment.center_left,
-                    expand=1
-                ),
+            # Criar container individual para cada nota
+            # Para sliders e spinbox, ajustar o espaçamento para distribuição igual
+            spacing_value = 8 if score_control_type in ["slider", "spinbox", "textfield"] else 4
+            
+            score_container = ft.Column([
+                ft.Text(ui_name, weight="bold", size=13, opacity=0.5 if not has_permission else 1.0, text_align=ft.TextAlign.CENTER),
                 control_widget
-            ], 
-            alignment=ft.MainAxisAlignment.START, 
-            spacing=10,
-            tight=True
-            )
-            if score_control_type == "slider":
-                control_widget.expand = 2
-            score_rows.append(row)
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=spacing_value, tight=True, expand=True)
+            
+            score_controls[ui_name] = score_container
+        
+        # Organizar baseado no tipo de controle
+        if score_control_type == "textfield":
+            # TextField: 2 colunas x 2 linhas (similar ao spinbox)
+            score_rows = [
+                ft.Row([
+                    score_controls["NIL"],
+                    score_controls["Pickup"]
+                ], alignment=ft.MainAxisAlignment.SPACE_AROUND, spacing=20, expand=True, wrap=False, tight=True),
+                ft.Row([
+                    score_controls["Package"],
+                    score_controls["OTIF"]
+                ], alignment=ft.MainAxisAlignment.SPACE_AROUND, spacing=20, expand=True, wrap=False, tight=True)
+            ]
+        else:
+            # Slider e Spinbox: 2 colunas x 2 linhas com espaçamento adaptável
+            score_rows = [
+                ft.Row([
+                    score_controls["NIL"],
+                    score_controls["Pickup"]
+                ], alignment=ft.MainAxisAlignment.SPACE_AROUND, spacing=20, expand=True, wrap=False, tight=True),
+                ft.Row([
+                    score_controls["Package"],
+                    score_controls["OTIF"]
+                ], alignment=ft.MainAxisAlignment.SPACE_AROUND, spacing=20, expand=True, wrap=False, tight=True)
+            ]
 
         # Campo de comentário mais simples
         comment_field = ft.TextField(
             label="Comentário",
             multiline=True,
-            min_lines=6,
-            max_lines=8,
+            min_lines=3,
+            max_lines=4,
             border_radius=8,
             # Usar a mesma cor do card para os campos de comentário
             bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
@@ -6752,7 +7166,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_snack_bar("Selecione mês e ano antes de salvar.", False)
+                show_snack_bar("Selecione mês e ano antes de salvar.", is_warning=True)
                 return
                 
             month_val = selected_month.current.value
@@ -6764,7 +7178,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.icon = original_icon
                 save_button.disabled = False
                 safe_update_control(save_button, page)
-                show_snack_bar("Selecione mês e ano antes de salvar.", False)
+                show_snack_bar("Selecione mês e ano antes de salvar.", is_warning=True)
                 return
 
             # Validação de data futura baseada na lógica legacy
@@ -6908,7 +7322,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         update_values.extend([supplier_id, int(month_val), int(year_val)])
                         db_manager.execute(update_query, update_values)
                 else:
-                    # Inserir novo registro com campos zerados para campos sem permissão
+                    # Inserir novo registro - NULL para campos sem permissão
                     insert_query = """
                         INSERT INTO supplier_score_records_table 
                         (supplier_id, month, year, otif, quality_pickup, quality_package, nil, comment, total_score, registered_by, register_date, changed_by, supplier_name)
@@ -6918,10 +7332,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         supplier_id, 
                         int(month_val), 
                         int(year_val), 
-                        values_to_save.get('otif', 0),
-                        values_to_save.get('quality_pickup', 0), 
-                        values_to_save.get('quality_package', 0), 
-                        values_to_save.get('nil', 0),
+                        values_to_save.get('otif', None),  # NULL se não tiver permissão
+                        values_to_save.get('quality_pickup', None),  # NULL se não tiver permissão
+                        values_to_save.get('quality_package', None),  # NULL se não tiver permissão
+                        values_to_save.get('nil', None),  # NULL se não tiver permissão
                         comment_val,
                         total_score,
                         new_registered_by,
@@ -7053,61 +7467,81 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         origin_icon = ft.Icons.AIRPLANEMODE_ACTIVE if supplier_origin == "Importado" else ft.Icons.FLAG if supplier_origin == "Nacional" else ft.Icons.HELP_OUTLINE
         status_icon_color = "green" if str(status).lower().startswith("active") else "red"
 
-        info_col = ft.Column(
-            controls=[
-                ft.Text(
-                    vendor_name, 
-                    weight="bold", 
-                    size=16, 
-                    width=200,  # Define largura para permitir quebra de linha
-                    text_align=ft.TextAlign.LEFT
-                ),
-                ft.Row([ft.Icon(ft.Icons.BUSINESS, size=14, opacity=0.7), ft.Text(f"BU: {bu}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Row([ft.Icon(ft.Icons.RECEIPT_LONG, size=14, opacity=0.7), ft.Text(f"PO: {supplier_po}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Row([ft.Icon(ft.Icons.NUMBERS, size=14, opacity=0.7), ft.Text(f"SSID: {supplier_number}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Row([ft.Icon(ft.Icons.FINGERPRINT, size=14, opacity=0.7), ft.Text(f"ID: {supplier_id}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Row([ft.Icon(origin_icon, size=14, opacity=0.7), ft.Text(f"Origem: {supplier_origin}", size=12)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Row([
-                    ft.Icon(ft.Icons.CIRCLE, size=14, color=status_icon_color), 
+        info_col = ft.Container(
+            content=ft.Column(
+                controls=[
                     ft.Text(
-                        f"Status: {status}", 
-                        size=12,
-                        color=status_icon_color
-                    )
-                ], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            ], 
-            spacing=4, 
-            tight=True,
-            expand=1  # Permite variação de tamanho
+                        format_display_value(vendor_name), 
+                        weight="bold", 
+                        size=16, 
+                        max_lines=2,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                        text_align=ft.TextAlign.LEFT
+                    ),
+                    ft.Row([ft.Icon(ft.Icons.BUSINESS, size=14, opacity=0.7), ft.Text(f"BU: {format_display_value(bu)}", size=12, overflow=ft.TextOverflow.ELLIPSIS)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.Row([ft.Icon(ft.Icons.RECEIPT_LONG, size=14, opacity=0.7), ft.Text(f"PO: {format_po_ssid(supplier_po)}", size=12, overflow=ft.TextOverflow.ELLIPSIS)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.Row([ft.Icon(ft.Icons.NUMBERS, size=14, opacity=0.7), ft.Text(f"SSID: {format_po_ssid(supplier_number)}", size=12, overflow=ft.TextOverflow.ELLIPSIS)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.Row([ft.Icon(ft.Icons.FINGERPRINT, size=14, opacity=0.7), ft.Text(f"ID: {format_display_value(supplier_id)}", size=12, overflow=ft.TextOverflow.ELLIPSIS)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.Row([ft.Icon(origin_icon, size=14, opacity=0.7), ft.Text(f"Origem: {format_display_value(supplier_origin)}", size=12, overflow=ft.TextOverflow.ELLIPSIS)], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.Row([
+                        ft.Icon(ft.Icons.CIRCLE, size=14, color=status_icon_color), 
+                        ft.Text(
+                            f"Status: {status}", 
+                            size=12,
+                            color=status_icon_color,
+                            overflow=ft.TextOverflow.ELLIPSIS
+                        )
+                    ], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ], 
+                spacing=4, 
+                tight=True
+            ),
+            width=220  # Largura base para info, mas pode ser reduzida
         )
 
-        scores_col = ft.Column(
-            score_rows, 
-            spacing=8, 
-            tight=True,
-            width=240  # Largura fixa para a área das notas
+        # Área de scores - 2x2 grid com mais espaço
+        # Ajustar espaçamento entre linhas baseado no tipo de controle
+        row_spacing = 15 if score_control_type in ["slider", "spinbox"] else 8
+        
+        scores_col = ft.Container(
+            content=ft.Column(
+                score_rows, 
+                spacing=row_spacing, 
+                tight=True,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER  # Centralizar verticalmente
+            ),
+            expand=True  # Expande para ocupar espaço restante
         )
 
-        # Coluna de ações com comentário que se expande
-        actions_col = ft.Column([
-            comment_field
+        # Coluna da direita: Scores + Comentário (com largura limitada)
+        right_col = ft.Column([
+            scores_col,
+            ft.Container(
+                content=comment_field,
+                padding=ft.padding.only(top=10)  # Pequeno espaço entre scores e comentário
+            )
         ], 
-        expand=True,  # O comentário pode se expandir
-        spacing=10,
-        alignment=ft.MainAxisAlignment.START
+        spacing=5,
+        expand=True
         )
 
-        # Conteúdo principal do card (sem os botões)
+        # Layout principal: Info | Divider | (Scores + Comentário)
+        # O divider agora se estende por toda a altura do card
         main_content = ft.Row([
             info_col,
-            ft.VerticalDivider(width=1, color="outline"),
-            scores_col,
-            ft.VerticalDivider(width=1, color="outline"),
-            actions_col
+            ft.Container(
+                content=ft.VerticalDivider(width=1, color="outline"),
+                expand_loose=True,  # Expande para preencher toda a altura disponível
+                alignment=ft.alignment.center
+            ),
+            right_col
         ], 
         vertical_alignment=ft.CrossAxisAlignment.START,
+        spacing=15,
         expand=True,
-        spacing=15
+        wrap=False,  # Não quebrar linha
+        tight=True  # Manter controles juntos
         )
 
         # Criar referência para o botão de salvar para permitir animações
@@ -7147,7 +7581,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 )
             ], expand=True),
             padding=15,
-            height=300,  # Altura fixa consistente
+            height=420,
             border_radius=12
         )
 
@@ -7267,9 +7701,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 where_clauses.append("supplier_number LIKE ?")
                 params.append(f"%{str(po_val).strip()}%")
 
-            query = f"{base_query} WHERE {' AND '.join(where_clauses)} ORDER BY vendor_name LIMIT 10"
+            # Verificar se deve mostrar inativos
+            show_inactive = False
+            if show_inactive_switch.current and hasattr(show_inactive_switch.current, 'value'):
+                show_inactive = show_inactive_switch.current.value
             
-            print(f"Executando query: {query}")
+            # Se o switch estiver desligado, filtrar apenas Active
+            if not show_inactive:
+                where_clauses.append("supplier_status = ?")
+                params.append("Active")
+
+            # Obter o limite de cards selecionado (padrão: 6)
+            card_limit = 6  # valor padrão
+            if selected_card_limit.current and selected_card_limit.current.value:
+                try:
+                    card_limit = int(selected_card_limit.current.value)
+                except:
+                    card_limit = 6
+            
+            query = f"{base_query} WHERE {' AND '.join(where_clauses)} ORDER BY vendor_name LIMIT {card_limit}"
+            
+            print(f"Executando query: {query} (Limite: {card_limit})")
             print(f"Parâmetros: {params}")
 
             records = db_manager.query(query, params)
@@ -7360,16 +7812,33 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             return
 
         try:
+            # Obter o limite de cards selecionado (padrão: 6)
+            card_limit = 6  # valor padrão
+            if selected_card_limit.current and selected_card_limit.current.value:
+                try:
+                    card_limit = int(selected_card_limit.current.value)
+                except:
+                    card_limit = 6
+            
+            # Verificar se deve mostrar inativos
+            show_inactive = False
+            if show_inactive_switch.current and hasattr(show_inactive_switch.current, 'value'):
+                show_inactive = show_inactive_switch.current.value
+            
+            # Construir a query de favoritos com filtro de status
+            status_filter = "" if show_inactive else "AND s.supplier_status = 'Active'"
+            
             # Buscar suppliers favoritos do usuário
-            favorites_query = """
+            favorites_query = f"""
                 SELECT s.supplier_id, s.vendor_name, s.bu, s.supplier_status, s.supplier_number, s.supplier_name, s.supplier_po
                 FROM supplier_database_table s 
                 INNER JOIN favorites_table f ON s.supplier_id = f.supplier_id
-                WHERE f.user_wwid = ?
+                WHERE f.user_wwid = ? {status_filter}
                 ORDER BY s.vendor_name
+                LIMIT {card_limit}
             """
             
-            print(f"Buscando favoritos para usuário: {current_user_wwid}")
+            print(f"Buscando favoritos para usuário: {current_user_wwid} (Limite: {card_limit})")
             records = db_manager.query(favorites_query, (current_user_wwid,))
             
             print(f"Encontrados {len(records)} favoritos")
@@ -7461,6 +7930,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Conteúdo da aba Score
     score_form = ft.Column(
         controls=[
+            # Campo de pesquisa - responsivo
             ft.TextField(
                 hint_text="Pesquisar por nome ou ID do fornecedor...",
                 prefix_icon=ft.Icons.SEARCH,
@@ -7469,13 +7939,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ref=search_field_ref,
                 bgcolor=None,
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                expand=True  # Tornar responsivo
             ),
+            # Primeira linha de filtros: PO, BU, Mês e Ano
             ft.Row(
                 controls=[
                     ft.TextField(
                         label="PO", 
-                        expand=True, 
+                        width=150,
                         border_radius=8,
                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -7485,7 +7957,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ),
                     ft.Dropdown(
                         label="BU",
-                        expand=True,
+                        width=150,
                         border_radius=8,
                         ref=selected_bu,
                         on_change=lambda e: search_suppliers_debounced(),
@@ -7496,25 +7968,61 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ),
                     month_dropdown,
                     year_dropdown,
-                    ft.IconButton(
+                    ft.Container(expand=True),
+                    ft.PopupMenuButton(
+                        icon=ft.Icons.MORE_VERT,
+                        tooltip="Mais opções",
+                        items=[
+                            ft.PopupMenuItem(
+                                content=ft.Row([
+                                    ft.Switch(
+                                        label="Mostrar Inativos",
+                                        value=False,
+                                        ref=show_inactive_switch,
+                                        on_change=lambda e: search_suppliers_debounced()
+                                    ),
+                                ], tight=True),
+                            ),
+                            ft.PopupMenuItem(),  # Divider
+                            ft.PopupMenuItem(
+                                content=ft.Row([
+                                    ft.Text("Qtd Cards:", size=13),
+                                    ft.Dropdown(
+                                        options=[
+                                            ft.dropdown.Option("6", "6"),
+                                            ft.dropdown.Option("10", "10"),
+                                            ft.dropdown.Option("14", "14"),
+                                            ft.dropdown.Option("20", "20")
+                                        ],
+                                        ref=selected_card_limit,
+                                        width=80,
+                                        value="6",
+                                        on_change=lambda e: search_suppliers_debounced(),
+                                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                                        dense=True,
+                                    ),
+                                ], tight=True, spacing=10),
+                            ),
+                        ],
+                    ),
+                    ft.ElevatedButton(
+                        "Limpar Filtros",
                         icon=ft.Icons.CLEAR_ALL,
-                        tooltip="Limpar todos os filtros",
                         on_click=clear_score_filters,
-                        icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                        icon_size=20,
                         style=ft.ButtonStyle(
-                            shape=ft.CircleBorder(),
-                            bgcolor={
-                                ft.ControlState.DEFAULT: get_current_theme_colors(get_theme_name_from_page(page)).get('primary_container'),
-                                ft.ControlState.HOVERED: get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant')
-                            }
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary_container'),
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_primary_container'),
                         )
                     ),
                 ],
                 spacing=10,
+                alignment=ft.MainAxisAlignment.START,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         ],
-        spacing=15,
+        spacing=12,
     )
 
     score_form_container = ft.Container(
@@ -7526,7 +8034,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     score_view_content = ft.Card(
         content=score_form_container,
-        width=600,
+        width=900,  # Aumentado de 600 para 900
         elevation=2
     )
 
@@ -7634,6 +8142,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Atualizar UI de listas (se existir) e forçar recarregamento das listas exibidas
             for k in lists_controls.keys():
                 refresh_list_ui(k)
+            
+            # Reconstruir tabs com tema atualizado
+            if 'lists_tabs_container' in globals() and lists_tabs_container:
+                lists_tabs_container.content = build_lists_tabs()
+            
             safe_page_update(page)
         except Exception as ex:
             print(f"Erro ao atualizar comboboxes: {ex}")
@@ -7682,10 +8195,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # RadioGroup para seleção do tipo de controle
     control_type_radio_group = ft.RadioGroup(
         content=ft.Column([
-            ft.Radio(value="slider", label="Slider (Deslizante)"),
+            ft.Radio(value="slider", label="Slider Material (Deslizante)"),
             ft.Radio(value="spinbox", label="Spinbox (Botões +/-)"),
         ]),
-        value=score_control_type,  # Usar o valor carregado do banco
+        value=score_control_type,
         on_change=control_type_changed,
     )
     
@@ -7707,25 +8220,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             print(f"Erro ao carregar tema padrão: {e}")
 
-    # Controle de duração do show_toast
-    toast_duration_slider = ft.Slider(
-        min=1,
-        max=10,
-        divisions=9,
-        value=app_settings.get('toast_duration', 3),
-        label="Duração: {value}s",
-        width=300,
-    )
-    
-    def update_toast_duration(e):
-        global app_settings
-        new_duration = int(e.control.value)
-        app_settings['toast_duration'] = new_duration
-        save_app_settings(app_settings)
-        show_snack_bar(f"⚙️ Duração do show_toast alterada para {new_duration}s", False)
-    
-    toast_duration_slider.on_change = update_toast_duration
-    
     # Slider para configurar incremento do spinbox
     spinbox_increment_slider = ft.Slider(
         min=0.1,
@@ -7746,192 +8240,128 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Conteúdo da sub-aba Themes
     themes_content = ft.Container(
         content=ft.Column([
-            ft.Text("Configuração de Tema", size=20, weight="bold"),
-            ft.Divider(),
-            theme_radio_group,
-            ft.Divider(),
-            ft.Text("Tipo de Controle de Score", size=16, weight="bold"),
-            ft.Text("Escolha o tipo de controle para inserir scores:", size=12, color="on_surface_variant"),
-            control_type_radio_group,
-            ft.Divider(),
-            ft.Text("Configurações de Interface", size=16, weight="bold"),
-            ft.Row([
-                ft.Text("Duração das notificações (show_toast):"),
-                toast_duration_slider,
-            ], alignment=ft.MainAxisAlignment.START),
-            ft.Row([
-                ft.Text("Incremento do Spinbox:"),
-                spinbox_increment_slider,
-            ], alignment=ft.MainAxisAlignment.START),
-        ], spacing=15),
+            # Header fixo
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.PALETTE, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Column([
+                        ft.Text("Configuração de Tema", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ft.Text("Personalize a aparência e controles do aplicativo", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                    ], spacing=2, expand=True),
+                ], spacing=12),
+                margin=ft.margin.only(bottom=15),
+            ),
+            ft.Divider(height=1, color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+            # Conteúdo com scroll
+            ft.Container(
+                content=ft.Column([
+                    theme_radio_group,
+                    ft.Divider(),
+                    ft.Text("Tipo de Controle de Score", size=16, weight="bold"),
+                    ft.Text("Escolha o tipo de controle para inserir scores:", size=12, color="on_surface_variant"),
+                    control_type_radio_group,
+                    ft.Divider(),
+                    ft.Text("Configurações de Interface", size=16, weight="bold"),
+                    ft.Row([
+                        ft.Text("Incremento do Spinbox:"),
+                        spinbox_increment_slider,
+                    ], alignment=ft.MainAxisAlignment.START),
+                ], spacing=15, scroll=ft.ScrollMode.AUTO),
+                expand=True
+            )
+        ], spacing=0, expand=True),
         padding=20,
-        visible=True
+        visible=True,
+        expand=True
     )
 
     # ---------- Sub-aba Lists dentro de Configs (gerenciar opções dinâmicas) ----------
-    # Criar títulos fixos fora do scroll
-    lists_header = ft.Column([
-        ft.Text("Gerenciar Listas de Opções", size=20, weight="bold"),
-        ft.Text("Configure as opções disponíveis nos dropdowns dos suppliers", size=14, color="on_surface_variant"),
-        ft.Divider(height=2),
-    ], spacing=8)
     
-    # Criar ListView apenas para as ExpansionTiles
-    lists_main_column = ft.ListView([], spacing=8, expand=True)
-
+    # Placeholder para tabs (será preenchido depois)
+    lists_tabs_container = ft.Container(expand=True)
+    
     lists_content = ft.Container(
         content=ft.Column([
-            lists_header,
+            # Header
             ft.Container(
-                content=lists_main_column,
-                expand=True
-            )
-        ], spacing=10),
-        padding=ft.padding.all(20),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.LIST_ALT, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Column([
+                        ft.Text("Gerenciar Listas", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ft.Text("Configure as opções dos dropdowns", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                    ], spacing=2, expand=True),
+                ], spacing=12),
+                margin=ft.margin.only(bottom=15),
+            ),
+            ft.Divider(height=1, color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+            # Tabs container
+            lists_tabs_container
+        ], spacing=0, expand=True),
+        padding=20,
         visible=False,
         expand=True
     )
 
+    # Função para criar campos de texto sem borda colorida
+    def create_list_textfield(label, expand=False, width=None, on_change=None):
+        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+        params = {
+            'label': label,
+            'filled': True,
+            'bgcolor': theme_colors.get('field_background'),
+            'color': theme_colors.get('on_surface'),
+            'border_color': ft.Colors.TRANSPARENT,
+            'focused_border_color': theme_colors.get('primary'),
+            'on_change': on_change
+        }
+        if expand:
+            params['expand'] = True
+        if width:
+            params['width'] = width
+        return ft.TextField(**params)
+    
     # Estruturas de UI para cada lista (controls) com feedback e botões de delete
     lists_controls = {
         'sqie': {
-            'input': ft.TextField(
-                label='Nome SQIE', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('sqie'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            'alias': ft.TextField(
-                label='Alias SQIE', 
-                width=200, 
-                on_change=lambda e: validate_input_exists('sqie'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            'email': ft.TextField(
-                label='Email SQIE', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('sqie'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
+            'input': create_list_textfield('Nome SQIE', expand=True, on_change=lambda e: validate_input_exists('sqie')),
+            'alias': create_list_textfield('Alias SQIE', width=200, on_change=lambda e: validate_input_exists('sqie')),
+            'email': create_list_textfield('Email SQIE', expand=True, on_change=lambda e: validate_input_exists('sqie')),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
             'selected_item': None
         },
         'continuity': {
-            'input': ft.TextField(
-                label='Nome Continuity', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('continuity'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            'alias': ft.TextField(
-                label='Alias Continuity', 
-                width=200, 
-                on_change=lambda e: validate_input_exists('continuity'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            'email': ft.TextField(
-                label='Email Continuity', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('continuity'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
+            'input': create_list_textfield('Nome Continuity', expand=True, on_change=lambda e: validate_input_exists('continuity')),
+            'alias': create_list_textfield('Alias Continuity', width=200, on_change=lambda e: validate_input_exists('continuity')),
+            'email': create_list_textfield('Email Continuity', expand=True, on_change=lambda e: validate_input_exists('continuity')),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
             'selected_item': None
         },
         'planner': {
-            'input': ft.TextField(
-                label='Nome Planner', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('planner'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            'alias': ft.TextField(
-                label='Alias Planner', 
-                width=200, 
-                on_change=lambda e: validate_input_exists('planner'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            'email': ft.TextField(
-                label='Email Planner', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('planner'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
+            'input': create_list_textfield('Nome Planner', expand=True, on_change=lambda e: validate_input_exists('planner')),
+            'alias': create_list_textfield('Alias Planner', width=200, on_change=lambda e: validate_input_exists('planner')),
+            'email': create_list_textfield('Email Planner', expand=True, on_change=lambda e: validate_input_exists('planner')),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
             'selected_item': None
         },
         'sourcing': {
-            'input': ft.TextField(
-                label='Nome Sourcing', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('sourcing'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            'alias': ft.TextField(
-                label='Alias Sourcing', 
-                width=200, 
-                on_change=lambda e: validate_input_exists('sourcing'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            'email': ft.TextField(
-                label='Email Sourcing', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('sourcing'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
+            'input': create_list_textfield('Nome Sourcing', expand=True, on_change=lambda e: validate_input_exists('sourcing')),
+            'alias': create_list_textfield('Alias Sourcing', width=200, on_change=lambda e: validate_input_exists('sourcing')),
+            'email': create_list_textfield('Email Sourcing', expand=True, on_change=lambda e: validate_input_exists('sourcing')),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
             'selected_item': None
         },
         'bu': {
-            'input': ft.TextField(
-                label='Nome BU', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('bu'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
+            'input': create_list_textfield('Nome BU', expand=True, on_change=lambda e: validate_input_exists('bu')),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
             'selected_item': None
         },
         'category': {
-            'input': ft.TextField(
-                label='Nome Category', 
-                expand=True, 
-                on_change=lambda e: validate_input_exists('category'),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
+            'input': create_list_textfield('Nome Category', expand=True, on_change=lambda e: validate_input_exists('category')),
             'list': ft.Column(spacing=2),
             'feedback': ft.Text(''),
             'selected_item': None
@@ -8577,238 +9007,143 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         )
 
     # Popular listas iniciais
-
-    # Criar layout vertical simples ao invés de GridView - adicionar diretamente à column principal
-    lists_main_column.controls.extend([
-        # SQIE
-        ft.ExpansionTile(
-            title=ft.Row([
-                ft.Icon(ft.Icons.ASSIGNMENT, size=20),
-                ft.Text('SQIE', weight='bold', size=16)
-            ], spacing=8),
-            controls=[
-                ft.Container(
-                    content=ft.Column([
-                            ft.Container(
-                                content=ft.Row([lists_controls['sqie']['input'], lists_controls['sqie']['alias']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                                width=700,
-                                alignment=ft.alignment.center
+    # Função para criar conteúdo de aba com layout limpo
+    def create_list_tab_content(key, title_icon, has_email=True):
+        """Cria conteúdo de uma aba de lista com layout moderno"""
+        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+        
+        # Campos de entrada em card
+        input_fields = []
+        
+        if has_email:
+            # Layout para listas com email (SQIE, Continuity, Planner, Sourcing)
+            input_fields = [
+                ft.Row([
+                    lists_controls[key]['input'],
+                    lists_controls[key]['alias'],
+                ], spacing=12),
+                ft.Container(height=8),
+                lists_controls[key]['email'],
+            ]
+        else:
+            # Layout para listas simples (BU, Category)
+            input_fields = [lists_controls[key]['input']]
+        
+        # Card de entrada
+        input_card = ft.Card(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(title_icon, size=20, color=theme_colors.get('primary')),
+                        ft.Text("Adicionar Novo Item", size=15, weight="bold", color=theme_colors.get('on_surface')),
+                    ], spacing=8),
+                    ft.Divider(height=1, color=ft.Colors.with_opacity(0.1, theme_colors.get('outline'))),
+                    ft.Container(height=5),
+                    ft.Column(input_fields, spacing=0),
+                    lists_controls[key]['feedback'],
+                    ft.Container(height=8),
+                    ft.Row([
+                        ft.ElevatedButton(
+                            "Adicionar",
+                            icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+                            on_click=add_alias_handler_sqie if key == 'sqie' else lambda e, k=key: add_alias_handler_generic(
+                                f"{k}_table" if k in ['continuity', 'planner', 'sourcing'] else 
+                                ('business_unit_table' if k == 'bu' else 'categories_table'),
+                                lists_controls[k]['input'],
+                                lists_controls[k].get('alias')
                             ),
-                            ft.Container(height=8),  # Espaçamento entre linhas
-                            ft.Container(
-                                content=ft.Row([lists_controls['sqie']['email']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                                width=700,  # Mesma largura do Nome
-                                alignment=ft.alignment.center
-                            ),
-                            lists_controls['sqie']['feedback'],
-                            ft.Row([
-                                ft.ElevatedButton('Adicionar', on_click=add_alias_handler_sqie, icon=ft.Icons.ADD)
-                            ], spacing=10),
-                            ft.Text("Itens:", size=12, weight="bold"),
-                            ft.Container(
-                                            content=lists_controls['sqie']['list'], 
-                                            expand=True,
-                                            border=ft.border.all(1, "outline_variant"),
-                                            border_radius=4,
-                                            padding=8
-                                        )
-                        ], spacing=8),
-                        padding=15
-                    )
-                ],
-                initially_expanded=True
-            ),
-            
-            # Continuity
-            ft.ExpansionTile(
-                title=ft.Row([
-                    ft.Icon(ft.Icons.TIMELINE, size=20),
-                    ft.Text('Continuity', weight='bold', size=16)
+                            bgcolor=theme_colors.get('primary'),
+                            color=theme_colors.get('on_primary'),
+                        ),
+                    ], alignment=ft.MainAxisAlignment.END),
                 ], spacing=8),
-                controls=[
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Container(
-                                content=ft.Row([lists_controls['continuity']['input'], lists_controls['continuity']['alias']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                                width=700,
-                                alignment=ft.alignment.center
-                            ),
-                            ft.Container(height=8),  # Espaçamento entre linhas
-                            ft.Container(
-                                content=ft.Row([lists_controls['continuity']['email']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                                width=700,  # Mesma largura do Nome
-                                alignment=ft.alignment.center
-                            ),
-                            lists_controls['continuity']['feedback'],
-                            ft.Row([
-                                ft.ElevatedButton('Adicionar', 
-                                    on_click=lambda e: add_alias_handler_generic('continuity_table', lists_controls['continuity']['input'], lists_controls['continuity']['alias']), 
-                                    icon=ft.Icons.ADD)
-                            ], spacing=10),
-                            ft.Text("Itens:", size=12, weight="bold"),
-                            ft.Container(
-                                content=lists_controls['continuity']['list'], 
-                                expand=True,
-                                border=ft.border.all(1, "outline_variant"),
-                                border_radius=4,
-                                padding=8
-                            )
-                        ], spacing=8),
-                        padding=15
-                    )
-                ]
+                padding=20,
             ),
-            
-            # Planner
-            ft.ExpansionTile(
-                title=ft.Row([
-                    ft.Icon(ft.Icons.PERSON, size=20),
-                    ft.Text('Planner', weight='bold', size=16)
-                ], spacing=8),
-                controls=[
+            elevation=1,
+        )
+        
+        # Card de lista de itens
+        items_card = ft.Card(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.FORMAT_LIST_BULLETED, size=20, color=theme_colors.get('primary')),
+                        ft.Text("Itens Cadastrados", size=15, weight="bold", color=theme_colors.get('on_surface')),
+                    ], spacing=8),
+                    ft.Divider(height=1, color=ft.Colors.with_opacity(0.1, theme_colors.get('outline'))),
+                    ft.Container(height=5),
                     ft.Container(
-                        content=ft.Column([
-                            ft.Container(
-                                content=ft.Row([lists_controls['planner']['input'], lists_controls['planner']['alias']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                                width=700,
-                                alignment=ft.alignment.center
-                            ),
-                            ft.Container(height=8),  # Espaçamento entre linhas
-                            ft.Container(
-                                content=ft.Row([lists_controls['planner']['email']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                                width=700,  # Mesma largura do Nome
-                                alignment=ft.alignment.center
-                            ),
-                            lists_controls['planner']['feedback'],
-                            ft.Row([
-                                ft.ElevatedButton('Adicionar', 
-                                    on_click=lambda e: add_alias_handler_generic('planner_table', lists_controls['planner']['input'], lists_controls['planner']['alias']), 
-                                    icon=ft.Icons.ADD)
-                            ], spacing=10),
-                            ft.Text("Itens:", size=12, weight="bold"),
-                            ft.Container(
-                                content=lists_controls['planner']['list'], 
-                                expand=True,
-                                border=ft.border.all(1, "outline_variant"),
-                                border_radius=4,
-                                padding=8
-                            )
-                        ], spacing=8),
-                        padding=15
-                    )
-                ]
+                        content=ft.ListView(
+                            controls=[lists_controls[key]['list']],
+                            spacing=0,
+                            expand=True,
+                        ),
+                        expand=True,
+                    ),
+                ], spacing=8, expand=True),
+                padding=20,
+                expand=True,
             ),
-            
-            # Sourcing
-            ft.ExpansionTile(
-                title=ft.Row([
-                    ft.Icon(ft.Icons.PUBLIC, size=20),
-                    ft.Text('Sourcing', weight='bold', size=16)
-                ], spacing=8),
-                controls=[
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Container(
-                                content=ft.Row([lists_controls['sourcing']['input'], lists_controls['sourcing']['alias']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                                width=700,
-                                alignment=ft.alignment.center
-                            ),
-                            ft.Container(height=8),  # Espaçamento entre linhas
-                            ft.Container(
-                                content=ft.Row([lists_controls['sourcing']['email']], spacing=8, expand=True, alignment=ft.MainAxisAlignment.CENTER),
-                                width=700,  # Mesma largura do Nome
-                                alignment=ft.alignment.center
-                            ),
-                            lists_controls['sourcing']['feedback'],
-                            ft.Row([
-                                ft.ElevatedButton('Adicionar', 
-                                    on_click=lambda e: add_alias_handler_generic('sourcing_table', lists_controls['sourcing']['input'], lists_controls['sourcing']['alias']), 
-                                    icon=ft.Icons.ADD)
-                            ], spacing=10),
-                            ft.Text("Itens:", size=12, weight="bold"),
-                            ft.Container(
-                                content=lists_controls['sourcing']['list'], 
-                                expand=True,
-                                border=ft.border.all(1, "outline_variant"),
-                                border_radius=4,
-                                padding=8
-                            )
-                        ], spacing=8),
-                        padding=15
-                    )
-                ]
-            ),
-            
-            # Business Unit
-            ft.ExpansionTile(
-                title=ft.Row([
-                    ft.Icon(ft.Icons.BUSINESS, size=20),
-                    ft.Text('Business Unit', weight='bold', size=16)
-                ], spacing=8),
-                controls=[
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Container(
-                                content=lists_controls['bu']['input'],
-                                width=600,
-                                alignment=ft.alignment.center
-                            ),
-                            lists_controls['bu']['feedback'],
-                            ft.Row([
-                                ft.ElevatedButton('Adicionar', 
-                                    on_click=lambda e: add_alias_handler_generic('business_unit_table', lists_controls['bu']['input']), 
-                                    icon=ft.Icons.ADD)
-                            ], spacing=10),
-                            ft.Text("Itens:", size=12, weight="bold"),
-                            ft.Container(
-                                content=lists_controls['bu']['list'], 
-                                expand=True,
-                                border=ft.border.all(1, "outline_variant"),
-                                border_radius=4,
-                                padding=8
-                            )
-                        ], spacing=8),
-                        padding=15
-                    )
-                ]
-            ),
-            
-            # Category
-            ft.ExpansionTile(
-                title=ft.Row([
-                    ft.Icon(ft.Icons.CATEGORY, size=20),
-                    ft.Text('Category', weight='bold', size=16)
-                ], spacing=8),
-                controls=[
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Container(
-                                content=lists_controls['category']['input'],
-                                width=600,
-                                alignment=ft.alignment.center
-                            ),
-                            lists_controls['category']['feedback'],
-                            ft.Row([
-                                ft.ElevatedButton('Adicionar', 
-                                    on_click=lambda e: add_alias_handler_generic('categories_table', lists_controls['category']['input']), 
-                                    icon=ft.Icons.ADD)
-                            ], spacing=10),
-                            ft.Text("Itens:", size=12, weight="bold"),
-                            ft.Container(
-                                content=lists_controls['category']['list'], 
-                                expand=True,
-                                border=ft.border.all(1, "outline_variant"),
-                                border_radius=4,
-                                padding=8
-                            )
-                        ], spacing=8),
-                        padding=15
-                    )
-                ]
-            )
-    ])
+            elevation=1,
+            expand=True,
+        )
+        
+        return ft.Container(
+            content=ft.Column([
+                input_card,
+                ft.Container(height=15),
+                items_card,
+            ], spacing=0, expand=True),
+            padding=15,
+            expand=True,
+        )
     
-    # lists_main_column é um ListView com expand=True — ele já fornece scroll adaptativo
+    # Criar tabs
+    def build_lists_tabs():
+        """Constrói as tabs para Lists"""
+        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+        
+        tabs = ft.Tabs(
+            selected_index=0,
+            animation_duration=300,
+            expand=True,
+            tabs=[
+                ft.Tab(
+                    text="SQIE",
+                    icon=ft.Icons.ASSIGNMENT,
+                    content=create_list_tab_content('sqie', ft.Icons.ASSIGNMENT, has_email=True),
+                ),
+                ft.Tab(
+                    text="Continuity",
+                    icon=ft.Icons.TIMELINE,
+                    content=create_list_tab_content('continuity', ft.Icons.TIMELINE, has_email=True),
+                ),
+                ft.Tab(
+                    text="Planner",
+                    icon=ft.Icons.PERSON,
+                    content=create_list_tab_content('planner', ft.Icons.PERSON, has_email=True),
+                ),
+                ft.Tab(
+                    text="Sourcing",
+                    icon=ft.Icons.PUBLIC,
+                    content=create_list_tab_content('sourcing', ft.Icons.PUBLIC, has_email=True),
+                ),
+                ft.Tab(
+                    text="Business Unit",
+                    icon=ft.Icons.BUSINESS,
+                    content=create_list_tab_content('bu', ft.Icons.BUSINESS, has_email=False),
+                ),
+                ft.Tab(
+                    text="Category",
+                    icon=ft.Icons.CATEGORY,
+                    content=create_list_tab_content('category', ft.Icons.CATEGORY, has_email=False),
+                ),
+            ],
+        )
+        return tabs
+    
+    # Adicionar tabs ao container
+    lists_tabs_container.content = build_lists_tabs()
     
     # Popular listas iniciais
     for k in lists_controls.keys():
@@ -8820,7 +9155,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Lógica para gerenciamento de suppliers
     suppliers_search_field_ref = ft.Ref()
     global suppliers_results_list
-    suppliers_results_list = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO)
+    suppliers_results_list = ft.Column(spacing=10)  # Removido scroll - será aplicado no Container pai
 
     def create_supplier_card(record, page):
         """Cria um card editável para um supplier."""
@@ -8900,7 +9235,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ),
             "supplier_number": ft.TextField(
                 label="SSID",
-                value=supplier_number,  # Preencher com valor do banco
+                value=format_po_ssid(supplier_number),  # Formatar sem decimais
                 filled=False,
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
@@ -8909,7 +9244,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ),
             "supplier_po": ft.TextField(
                 label="PO",
-                value=supplier_po,  # Preencher com valor do banco
+                value=format_po_ssid(supplier_po),  # Formatar sem decimais
                 filled=False,
                 expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
@@ -9023,8 +9358,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         safe_strip(fields["bu"].value),
                         safe_strip(fields["supplier_origin"].value),
                         safe_strip(fields["supplier_email"].value),
-                        safe_strip(fields["supplier_number"].value),
-                        safe_strip(fields["supplier_po"].value),
+                        format_po_ssid_for_save(fields["supplier_number"].value),
+                        format_po_ssid_for_save(fields["supplier_po"].value),
                         safe_strip(fields["supplier_status"].value),
                         safe_strip(fields["planner"].value),
                         safe_strip(fields["continuity"].value),
@@ -9048,8 +9383,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         safe_strip(fields["bu"].value),
                         safe_strip(fields["supplier_origin"].value),
                         safe_strip(fields["supplier_email"].value),
-                        safe_strip(fields["supplier_number"].value),
-                        safe_strip(fields["supplier_po"].value),
+                        format_po_ssid_for_save(fields["supplier_number"].value),
+                        format_po_ssid_for_save(fields["supplier_po"].value),
                         safe_strip(fields["supplier_status"].value),
                         safe_strip(fields["planner"].value),
                         safe_strip(fields["continuity"].value),
@@ -9099,11 +9434,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 except Exception as upd_ex:
                     print(f"🔧 WARN: falha ao atualizar dropdowns da Timeline: {upd_ex}")
 
-                show_snack_bar(f"✅ Supplier {safe_strip(fields['vendor_name'].value)} {action} com sucesso!", False, page)
+                show_snack_bar(f"✅ Supplier {safe_strip(fields['vendor_name'].value)} {action} com sucesso!", is_error=False, is_warning=False, page=page)
                 print(f"Supplier {supplier_id} {action}")
 
             except Exception as ex:
-                show_snack_bar(f"❌ Erro ao salvar: {str(ex)}", True, page)
+                show_snack_bar(f"❌ Erro ao salvar: {str(ex)}", is_error=True, page=page)
                 print(f"Erro ao salvar supplier: {ex}")
             finally:
                 e.control.disabled = False
@@ -9431,7 +9766,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             query = """
                 SELECT supplier_id, vendor_name, supplier_category, bu, supplier_name,
-                       supplier_email, supplier_number, supplier_status, planner, 
+                       supplier_email, supplier_number, supplier_po, supplier_status, planner, 
                        continuity, sourcing, sqie
                 FROM supplier_database_table
                 WHERE (vendor_name LIKE ? OR supplier_id LIKE ? OR supplier_name LIKE ?)
@@ -9481,8 +9816,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Conteúdo da sub-aba Suppliers
     suppliers_content = ft.Container(
         content=ft.Column([
-            ft.Text("Gerenciamento de Fornecedores", size=20, weight="bold"),
-            ft.Divider(),
+            # Header fixo
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.BUSINESS, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Column([
+                        ft.Text("Gerenciamento de Fornecedores", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ft.Text("Adicione, edite e gerencie fornecedores", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                    ], spacing=2, expand=True),
+                ], spacing=12),
+                margin=ft.margin.only(bottom=15),
+            ),
+            # Barra de pesquisa fixo
             ft.Row([
                 ft.TextField(
                     label="Buscar Supplier (Nome, ID ou Supplier Name)",
@@ -9497,13 +9842,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ),
                 ft.ElevatedButton("Novo Supplier", icon=ft.Icons.ADD_BUSINESS, on_click=add_new_supplier),
             ], spacing=10),
-            ft.Container(height=10),
+            # Lista de resultados com scroll - expande para ocupar espaço restante
             ft.Container(
-                content=suppliers_results_list,
+                content=ft.Column([suppliers_results_list], scroll=ft.ScrollMode.AUTO),
                 expand=True,
-                padding=20,
+                margin=ft.margin.only(top=10),
             ),
-        ], spacing=15, expand=True),
+        ], spacing=0, expand=True),
         padding=20,
         visible=False,
         expand=True
@@ -9699,11 +10044,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             safe_page_update(page)
 
     # Criar títulos fixos para Criteria (fora do scroll)
-    criteria_header = ft.Column([
-        ft.Text("Configuração de Critérios", size=20, weight="bold"),
-        ft.Text("Configure os pesos dos critérios de avaliação", size=14, color="on_surface_variant"),
-        ft.Divider(height=2),
-    ], spacing=8)
+    criteria_header = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.Icons.ASSESSMENT, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+            ft.Column([
+                ft.Text("Configuração de Critérios", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                ft.Text("Configure os pesos dos critérios de avaliação", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+            ], spacing=2, expand=True),
+        ], spacing=12),
+        margin=ft.margin.only(bottom=15),
+    )
     
     # Criar conteúdo scrollável para Criteria
     criteria_scrollable_content = ft.ListView([
@@ -9757,11 +10107,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     criteria_content = ft.Container(
         content=ft.Column([
             criteria_header,
+            ft.Divider(height=1, color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
             ft.Container(
                 content=criteria_scrollable_content,
                 expand=True
             )
-        ], spacing=10),
+        ], spacing=0, expand=True),
         padding=ft.padding.all(20),
         visible=False,
         expand=True
@@ -9914,24 +10265,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     users_content = ft.Container(
         content=ft.Column([
-            # Título fixo
-            ft.Text("Gerenciamento de Usuários", size=20, weight="bold"),
-            ft.Divider(),
-            
-            # Header com informações - fixo
+            # Header fixo
             ft.Container(
                 content=ft.Row([
-                    ft.Text("Configure usuários e suas permissões de avaliação", 
-                           size=14, color="outline"),
-                ]),
-                padding=ft.padding.only(bottom=10)
+                    ft.Icon(ft.Icons.PEOPLE, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Column([
+                        ft.Text("Gerenciamento de Usuários", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ft.Text("Configure usuários e suas permissões de avaliação", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                    ], spacing=2, expand=True),
+                ], spacing=12),
+                margin=ft.margin.only(bottom=15),
             ),
             
             # Formulário de usuário - fixo
             users_form_container,
 
-            ft.Container(height=20),
-            
             # Botões de ação - fixo
             ft.Container(
                 content=ft.Row([
@@ -9946,13 +10294,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         ref=clear_btn_ref,
                     ),
                 ], alignment=ft.MainAxisAlignment.CENTER, spacing=15),
-                padding=ft.padding.symmetric(vertical=10)
+                margin=ft.margin.only(top=10, bottom=10)
             ),
             
-            ft.Container(height=10),
             ft.Divider(),
             
-            # Lista de usuários - com scroll adaptável
+            # Lista de usuários - com scroll independente - expande para ocupar espaço restante
             ft.Container(
                 content=ft.Column([
                     ft.Text("Usuários Cadastrados", size=16, weight="bold"),
@@ -9960,19 +10307,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         content=ft.ListView(
                             spacing=8,
                             expand=True,
-                            ref=users_list_ref,  # Referência específica para a lista de usuários
+                            ref=users_list_ref,
                         ),
-                        expand=True,  # Expande para ocupar o espaço restante
-                        border=ft.border.all(1, "outline"),
+                        expand=True,
                         border_radius=8,
                         padding=8,
+                        bgcolor="surface_variant",
                     ),
-                ], spacing=10, expand=True),  # Column expande para ocupar espaço restante
-                padding=ft.padding.symmetric(vertical=10),
-                expand=True  # Container expande para ocupar espaço disponível
+                ], spacing=10, expand=True),
+                expand=True
             ),
             
-        ], spacing=8, expand=True),
+        ], spacing=0, expand=True),
         padding=20,
         visible=False,
         expand=True  # Container principal expande
@@ -10207,11 +10553,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         content=content_column,
                         padding=12,
                         bgcolor=Colors['primary_container'] if is_selected else get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
-                        border_radius=8,
-                        border=ft.border.all(1, Colors['outline'])
+                        border_radius=8
                     )
 
-                    return ft.Card(content=card_container, elevation=1)
+                    return ft.Card(
+                        content=card_container, 
+                        elevation=0,
+                        color=ft.Colors.TRANSPARENT
+                    )
 
                 # Adicionar cards ao ListView
                 for user in users:
@@ -10551,52 +10900,78 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Conteúdo da sub-aba Log com largura maximizada
     log_content = ft.Container(
         content=ft.Column([
-            ft.Text("Log de Atividades", size=20, weight="bold"),
-            ft.Divider(),
-            ft.Row([
-                ft.TextField(
-                    ref=log_user_filter_ref,
-                    label="Pesquisar por WWID", 
-                    expand=True,
-                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                ),
-                ft.ElevatedButton("Filtrar", icon=ft.Icons.FILTER_LIST, on_click=lambda e: load_log_entries(log_user_filter_ref.current.value if log_user_filter_ref and hasattr(log_user_filter_ref, 'current') else None)),
-            ], spacing=10),
-            ft.Container(height=10),  # Espaçamento reduzido
-            # Tabela consolidada com largura total da tela
+            # Header fixo
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.HISTORY, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Column([
+                        ft.Text("Log de Atividades", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ft.Text("Visualize o histórico de ações dos usuários", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                    ], spacing=2, expand=True),
+                ], spacing=12),
+                margin=ft.margin.only(bottom=15),
+            ),
+            ft.Divider(height=1, color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+            # Filtro de pesquisa - fixo
+            ft.Container(
+                content=ft.Row([
+                    ft.TextField(
+                        ref=log_user_filter_ref,
+                        label="Pesquisar por WWID", 
+                        expand=True,
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                    ),
+                    ft.ElevatedButton("Filtrar", icon=ft.Icons.FILTER_LIST, on_click=lambda e: load_log_entries(log_user_filter_ref.current.value if log_user_filter_ref and hasattr(log_user_filter_ref, 'current') else None)),
+                ], spacing=10),
+                margin=ft.margin.only(top=10, bottom=10)
+            ),
+            
+            # Tabela de logs com scroll - expande para ocupar espaço restante
             ft.Container(
                 content=ft.Column([
-                    ft.DataTable(
-                        ref=log_table_ref,
-                        columns=[
-                            ft.DataColumn(ft.Text("", weight="bold"), numeric=False),  # Ícone
-                            ft.DataColumn(ft.Text("Data/Hora", weight="bold"), numeric=False),
-                            ft.DataColumn(ft.Text("WWID", weight="bold"), numeric=False),  # Nova coluna WWID
-                            ft.DataColumn(ft.Text("Usuário", weight="bold"), numeric=False),
-                            ft.DataColumn(ft.Text("Detalhes", weight="bold"), numeric=False),
-                        ],
-                        rows=[],
-                        border=ft.border.all(1, "outline"),
-                        border_radius=8,
-                        heading_row_color=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
-                        data_row_color={"hovered": get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant')},
-                        column_spacing=10,  # Espaçamento reduzido
-                        horizontal_margin=5,  # Margem reduzida
-                        width=None,  # Permite que a tabela use toda largura disponível
-                    )
-                ], 
-                expand=True, 
-                scroll=ft.ScrollMode.ADAPTIVE
-                ),
+                    # Header fixo
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Container(ft.Text("", size=12, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'), no_wrap=True), width=40, alignment=ft.alignment.center),  # Ícone
+                            ft.Container(ft.Text("Data/Hora", size=12, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'), no_wrap=True), width=150, alignment=ft.alignment.center_left),
+                            ft.Container(ft.Text("WWID", size=12, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'), no_wrap=True), width=100, alignment=ft.alignment.center_left),
+                            ft.Container(ft.Text("Usuário", size=12, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'), no_wrap=True), width=150, alignment=ft.alignment.center_left),
+                            ft.Container(ft.Text("Detalhes", size=12, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'), no_wrap=True), expand=True, alignment=ft.alignment.center_left),
+                        ], spacing=10, tight=True),
+                        padding=ft.padding.symmetric(horizontal=16, vertical=12),
+                        bgcolor=ft.Colors.with_opacity(0.1, get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                        border_radius=ft.border_radius.only(top_left=8, top_right=8),
+                    ),
+                    # Corpo scrollável - será preenchido via DataTable
+                    ft.Container(
+                        content=ft.DataTable(
+                            ref=log_table_ref,
+                            columns=[
+                                ft.DataColumn(ft.Text(""), numeric=False),  # Ícone
+                                ft.DataColumn(ft.Text(""), numeric=False),  # Data/Hora
+                                ft.DataColumn(ft.Text(""), numeric=False),  # WWID
+                                ft.DataColumn(ft.Text(""), numeric=False),  # Usuário
+                                ft.DataColumn(ft.Text(""), numeric=False),  # Detalhes
+                            ],
+                            rows=[],
+                            heading_row_height=0,
+                            data_row_color={"hovered": ft.Colors.with_opacity(0.05, get_current_theme_colors(get_theme_name_from_page(page)).get('primary'))},
+                            column_spacing=10,
+                            horizontal_margin=16,
+                            expand=True,
+                        ),
+                        expand=True,
+                    ),
+                ], spacing=0, expand=True, scroll=ft.ScrollMode.ADAPTIVE),
                 expand=True,
-                padding=2,  # Padding mínimo
-                border=ft.border.all(1, "outline"),
+                padding=0,
+                bgcolor=ft.Colors.with_opacity(0.02, get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
                 border_radius=8,
             )
-        ], spacing=10),  # Espaçamento geral reduzido
-        padding=5,  # Padding do container principal minimizado  
+        ], spacing=0, expand=True),
+        padding=20,
         visible=False,
         expand=True,  # Container principal expandir para ocupar espaço disponível
     )
@@ -10604,16 +10979,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # --- Conteúdo da aba Info ---
     info_content = ft.Container(
         content=ft.Column([
+            # Header fixo
             ft.Container(
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.INFO_OUTLINED, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=24),
-                        ft.Text("Informações sobre o App", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
-                    ], spacing=10),
-                    ft.Divider(color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
-                ]),
-                margin=ft.margin.only(bottom=20),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.INFO_OUTLINED, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Column([
+                        ft.Text("Informações sobre o App", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ft.Text("Conheça mais sobre o sistema e seus desenvolvedores", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                    ], spacing=2, expand=True),
+                ], spacing=12),
+                margin=ft.margin.only(bottom=15),
             ),
+            ft.Divider(height=1, color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
             
             # Card com objetivo do app
             ft.Card(
@@ -10705,7 +11082,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ),
                 elevation=2,
             ),
-        ], scroll=ft.ScrollMode.AUTO),
+        ], spacing=10, scroll=ft.ScrollMode.AUTO, expand=True),
         padding=20,
         visible=False,
         expand=True,
@@ -10786,93 +11163,319 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             traceback.print_exc()
 
     def import_database_from_excel(e):
-        """Importa dados de um arquivo Excel para o banco de dados"""
+        """Importa dados de um arquivo Excel para o banco de dados com opção de modo"""
         # Verificar permissão - apenas Super Admin
         if current_user_privilege != "Super Admin":
             show_snack_bar("❌ Acesso negado. Apenas Super Admin pode importar o banco de dados.", True)
             return
+        
+        # Criar diálogo de confirmação com opções de modo
+        def show_import_mode_dialog():
+            import_mode_ref = ft.Ref[ft.RadioGroup]()
             
-        try:
-            import pandas as pd
-            from tkinter import Tk, filedialog
+            def confirm_import(e):
+                selected_mode = import_mode_ref.current.value
+                page.close(mode_dialog)
+                start_import(selected_mode)
             
-            # Abrir diálogo para selecionar arquivo
-            root = Tk()
-            root.withdraw()
-            root.attributes('-topmost', True)
+            def cancel_import(e):
+                page.close(mode_dialog)
             
-            filepath = filedialog.askopenfilename(
-                title="Selecione o arquivo Excel para importar",
-                filetypes=[("Excel files", "*.xlsx *.xls")]
+            theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+            
+            mode_dialog = ft.AlertDialog(
+                title=ft.Text("Modo de Importação", color=theme_colors.get('on_surface')),
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Text(
+                            "Escolha o modo de importação:",
+                            size=16,
+                            weight="bold",
+                            color=theme_colors.get('on_surface')
+                        ),
+                        ft.Container(height=10),
+                        ft.RadioGroup(
+                            ref=import_mode_ref,
+                            value="merge",
+                            content=ft.Column([
+                                ft.Radio(
+                                    value="merge",
+                                    label="MERGE (Recomendado)",
+                                    fill_color=theme_colors.get('primary')
+                                ),
+                                ft.Text(
+                                    "• Atualiza registros existentes\n"
+                                    "• Adiciona novos registros\n"
+                                    "• Mantém dados não presentes no Excel",
+                                    size=12,
+                                    color=theme_colors.get('on_surface_variant'),
+                                    italic=True
+                                ),
+                                ft.Container(height=10),
+                                ft.Radio(
+                                    value="replace",
+                                    label="REPLACE (Substituição Completa)",
+                                    fill_color=ft.Colors.ORANGE
+                                ),
+                                ft.Text(
+                                    "⚠️ ATENÇÃO: Esta opção irá:\n"
+                                    "• Deletar TODOS os dados das tabelas\n"
+                                    "• Substituir completamente pelos dados do Excel\n"
+                                    "• Dados não presentes no Excel serão PERDIDOS",
+                                    size=12,
+                                    color=ft.Colors.ORANGE,
+                                    weight="bold"
+                                ),
+                            ], spacing=5)
+                        ),
+                    ], tight=True, spacing=10),
+                    width=500
+                ),
+                actions=[
+                    ft.TextButton("Cancelar", on_click=cancel_import),
+                    ft.ElevatedButton(
+                        "Continuar",
+                        on_click=confirm_import,
+                        bgcolor=theme_colors.get('primary'),
+                        color=theme_colors.get('on_primary')
+                    )
+                ],
+                modal=True
             )
             
-            root.destroy()
-            
-            if not filepath:
-                return
-            
-            show_snack_bar("Importando banco de dados...", False)
-            
-            # Ler o arquivo Excel
-            excel_file = pd.ExcelFile(filepath)
-            
-            imported_tables = 0
-            for sheet_name in excel_file.sheet_names:
+            page.open(mode_dialog)
+        
+        def start_import(import_mode):
+            """Inicia o processo de importação com o modo selecionado"""
+            try:
+                import pandas as pd
+                from tkinter import Tk, filedialog
+                
+                # Abrir diálogo para selecionar arquivo
+                root = Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                
+                filepath = filedialog.askopenfilename(
+                    title="Selecione o arquivo Excel para importar",
+                    filetypes=[("Excel files", "*.xlsx *.xls")]
+                )
+                
+                root.destroy()
+                
+                if not filepath:
+                    return
+                
+                show_snack_bar(f"Importando banco de dados (modo: {import_mode.upper()})...", False)
+                
+                # Ler o arquivo Excel
+                excel_file = pd.ExcelFile(filepath)
+                
+                # Iniciar transação para garantir atomicidade
+                if db_conn:
+                    db_conn.execute("BEGIN TRANSACTION")
+                
+                imported_tables = 0
+                updated_records = 0
+                inserted_records = 0
+                errors = []
+                
                 try:
-                    # Ler a planilha
-                    df = pd.read_excel(filepath, sheet_name=sheet_name)
+                    for sheet_name in excel_file.sheet_names:
+                        try:
+                            # Ler a planilha
+                            df = pd.read_excel(filepath, sheet_name=sheet_name)
+                            
+                            if df.empty:
+                                print(f"⚠️ Planilha {sheet_name} está vazia, pulando...")
+                                continue
+                            
+                            # Verificar se a tabela existe no banco
+                            check_table = db_manager.query_one(
+                                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                                (sheet_name,)
+                            )
+                            
+                            if not check_table:
+                                print(f"⚠️ Tabela {sheet_name} não existe no banco, pulando...")
+                                continue
+                            
+                            columns = df.columns.tolist()
+                            
+                            # Obter colunas da tabela no banco
+                            table_info = db_manager.query(f"PRAGMA table_info({sheet_name})")
+                            db_columns = {col['name'] for col in table_info}
+                            
+                            # Validar que as colunas do Excel existem na tabela
+                            missing_columns = set(columns) - db_columns
+                            if missing_columns:
+                                error_msg = f"Colunas não encontradas na tabela {sheet_name}: {missing_columns}"
+                                print(f"❌ {error_msg}")
+                                errors.append(error_msg)
+                                continue
+                            
+                            # Identificar coluna primária e colunas NOT NULL
+                            primary_key = None
+                            not_null_columns = {}
+                            for col in table_info:
+                                if col['pk'] == 1:  # É chave primária
+                                    primary_key = col['name']
+                                if col['notnull'] == 1:  # É NOT NULL
+                                    not_null_columns[col['name']] = col
+                            
+                            # Se não encontrou PK, usar primeira coluna
+                            if not primary_key and columns:
+                                primary_key = columns[0]
+                            
+                            # Função auxiliar para garantir valores válidos em campos NOT NULL
+                            def validate_not_null_value(col_name, value):
+                                """Retorna um valor padrão se o campo for NOT NULL e o valor for None"""
+                                if col_name in not_null_columns and (value is None or (isinstance(value, str) and value.strip() == '')):
+                                    col_info = not_null_columns[col_name]
+                                    col_type = col_info['type'].upper()
+                                    
+                                    # Valores padrão baseados no tipo
+                                    if 'INT' in col_type:
+                                        return 0
+                                    elif 'REAL' in col_type or 'FLOAT' in col_type or 'DOUBLE' in col_type:
+                                        return 0.0
+                                    elif 'TEXT' in col_type or 'CHAR' in col_type or 'VARCHAR' in col_type:
+                                        return ''  # String vazia para campos de texto NOT NULL
+                                    else:
+                                        return ''  # Padrão genérico
+                                return value
+                            
+                            if import_mode == "replace":
+                                # Modo REPLACE: deletar todos os dados da tabela
+                                db_manager.execute(f"DELETE FROM {sheet_name}")
+                                print(f"🗑️ Tabela {sheet_name} limpa (modo REPLACE)")
+                                
+                                # Inserir todos os dados
+                                placeholders = ','.join(['?' for _ in columns])
+                                insert_query = f"INSERT INTO {sheet_name} ({','.join(columns)}) VALUES ({placeholders})"
+                                
+                                for _, row in df.iterrows():
+                                    # Converter NaN para None e validar campos NOT NULL
+                                    values = tuple(
+                                        validate_not_null_value(col, None if pd.isna(row[col]) else row[col]) 
+                                        for col in columns
+                                    )
+                                    db_manager.execute(insert_query, values)
+                                    inserted_records += 1
+                                
+                            else:  # import_mode == "merge"
+                                # Modo MERGE: atualizar ou inserir
+                                for _, row in df.iterrows():
+                                    # Converter NaN para None e validar campos NOT NULL
+                                    values = {
+                                        col: validate_not_null_value(col, None if pd.isna(row[col]) else row[col]) 
+                                        for col in columns
+                                    }
+                                    
+                                    if primary_key and primary_key in values:
+                                        # Verificar se o registro já existe
+                                        pk_value = values[primary_key]
+                                        existing = db_manager.query_one(
+                                            f"SELECT COUNT(*) as count FROM {sheet_name} WHERE {primary_key} = ?",
+                                            (pk_value,)
+                                        )
+                                        
+                                        if existing and existing['count'] > 0:
+                                            # UPDATE: registro existe
+                                            set_clauses = [f"{col} = ?" for col in columns if col != primary_key]
+                                            update_values = [values[col] for col in columns if col != primary_key]
+                                            update_values.append(pk_value)
+                                            
+                                            update_query = f"UPDATE {sheet_name} SET {', '.join(set_clauses)} WHERE {primary_key} = ?"
+                                            db_manager.execute(update_query, update_values)
+                                            updated_records += 1
+                                        else:
+                                            # INSERT: registro não existe
+                                            placeholders = ','.join(['?' for _ in columns])
+                                            insert_query = f"INSERT INTO {sheet_name} ({','.join(columns)}) VALUES ({placeholders})"
+                                            insert_values = [values[col] for col in columns]
+                                            db_manager.execute(insert_query, insert_values)
+                                            inserted_records += 1
+                                    else:
+                                        # Sem chave primária, apenas inserir
+                                        placeholders = ','.join(['?' for _ in columns])
+                                        insert_query = f"INSERT INTO {sheet_name} ({','.join(columns)}) VALUES ({placeholders})"
+                                        insert_values = [values[col] for col in columns]
+                                        db_manager.execute(insert_query, insert_values)
+                                        inserted_records += 1
+                            
+                            imported_tables += 1
+                            print(f"✅ Tabela {sheet_name} importada com sucesso")
+                            
+                        except Exception as table_ex:
+                            error_msg = f"Erro ao importar tabela {sheet_name}: {str(table_ex)}"
+                            print(f"❌ {error_msg}")
+                            errors.append(error_msg)
+                            import traceback
+                            traceback.print_exc()
+                            continue
                     
-                    if df.empty:
-                        continue
+                    # Commit da transação se tudo correu bem
+                    if db_conn:
+                        db_conn.commit()
                     
-                    # Limpar a tabela existente
-                    db_manager.execute(f"DELETE FROM {sheet_name}")
-                    
-                    # Inserir dados
-                    columns = df.columns.tolist()
-                    placeholders = ','.join(['?' for _ in columns])
-                    insert_query = f"INSERT INTO {sheet_name} ({','.join(columns)}) VALUES ({placeholders})"
-                    
-                    for _, row in df.iterrows():
-                        values = tuple(row[col] for col in columns)
-                        db_manager.execute(insert_query, values)
-                    
-                    imported_tables += 1
-                    
-                except Exception as table_ex:
-                    print(f"Erro ao importar tabela {sheet_name}: {table_ex}")
-                    continue
-            
-            if imported_tables > 0:
-                show_snack_bar(f"✅ {imported_tables} tabelas importadas com sucesso!", False)
-                # Recarregar dados na interface se estiver na aba Suppliers
-                try:
-                    search_suppliers_config()
-                except:
-                    pass  # Se não estiver na aba, ignora
-            else:
-                show_snack_bar("⚠️ Nenhuma tabela foi importada", False)
-            
-        except ImportError:
-            show_snack_bar("❌ Erro: pandas ou openpyxl não instalados", True)
-        except Exception as ex:
-            show_snack_bar(f"❌ Erro ao importar: {str(ex)}", True)
-            print(f"Erro detalhado: {ex}")
-            import traceback
-            traceback.print_exc()
+                    # Montar mensagem de sucesso
+                    if imported_tables > 0:
+                        success_msg = f"✅ Importação concluída!\n"
+                        success_msg += f"• {imported_tables} tabelas processadas\n"
+                        if import_mode == "merge":
+                            success_msg += f"• {updated_records} registros atualizados\n"
+                            success_msg += f"• {inserted_records} registros inseridos"
+                        else:
+                            success_msg += f"• {inserted_records} registros inseridos (replace)"
+                        
+                        if errors:
+                            success_msg += f"\n⚠️ {len(errors)} erro(s) encontrado(s) - verifique o console"
+                        
+                        show_snack_bar(success_msg, False)
+                        
+                        # Recarregar dados na interface
+                        try:
+                            if hasattr(page, 'views') and page.views:
+                                search_suppliers_config()
+                        except Exception as reload_ex:
+                            print(f"Aviso ao recarregar interface: {reload_ex}")
+                    else:
+                        show_snack_bar("⚠️ Nenhuma tabela foi importada", False)
+                        
+                except Exception as import_ex:
+                    # Rollback em caso de erro
+                    if db_conn:
+                        db_conn.rollback()
+                    raise import_ex
+                
+            except ImportError:
+                show_snack_bar("❌ Erro: pandas ou openpyxl não instalados", True)
+            except Exception as ex:
+                if db_conn:
+                    db_conn.rollback()
+                show_snack_bar(f"❌ Erro ao importar: {str(ex)}", True)
+                print(f"Erro detalhado: {ex}")
+                import traceback
+                traceback.print_exc()
+        
+        # Mostrar diálogo de seleção de modo
+        show_import_mode_dialog()
 
     data_content = ft.Container(
         content=ft.Column([
+            # Header fixo
             ft.Container(
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.STORAGE, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=24),
-                        ft.Text("Gerenciamento de Dados", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
-                    ], spacing=10),
-                    ft.Divider(color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
-                ]),
-                margin=ft.margin.only(bottom=20),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.STORAGE, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Column([
+                        ft.Text("Gerenciamento de Dados", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                        ft.Text("Importe e exporte o banco de dados completo", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                    ], spacing=2, expand=True),
+                ], spacing=12),
+                margin=ft.margin.only(bottom=15),
             ),
+            ft.Divider(height=1, color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
             
             # Card de Exportar
             ft.Card(
@@ -10914,18 +11517,33 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         ], spacing=10),
                         ft.Container(height=10),
                         ft.Text(
-                            "Importa dados de um arquivo Excel para o banco de dados. "
-                            "⚠️ ATENÇÃO: Esta operação irá substituir os dados existentes nas tabelas.",
+                            "Importa dados de um arquivo Excel para o banco de dados.",
                             size=14,
-                            color=ft.Colors.ORANGE,
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        ),
+                        ft.Container(height=5),
+                        ft.Text(
+                            "📋 Modos disponíveis:",
+                            size=13,
                             weight="bold",
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        ),
+                        ft.Text(
+                            "• MERGE (Recomendado): Atualiza registros existentes e adiciona novos, mantém dados não presentes no Excel",
+                            size=12,
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
+                        ),
+                        ft.Text(
+                            "• REPLACE: Substitui completamente os dados das tabelas",
+                            size=12,
+                            color=ft.Colors.ORANGE,
                         ),
                         ft.Container(height=15),
                         ft.ElevatedButton(
                             "Importar do Excel",
                             icon=ft.Icons.UPLOAD,
                             on_click=import_database_from_excel,
-                            bgcolor=ft.Colors.ORANGE,
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
                             color=ft.Colors.WHITE,
                         ),
                     ]),
@@ -10933,7 +11551,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ),
                 elevation=2,
             ),
-        ], scroll=ft.ScrollMode.AUTO),
+        ], spacing=10, scroll=ft.ScrollMode.AUTO, expand=True),
         padding=20,
         visible=False,
         expand=True,
@@ -11101,8 +11719,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 datetime_cell = ft.DataCell(
                     ft.Container(
-                        content=ft.Text(f"{date}\\n{time}", size=11),
-                        width=120
+                        content=ft.Text(f"{date}\n{time}", size=11),
+                        width=150
                     )
                 )
                 
@@ -11118,22 +11736,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 user_cell = ft.DataCell(
                     ft.Container(
                         content=ft.Text(user, size=11, overflow=ft.TextOverflow.ELLIPSIS),
-                        width=120
+                        width=150
                     )
                 )
                 
                 # Detalhes formatados do evento (ajustado)
                 details_formatted = format_event_text(event)
                 details_cell = ft.DataCell(
-                    ft.Container(
-                        content=ft.Text(
-                            details_formatted,
-                            size=10,
-                            max_lines=2,
-                            overflow=ft.TextOverflow.ELLIPSIS
-                        ),
-                        width=400,
-                        tooltip=details_formatted  # Tooltip mostra texto completo
+                    ft.Text(
+                        details_formatted,
+                        size=11,
+                        max_lines=2,
+                        overflow=ft.TextOverflow.ELLIPSIS
                     )
                 )
 
@@ -11348,196 +11962,194 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def create_home_content():
         """Cria o conteúdo da aba Home com informações e design diferenciado"""
         
-        # Cards de estatísticas rápidas
+        # Cards de estatísticas rápidas - Design minimalista
         def create_stats_card(title, value, icon, color_type="primary"):
             theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
             current_theme = get_theme_name_from_page(page)
             
-            # Usar sempre a cor primária do tema para todos os cards
             primary_color = theme_colors.get('primary', '#0066CC')
-            icon_color = theme_colors.get('on_primary', '#FFFFFF')  # Cor do ícone - branca ou adequada ao tema
-            value_color = primary_color
-            bg_color = primary_color  # Fundo sólido com a cor primária
             
             return ft.Container(
                 content=ft.Column([
-                    # Linha superior com ícone e valor
-                    ft.Row([
-                        ft.Container(
-                            content=ft.Icon(icon, color=icon_color, size=28),
-                            bgcolor=bg_color,
-                            border_radius=12,
-                            padding=ft.padding.all(8),
-                            width=44,
-                            height=44,
-                            alignment=ft.alignment.center
-                        ),
-                        ft.Container(
-                            content=ft.Text(
-                                value, 
-                                size=28, 
-                                weight="bold", 
-                                color=value_color,
-                                text_align=ft.TextAlign.RIGHT
-                            ),
-                            alignment=ft.alignment.center_right,
-                            expand=True
-                        )
-                    ], 
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN, 
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER
+                    ft.Icon(icon, color=primary_color, size=36),
+                    ft.Container(height=12),
+                    ft.Text(
+                        value, 
+                        size=32, 
+                        weight="bold", 
+                        color=theme_colors.get('on_surface'),
+                        text_align=ft.TextAlign.CENTER,
+                        no_wrap=False,
+                        overflow=ft.TextOverflow.VISIBLE
                     ),
-                    ft.Container(height=8),  # Espaçamento
-                    # Linha inferior com título
                     ft.Container(
                         content=ft.Text(
                             title, 
-                            size=14, 
-                            color=theme_colors.get('on_surface_variant', theme_colors.get('on_surface', '#666666')), 
-                            weight="w500",
-                            text_align=ft.TextAlign.LEFT
+                            size=13, 
+                            color=theme_colors.get('on_surface_variant'), 
+                            weight="w400",
+                            text_align=ft.TextAlign.CENTER,
+                            no_wrap=False,
+                            overflow=ft.TextOverflow.VISIBLE
                         ),
-                        alignment=ft.alignment.bottom_left,
-                        expand=True
+                        width=180
                     )
                 ], 
-                spacing=0, 
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                horizontal_alignment=ft.CrossAxisAlignment.STRETCH
+                spacing=4, 
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER
                 ),
                 bgcolor=theme_colors.get('card_background'),
-                border_radius=16,
+                border_radius=12,
                 padding=ft.padding.all(20),
-                width=220,
-                height=110,
-                border=ft.border.all(1, theme_colors.get('outline_variant', theme_colors.get('outline', '#E8E8E8'))),
+                width=200,
+                height=150,
+                border=ft.border.all(1, theme_colors.get('outline_variant', '#E8E8E8')),
                 shadow=ft.BoxShadow(
                     spread_radius=0,
-                    blur_radius=12,
-                    color="#00000015" if current_theme == "white" else "#00000025",
-                    offset=ft.Offset(0, 4)
-                )
+                    blur_radius=8,
+                    color="#00000010" if current_theme == "white" else "#00000020",
+                    offset=ft.Offset(0, 2)
+                ),
+                clip_behavior=ft.ClipBehavior.NONE
             )
 
 
 
-        # Seção de boas-vindas
+        # Seção de boas-vindas - Design minimalista
         theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
         welcome_section = ft.Container(
             content=ft.Column([
-                ft.Row([
-                    ft.Icon(ft.Icons.DASHBOARD, size=42, color=theme_colors.get('primary')),
-                    ft.Column([
-                        ft.Text(f"Bem-vindo, {current_user_name}!", size=32, weight="bold", color=theme_colors.get('on_surface', '#1565C0')),
-                        ft.Text("Painel de Controle - Supplier Score APP", size=18, color=theme_colors.get('on_surface_variant', '#666666'), weight="w400")
-                    ], spacing=4, alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.START)
-                ], alignment=ft.MainAxisAlignment.START, spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=ft.padding.only(bottom=40)
+                ft.Text(f"Olá, {current_user_name}!", size=28, weight="bold", color=theme_colors.get('on_surface')),
+                ft.Text("Painel de Controle", size=16, color=theme_colors.get('on_surface_variant'), weight="w400")
+            ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=ft.padding.only(bottom=32)
         )
 
         # Buscar estatísticas reais do banco de dados
         stats = get_home_statistics()
         
-        # Seção de estatísticas
+        # Seção de estatísticas - Grid limpo
         stats_section = ft.Container(
-            content=ft.Column([
-                ft.Text("📊 Estatísticas Rápidas", size=22, weight="bold", color=theme_colors.get('on_surface', '#333333')),
-                ft.Container(
-                    content=ft.Row([
-                        create_stats_card("Fornecedores", format_stats_value(stats['suppliers_count'], 'suppliers_count'), ft.Icons.BUSINESS),
-                        create_stats_card("Avaliações", format_stats_value(stats['evaluations_count'], 'evaluations_count'), ft.Icons.STAR),
-                        create_stats_card("Score Médio", format_stats_value(stats['average_score'], 'average_score'), ft.Icons.TRENDING_UP),
-                        create_stats_card("Usuários", format_stats_value(stats['users_count'], 'users_count'), ft.Icons.PEOPLE)
-                    ], 
-                    wrap=True, 
-                    spacing=20, 
-                    run_spacing=16,  # Espaçamento entre linhas
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER
-                    ),
-                    padding=ft.padding.only(top=16, bottom=8),
-                    alignment=ft.alignment.center
-                )
-            ], spacing=24, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=ft.padding.only(bottom=48),
+            content=ft.Row([
+                create_stats_card("Fornecedores", format_stats_value(stats['suppliers_count'], 'suppliers_count'), ft.Icons.BUSINESS),
+                create_stats_card("Avaliações", format_stats_value(stats['evaluations_count'], 'evaluations_count'), ft.Icons.ASSESSMENT),
+                create_stats_card("Score Médio", format_stats_value(stats['average_score'], 'average_score'), ft.Icons.TRENDING_UP),
+                create_stats_card("Usuários", format_stats_value(stats['users_count'], 'users_count'), ft.Icons.PEOPLE)
+            ], 
+            wrap=True, 
+            spacing=16, 
+            run_spacing=16,
+            alignment=ft.MainAxisAlignment.CENTER
+            ),
+            padding=ft.padding.only(bottom=40),
             alignment=ft.alignment.center
         )
 
-        # Seção de informações do sistema
+        # Seção de informações - Cards lado a lado
         info_section = ft.Container(
-            content=ft.Column([
-                ft.Text("ℹ️ Informações do Sistema", size=22, weight="bold", color=theme_colors.get('on_surface', '#333333')),
+            content=ft.Row([
+                # Card de Perfil
                 ft.Container(
                     content=ft.Column([
-                        # Informações do usuário
-                        ft.Text("👤 Usuário", size=16, weight="bold", color=theme_colors.get('primary', '#1976D2')),
                         ft.Row([
-                            ft.Icon(ft.Icons.PERSON, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
-                            ft.Text(f"{current_user_name}", size=14, weight="w500", color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([
-                            ft.Icon(ft.Icons.BADGE, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
-                            ft.Text(f"WWID: {current_user_wwid}", size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([
-                            ft.Icon(ft.Icons.SECURITY, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
-                            ft.Text(f"Privilégio: {current_user_privilege}", size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        
-                        ft.Divider(height=20),
-                        
-                        # Permissões de avaliação
-                        ft.Text("🔐 Permissões de Avaliação", size=16, weight="bold", color=theme_colors.get('secondary', '#388E3C')),
-                        ft.Row([
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('otif') else ft.Icons.CANCEL, 
-                                   size=18, color="#4CAF50" if current_user_permissions.get('otif') else "#F44336"),
-                            ft.Text(f"OTIF: {'Permitido' if current_user_permissions.get('otif') else 'Negado'}", 
-                                   size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('nil') else ft.Icons.CANCEL, 
-                                   size=18, color="#4CAF50" if current_user_permissions.get('nil') else "#F44336"),
-                            ft.Text(f"NIL: {'Permitido' if current_user_permissions.get('nil') else 'Negado'}", 
-                                   size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('pickup') else ft.Icons.CANCEL, 
-                                   size=18, color="#4CAF50" if current_user_permissions.get('pickup') else "#F44336"),
-                            ft.Text(f"Pickup: {'Permitido' if current_user_permissions.get('pickup') else 'Negado'}", 
-                                   size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([
-                            ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('package') else ft.Icons.CANCEL, 
-                                   size=18, color="#4CAF50" if current_user_permissions.get('package') else "#F44336"),
-                            ft.Text(f"Package: {'Permitido' if current_user_permissions.get('package') else 'Negado'}", 
-                                   size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        
-                        ft.Divider(height=20),
-                        
-                        # Informações do sistema
-                        ft.Text("⚙️ Sistema", size=16, weight="bold", color=theme_colors.get('secondary', '#388E3C')),
-                        ft.Row([
-                            ft.Icon(ft.Icons.INFO, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
-                            ft.Text("Versão: 1.0.0", size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([
-                            ft.Icon(ft.Icons.ACCESS_TIME, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
-                            ft.Text("Atualização: Hoje", size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Row([
-                            ft.Icon(ft.Icons.STORAGE, size=18, color=theme_colors.get('on_surface_variant', '#666666')),
-                            ft.Text("BD: Conectado", size=14, color=theme_colors.get('on_surface', '#000000'))
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                    ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.START),
-                    bgcolor=theme_colors.get('surface_variant'),
+                            ft.Icon(ft.Icons.ACCOUNT_CIRCLE, size=24, color=theme_colors.get('primary')),
+                            ft.Text("Perfil", size=18, weight="bold", color=theme_colors.get('on_surface'))
+                        ], spacing=8),
+                        ft.Container(height=16),
+                        ft.Column([
+                            ft.Row([
+                                ft.Text("Nome:", size=13, color=theme_colors.get('on_surface_variant'), width=80),
+                                ft.Text(f"{current_user_name}", size=13, weight="w500", color=theme_colors.get('on_surface'))
+                            ]),
+                            ft.Row([
+                                ft.Text("WWID:", size=13, color=theme_colors.get('on_surface_variant'), width=80),
+                                ft.Text(f"{current_user_wwid}", size=13, weight="w500", color=theme_colors.get('on_surface'))
+                            ]),
+                            ft.Row([
+                                ft.Text("Privilégio:", size=13, color=theme_colors.get('on_surface_variant'), width=80),
+                                ft.Text(f"{current_user_privilege}", size=13, weight="w500", color=theme_colors.get('on_surface'))
+                            ])
+                        ], spacing=8)
+                    ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.START),
+                    bgcolor=theme_colors.get('card_background'),
                     border_radius=12,
-                    padding=24,
-                    width=500,  # Largura maior para acomodar todo o conteúdo
-                    alignment=ft.alignment.top_left
+                    padding=20,
+                    width=280,
+                    border=ft.border.all(1, theme_colors.get('outline_variant', '#E8E8E8'))
+                ),
+                
+                # Card de Permissões
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.VERIFIED_USER, size=24, color=theme_colors.get('primary')),
+                            ft.Text("Permissões", size=18, weight="bold", color=theme_colors.get('on_surface'))
+                        ], spacing=8),
+                        ft.Container(height=16),
+                        ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('otif') else ft.Icons.CANCEL, 
+                                       size=16, color="#4CAF50" if current_user_permissions.get('otif') else "#9E9E9E"),
+                                ft.Text("OTIF", size=13, color=theme_colors.get('on_surface'))
+                            ], spacing=8),
+                            ft.Row([
+                                ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('nil') else ft.Icons.CANCEL, 
+                                       size=16, color="#4CAF50" if current_user_permissions.get('nil') else "#9E9E9E"),
+                                ft.Text("NIL", size=13, color=theme_colors.get('on_surface'))
+                            ], spacing=8),
+                            ft.Row([
+                                ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('pickup') else ft.Icons.CANCEL, 
+                                       size=16, color="#4CAF50" if current_user_permissions.get('pickup') else "#9E9E9E"),
+                                ft.Text("Pickup", size=13, color=theme_colors.get('on_surface'))
+                            ], spacing=8),
+                            ft.Row([
+                                ft.Icon(ft.Icons.CHECK_CIRCLE if current_user_permissions.get('package') else ft.Icons.CANCEL, 
+                                       size=16, color="#4CAF50" if current_user_permissions.get('package') else "#9E9E9E"),
+                                ft.Text("Package", size=13, color=theme_colors.get('on_surface'))
+                            ], spacing=8)
+                        ], spacing=8)
+                    ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.START),
+                    bgcolor=theme_colors.get('card_background'),
+                    border_radius=12,
+                    padding=20,
+                    width=280,
+                    border=ft.border.all(1, theme_colors.get('outline_variant', '#E8E8E8'))
+                ),
+                
+                # Card do Sistema
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.SETTINGS, size=24, color=theme_colors.get('primary')),
+                            ft.Text("Sistema", size=18, weight="bold", color=theme_colors.get('on_surface'))
+                        ], spacing=8),
+                        ft.Container(height=16),
+                        ft.Column([
+                            ft.Row([
+                                ft.Text("Versão:", size=13, color=theme_colors.get('on_surface_variant'), width=80),
+                                ft.Text("1.0.0", size=13, weight="w500", color=theme_colors.get('on_surface'))
+                            ]),
+                            ft.Row([
+                                ft.Text("Banco:", size=13, color=theme_colors.get('on_surface_variant'), width=80),
+                                ft.Row([
+                                    ft.Icon(ft.Icons.CHECK_CIRCLE, size=14, color="#4CAF50"),
+                                    ft.Text("Conectado", size=13, weight="w500", color=theme_colors.get('on_surface'))
+                                ], spacing=4)
+                            ]),
+                            ft.Row([
+                                ft.Text("Atualizado:", size=13, color=theme_colors.get('on_surface_variant'), width=80),
+                                ft.Text("Hoje", size=13, weight="w500", color=theme_colors.get('on_surface'))
+                            ])
+                        ], spacing=8)
+                    ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.START),
+                    bgcolor=theme_colors.get('card_background'),
+                    border_radius=12,
+                    padding=20,
+                    width=280,
+                    border=ft.border.all(1, theme_colors.get('outline_variant', '#E8E8E8'))
                 )
-            ], spacing=20, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+            ], spacing=16, wrap=True, alignment=ft.MainAxisAlignment.CENTER)
         )
 
         return ft.Column([
@@ -11553,7 +12165,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         content=ft.Container(
             ref=home_content_container,
             content=create_home_content(),
-            padding=ft.padding.only(top=30, left=40, right=40, bottom=30),
+            padding=ft.padding.only(top=40, left=40, right=40, bottom=40),
             alignment=ft.alignment.top_center
         ),
         visible=True,  # Home será a aba inicial
@@ -11564,7 +12176,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     score_view = ft.Column(
         [
-            # Header com botão de menu
+            # Header com botão de menu - FIXO no topo
             ft.Container(
                 content=ft.Row([
                     ft.PopupMenuButton(
@@ -11591,21 +12203,23 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
                         shape=ft.RoundedRectangleBorder(radius=8)
                     ),
-                    ft.Container(expand=True),  # Spacer para empurrar o menu para a esquerda
-                ], alignment=ft.MainAxisAlignment.START),
-                padding=ft.padding.only(left=20, right=20, top=10)
-            ),
-            ft.Container(
-                content=score_view_content, 
-                alignment=ft.alignment.top_center, 
-                padding=ft.padding.only(top=10, left=20, right=20, bottom=10)
+                    ft.Container(expand=True),  # Spacer esquerdo
+                    # Formulário de pesquisa centralizado
+                    score_view_content,
+                    ft.Container(expand=True),  # Spacer direito
+                ], alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.START),
+                padding=ft.padding.only(left=20, right=20, top=10, bottom=10)
             ),
             ft.Divider(),
-            results_list,
+            # Área de resultados com scroll independente - expande para preencher o espaço restante
+            ft.Container(
+                content=results_list,
+                expand=True,  # Expande para ocupar o espaço restante
+            ),
         ],
         visible=False,  # Score não será mais a aba inicial
         expand=True,
-        scroll=ft.ScrollMode.AUTO,
+        # REMOVIDO scroll=ft.ScrollMode.AUTO - o scroll agora está apenas no results_list
     )
     # --- Início: Lógica da Aba Timeline ---
     
@@ -11653,6 +12267,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # Container para o gráfico e tabela
     timeline_chart_container = ft.Ref[ft.Container]()
+    timeline_individual_charts_container = ft.Ref[ft.Container]()
     timeline_table_container = ft.Ref[ft.Container]()
     timeline_analytics_container = ft.Ref[ft.Container]()
     timeline_content_container = ft.Ref[ft.Container]()
@@ -11661,13 +12276,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # Referência para a linha que contém os cards de métricas
     timeline_metrics_row = ft.Ref[ft.Row]()
-    
-    # Referências para o card de informações do fornecedor
-    supplier_info_container = ft.Ref[ft.Container]()
-    supplier_name_text = ft.Ref[ft.Text]()
-    supplier_bu_text = ft.Ref[ft.Text]()
-    supplier_number_text = ft.Ref[ft.Text]()
-    supplier_po_text = ft.Ref[ft.Text]()
 
     # Dicionário de referências para os componentes dos cards de métricas
     timeline_cards_refs = {
@@ -11738,10 +12346,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             q3_avg_card.current.value = "--"
             q4_avg_card.current.value = "--"
             
-            # Esconder card de informações do fornecedor
-            if supplier_info_container.current:
-                supplier_info_container.current.visible = False
-            
             safe_page_update(page)
             return
         
@@ -11757,46 +12361,281 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Atualizar a página após todos os cálculos
         safe_page_update(page)
+    
+    def on_timeline_tab_change(e):
+        """Callback quando o usuário muda de aba na Timeline"""
+        try:
+            selected_tab_index = e.control.selected_index
+            vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
+            year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
+            
+            # Índice 1 = Tab de Gráficos Individuais (0=Chart, 1=Individual Charts, 2=Table, 3=Analytics)
+            if selected_tab_index == 1:
+                if vendor_id:
+                    print(f"🔄 Atualizando Gráficos Individuais ao entrar na aba para vendor: {vendor_id}, year: {year}")
+                    update_timeline_individual_charts(vendor_id, year)
+                    safe_page_update(page)
+                else:
+                    print("⚠️ Nenhum fornecedor selecionado para atualizar Gráficos Individuais")
+            
+            # Índice 3 = Tab de Analytics (0=Chart, 1=Individual Charts, 2=Table, 3=Analytics)
+            elif selected_tab_index == 3:
+                if vendor_id:
+                    print(f"🔄 Atualizando Analytics ao entrar na aba para vendor: {vendor_id}, year: {year}")
+                    update_timeline_analytics(vendor_id, year)
+                    safe_page_update(page)
+                else:
+                    print("⚠️ Nenhum fornecedor selecionado para atualizar Analytics")
+        except Exception as ex:
+            print(f"❌ Erro ao mudar de aba na Timeline: {ex}")
+            import traceback
+            traceback.print_exc()
         
-    def update_supplier_info(vendor_id):
-        """Atualiza as informações do fornecedor selecionado"""
+    def show_supplier_info_dialog(vendor_id):
+        """Mostra um diálogo com todas as informações do fornecedor"""
         try:
             if not db_conn or not vendor_id:
-                if supplier_info_container.current:
-                    supplier_info_container.current.visible = False
+                show_snack_bar("Nenhum fornecedor selecionado", True)
                 return
             
-            query = "SELECT vendor_name, bu, supplier_number, supplier_po FROM supplier_database_table WHERE supplier_id = ?"
+            # Buscar TODAS as informações do supplier
+            query = """SELECT supplier_id, vendor_name, supplier_category, bu, supplier_name, 
+                      supplier_email, supplier_number, supplier_po, supplier_status, 
+                      planner, continuity, sourcing, sqie 
+                      FROM supplier_database_table WHERE supplier_id = ?"""
             results = db_manager.query(query, (vendor_id,))
             
-            if results and len(results) > 0:
-                supplier = results[0]
-                vendor_name = supplier['vendor_name'] or "N/A"
-                bu = supplier['bu'] or "N/A"
-                supplier_number = supplier['supplier_number'] or "N/A"
-                supplier_po = supplier['supplier_po'] or "N/A"
-                
-                # Atualizar os textos
-                if supplier_name_text.current:
-                    supplier_name_text.current.value = vendor_name
-                if supplier_bu_text.current:
-                    supplier_bu_text.current.value = bu
-                if supplier_number_text.current:
-                    supplier_number_text.current.value = supplier_number
-                if supplier_po_text.current:
-                    supplier_po_text.current.value = supplier_po
-                
-                # Mostrar o card
-                if supplier_info_container.current:
-                    supplier_info_container.current.visible = True
-            else:
-                if supplier_info_container.current:
-                    supplier_info_container.current.visible = False
+            if not results or len(results) == 0:
+                show_snack_bar("Fornecedor não encontrado", True)
+                return
+            
+            supplier = results[0]
+            theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+            primary_color = theme_colors.get('primary', ft.Colors.BLUE)
+            text_color = theme_colors.get('on_surface', ft.Colors.BLACK)
+            
+            # Buscar dados completos dos responsáveis
+            responsible_data = {}
+            responsible_types = [
+                ('planner', 'planner_table', 'alias'),
+                ('continuity', 'continuity_table', 'alias'),
+                ('sourcing', 'sourcing_table', 'alias'),
+                ('sqie', 'sqie_table', 'alias')
+            ]
+            
+            for resp_key, table_name, field_name in responsible_types:
+                alias_value = supplier.get(resp_key)
+                print(f"🔍 Buscando {resp_key}: alias_value = '{alias_value}'")
+                if alias_value:
+                    query_resp = f"SELECT name, alias, email FROM {table_name} WHERE {field_name} = ?"
+                    print(f"  📝 Query: {query_resp} com parâmetro: {alias_value}")
+                    result_resp = db_manager.query_one(query_resp, (alias_value,))
+                    print(f"  📋 Resultado da query: {result_resp}")
+                    print(f"  📋 Tipo do resultado: {type(result_resp)}")
                     
+                    if result_resp:
+                        # Tentar diferentes formas de acessar os dados
+                        try:
+                            # Tentar como dicionário
+                            name_val = result_resp.get('name', '') if hasattr(result_resp, 'get') else result_resp[0] if isinstance(result_resp, (list, tuple)) else ''
+                            alias_val = result_resp.get('alias', '') if hasattr(result_resp, 'get') else result_resp[1] if isinstance(result_resp, (list, tuple)) else ''
+                            email_val = result_resp.get('email', '') if hasattr(result_resp, 'get') else result_resp[2] if isinstance(result_resp, (list, tuple)) else ''
+                            
+                            print(f"  ✅ Extraído - Nome: '{name_val}', Alias: '{alias_val}', Email: '{email_val}'")
+                            
+                            responsible_data[resp_key] = {
+                                'name': name_val,
+                                'alias': alias_val,
+                                'email': email_val
+                            }
+                        except Exception as ex:
+                            print(f"  ❌ Erro ao extrair dados: {ex}")
+                            responsible_data[resp_key] = {'name': alias_value, 'alias': alias_value, 'email': ''}
+                    else:
+                        print(f"  ⚠️ Nenhum resultado encontrado, usando alias como fallback")
+                        responsible_data[resp_key] = {'name': alias_value, 'alias': alias_value, 'email': ''}
+                else:
+                    print(f"  ⚠️ Alias vazio para {resp_key}")
+                    responsible_data[resp_key] = None
+            
+            print(f"📦 Dados finais dos responsáveis: {responsible_data}")
+            
+            # Função para formatar campo
+            def format_field(label, value):
+                return ft.Row([
+                    ft.Text(f"{label}:", size=13, weight="bold", color=ft.Colors.with_opacity(0.7, text_color), width=150),
+                    ft.Text(format_display_value(value) if label not in ["PO", "SSID"] else format_po_ssid(value), 
+                           size=13, color=text_color, selectable=True),
+                ], spacing=10)
+            
+            # Função para formatar campo de email com quebra de linha
+            def format_email_field(label, value):
+                email_value = format_display_value(value)
+                # Se tem múltiplos emails separados por ; ou ,
+                if email_value and (';' in email_value or ',' in email_value):
+                    # Separar emails e criar texto com quebra de linha
+                    separator = ';' if ';' in email_value else ','
+                    emails = [e.strip() for e in email_value.split(separator) if e.strip()]
+                    email_text = '\n'.join(emails)
+                else:
+                    email_text = email_value
+                
+                return ft.Column([
+                    ft.Text(f"{label}:", size=13, weight="bold", color=ft.Colors.with_opacity(0.7, text_color)),
+                    ft.Container(
+                        content=ft.Text(email_text, size=13, color=text_color, selectable=True),
+                        padding=ft.padding.only(left=10, top=5),
+                    ),
+                ], spacing=5)
+            
+            # Função para criar card de responsável
+            def create_responsible_card(title, data, icon):
+                print(f"🎨 Criando card para {title}: data = {data}")
+                
+                # Usar cor de fundo secundária do tema
+                card_bg_color = theme_colors.get('surface_variant', ft.Colors.BLUE_GREY_50)
+                border_color = theme_colors.get('outline', ft.Colors.GREY_300)
+                
+                if not data:
+                    return ft.Container(
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Icon(icon, size=16, color=ft.Colors.GREY_400),
+                                ft.Text(title, size=12, weight="bold", color=ft.Colors.GREY_400),
+                            ], spacing=5),
+                            ft.Text("Não atribuído", size=11, color=ft.Colors.GREY_500, italic=True),
+                            ft.Container(expand=True),  # Espaçador para manter altura
+                        ], spacing=5),
+                        bgcolor=card_bg_color,
+                        border=ft.border.all(1, border_color),
+                        border_radius=8,
+                        padding=12,
+                        expand=True,
+                        height=120,  # Altura fixa
+                    )
+                
+                name_value = data.get('name', '')
+                alias_value = data.get('alias', '')
+                email_value = data.get('email', '')
+                
+                print(f"  Nome: '{name_value}', Alias: '{alias_value}', Email: '{email_value}'")
+                
+                card_content = [
+                    ft.Row([
+                        ft.Icon(icon, size=16, color=primary_color),
+                        ft.Text(title, size=12, weight="bold", color=primary_color),
+                    ], spacing=5),
+                ]
+                
+                # Adicionar nome (sempre uma linha, mesmo vazio)
+                card_content.append(
+                    ft.Text(name_value if name_value else "N/A", size=11, weight="w500", color=text_color)
+                )
+                
+                # Adicionar alias (sempre uma linha)
+                card_content.append(
+                    ft.Row([
+                        ft.Icon(ft.Icons.BADGE, size=12, color=ft.Colors.with_opacity(0.6, text_color)),
+                        ft.Text(alias_value if alias_value else "N/A", size=10, color=ft.Colors.with_opacity(0.7, text_color)),
+                    ], spacing=5)
+                )
+                
+                # Adicionar email (sempre uma linha)
+                email_display = email_value if email_value else "Sem email"
+                card_content.append(
+                    ft.Row([
+                        ft.Icon(ft.Icons.EMAIL, size=12, color=ft.Colors.with_opacity(0.6, text_color)),
+                        ft.Text(email_display, size=10, color=ft.Colors.with_opacity(0.7, text_color), selectable=True, italic=not bool(email_value)),
+                    ], spacing=5, tight=True)
+                )
+                
+                return ft.Container(
+                    content=ft.Column(card_content, spacing=5),
+                    bgcolor=card_bg_color,
+                    border=ft.border.all(1, border_color),
+                    border_radius=8,
+                    padding=12,
+                    expand=True,
+                    height=120,  # Altura fixa
+                )
+            
+            # Criar conteúdo do diálogo
+            dialog_content = ft.Container(
+                content=ft.Column([
+                    # Cabeçalho
+                    ft.Row([
+                        ft.Icon(ft.Icons.BUSINESS, size=32, color=primary_color),
+                        ft.Column([
+                            ft.Text("Informações do Fornecedor", size=18, weight="bold", color=primary_color),
+                            ft.Text(format_display_value(supplier.get('vendor_name')), size=14, color=text_color),
+                        ], spacing=2, expand=True),
+                    ], spacing=12),
+                    
+                    ft.Divider(height=2, thickness=2),
+                    
+                    # Informações principais
+                    ft.Container(
+                        content=ft.Column([
+                            format_field("ID", supplier.get('supplier_id')),
+                            format_field("Nome", supplier.get('vendor_name')),
+                            format_field("Categoria", supplier.get('supplier_category')),
+                            format_field("BU", supplier.get('bu')),
+                            format_field("Origem", supplier.get('supplier_name')),
+                            format_field("SSID", supplier.get('supplier_number')),
+                            format_field("PO", supplier.get('supplier_po')),
+                            format_field("Status", supplier.get('supplier_status')),
+                            ft.Container(height=5),  # Espaçamento antes do email
+                            format_email_field("Email", supplier.get('supplier_email')),
+                        ], spacing=8, scroll=ft.ScrollMode.AUTO),
+                        height=300,
+                    ),
+                    
+                    ft.Divider(height=1),
+                    
+                    # Responsáveis
+                    ft.Text("Responsáveis", size=14, weight="bold", color=primary_color),
+                    ft.Container(
+                        content=ft.Column([
+                            # Primeira linha: Planner e Continuity
+                            ft.Row([
+                                create_responsible_card("Planner", responsible_data.get('planner'), ft.Icons.CALENDAR_MONTH),
+                                create_responsible_card("Continuity", responsible_data.get('continuity'), ft.Icons.AUTORENEW),
+                            ], spacing=12, expand=True),
+                            # Segunda linha: Sourcing e SQIE
+                            ft.Row([
+                                create_responsible_card("Sourcing", responsible_data.get('sourcing'), ft.Icons.SHOPPING_CART),
+                                create_responsible_card("SQIE", responsible_data.get('sqie'), ft.Icons.VERIFIED),
+                            ], spacing=12, expand=True),
+                        ], spacing=12),
+                    ),
+                ], spacing=12, scroll=ft.ScrollMode.AUTO),
+                padding=20,
+                width=700,
+            )
+            
+            # Criar e abrir diálogo
+            dialog = ft.AlertDialog(
+                title=ft.Text(""),  # Título vazio pois está no content
+                content=dialog_content,
+                actions=[
+                    ft.TextButton("Fechar", on_click=lambda e: page.close(dialog))
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            
+            page.open(dialog)
+            
         except Exception as e:
-            print(f"Erro ao atualizar informações do fornecedor: {e}")
-            if supplier_info_container.current:
-                supplier_info_container.current.visible = False
+            print(f"Erro ao mostrar informações do fornecedor: {e}")
+            import traceback
+            traceback.print_exc()
+            show_snack_bar(f"Erro ao carregar informações: {str(e)}", True)
+    
+    def update_supplier_info(vendor_id):
+        """Atualiza as informações do fornecedor selecionado (mantido para compatibilidade)"""
+        # Função mantida para compatibilidade mas não há mais card para mostrar/esconder
+        # O botão de informações agora é sempre visível na barra de filtros
+        pass
     
     def calculate_overall_average(vendor_id):
         """Calcula a média geral de todos os scores do vendor"""
@@ -12227,6 +13066,167 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             )
             timeline_chart_container.current.update()
     
+    def update_timeline_individual_charts(vendor_id, year=None):
+        """Atualiza a aba de gráficos individuais com 4 gráficos (OTIF, NIL, Pickup, Package) em 2x2"""
+        try:
+            if not db_conn or not vendor_id:
+                timeline_individual_charts_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.SHOW_CHART, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar os gráficos", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+                timeline_individual_charts_container.current.update()
+                return
+
+            analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
+
+            query = "SELECT month, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
+            results = db_manager.query(query, (vendor_id, analysis_year))
+
+            monthly_data = {m: {} for m in range(1, 13)}
+            for row in results:
+                month = row['month']
+                otif = row['otif']
+                nil = row['nil']
+                pickup = row['quality_pickup']
+                package = row['quality_package']
+                try:
+                    month_int = int(month)
+                    monthly_data[month_int] = {
+                        "otif": float(otif) if otif is not None else None,
+                        "nil": float(nil) if nil is not None else None,
+                        "pickup": float(pickup) if pickup is not None else None,
+                        "package": float(package) if package is not None else None,
+                    }
+                except (ValueError, TypeError):
+                    print(f"⚠️ Dados inválidos ignorados: month='{month}'")
+                    continue
+
+            if not any(any(d.values()) for d in monthly_data.values() if d):
+                timeline_individual_charts_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.CALENDAR_TODAY, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text(f"Nenhum dado encontrado para {analysis_year}", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+                timeline_individual_charts_container.current.update()
+                return
+
+            months_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+            
+            # Função para criar um gráfico individual
+            def create_individual_chart(metric_key, metric_name, color):
+                points = [
+                    ft.LineChartDataPoint(m - 1, d[metric_key], tooltip=f"{metric_name} - {d[metric_key]}")
+                    for m, d in monthly_data.items() if d and d.get(metric_key) is not None
+                ]
+                
+                if not points:
+                    return ft.Container(
+                        content=ft.Column([
+                            ft.Text(metric_name, size=14, weight="bold", text_align=ft.TextAlign.CENTER),
+                            ft.Container(height=10),
+                            ft.Text("Sem dados", size=12, color=ft.Colors.GREY_600, text_align=ft.TextAlign.CENTER),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                        border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                        border_radius=8,
+                        padding=20,
+                        expand=True,
+                    )
+                
+                chart = ft.LineChart(
+                    data_series=[
+                        ft.LineChartData(
+                            data_points=points,
+                            color=color,
+                            stroke_width=3,
+                            curved=True,
+                            stroke_cap_round=True,
+                            below_line_gradient=ft.LinearGradient(
+                                begin=ft.alignment.top_center,
+                                end=ft.alignment.bottom_center,
+                                colors=[ft.Colors.with_opacity(0.3, color), ft.Colors.with_opacity(0.0, color)]
+                            )
+                        )
+                    ],
+                    border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                    horizontal_grid_lines=ft.ChartGridLines(
+                        interval=1,
+                        color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE),
+                        width=1
+                    ),
+                    vertical_grid_lines=ft.ChartGridLines(
+                        interval=1,
+                        color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE),
+                        width=1
+                    ),
+                    left_axis=ft.ChartAxis(
+                        labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=9)) for i in range(0, 11, 2)],
+                        labels_size=25
+                    ),
+                    bottom_axis=ft.ChartAxis(
+                        labels=[ft.ChartAxisLabel(value=i, label=ft.Text(label, size=8)) for i, label in enumerate(months_labels)],
+                        labels_size=25
+                    ),
+                    tooltip_bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.BLUE_GREY),
+                    min_y=0,
+                    max_y=10,
+                    min_x=0,
+                    max_x=11,
+                    expand=True,
+                )
+                
+                return ft.Container(
+                    content=ft.Column([
+                        ft.Text(metric_name, size=14, weight="bold", text_align=ft.TextAlign.CENTER),
+                        ft.Container(height=5),
+                        chart,
+                    ], spacing=5),
+                    border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                    border_radius=8,
+                    padding=15,
+                    expand=True,
+                )
+            
+            # Criar os 4 gráficos
+            otif_chart = create_individual_chart("otif", "OTIF", ft.Colors.ORANGE_ACCENT_700)
+            nil_chart = create_individual_chart("nil", "NIL", ft.Colors.PURPLE_ACCENT_700)
+            pickup_chart = create_individual_chart("pickup", "Quality Pickup", ft.Colors.CYAN_700)
+            package_chart = create_individual_chart("package", "Quality Package", ft.Colors.PINK_ACCENT_700)
+            
+            # Layout 2x2
+            charts_grid = ft.Column([
+                ft.Row([otif_chart, nil_chart], spacing=15, expand=True),
+                ft.Row([pickup_chart, package_chart], spacing=15, expand=True),
+            ], spacing=15, expand=True)
+            
+            timeline_individual_charts_container.current.content = charts_grid
+            timeline_individual_charts_container.current.update()
+            
+        except Exception as e:
+            print(f"Erro ao atualizar gráficos individuais: {e}")
+            import traceback
+            traceback.print_exc()
+            timeline_individual_charts_container.current.content = ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ft.Colors.RED_400),
+                    ft.Container(height=10),
+                    ft.Text(f"Erro ao gerar gráficos: {e}", size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_600),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                alignment=ft.alignment.center,
+                expand=True,
+            )
+            timeline_individual_charts_container.current.update()
+    
     def update_timeline_analytics(vendor_id, year=None):
         """Atualiza a aba de Analytics com análises de tendência para todas as métricas"""
         try:
@@ -12278,15 +13278,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 try:
                     month_int = int(month)
                     if row['total_score'] is not None:
-                        metrics_data["Total Score"].append((month_int - 1, float(row['total_score'])))
+                        metrics_data["Total Score"].append((month_int, float(row['total_score'])))
                     if row['otif'] is not None:
-                        metrics_data["OTIF"].append((month_int - 1, float(row['otif'])))
+                        metrics_data["OTIF"].append((month_int, float(row['otif'])))
                     if row['nil'] is not None:
-                        metrics_data["NIL"].append((month_int - 1, float(row['nil'])))
+                        metrics_data["NIL"].append((month_int, float(row['nil'])))
                     if row['quality_pickup'] is not None:
-                        metrics_data["Quality Pickup"].append((month_int - 1, float(row['quality_pickup'])))
+                        metrics_data["Quality Pickup"].append((month_int, float(row['quality_pickup'])))
                     if row['quality_package'] is not None:
-                        metrics_data["Quality Package"].append((month_int - 1, float(row['quality_package'])))
+                        metrics_data["Quality Package"].append((month_int, float(row['quality_package'])))
                 except (ValueError, TypeError):
                     continue
             
@@ -12367,51 +13367,122 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             months_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
                             
                             # Criar tabela com dados observados vs preditos
+                            # Ordenar os dados por mês (x_values) antes de criar as linhas
+                            sorted_data = sorted(zip(reg_data['x_values'], reg_data['y_values'], reg_data['y_predicted']), 
+                                               key=lambda item: item[0])
+                            
                             data_rows = []
-                            for i, (x, y_obs, y_pred) in enumerate(zip(reg_data['x_values'], reg_data['y_values'], reg_data['y_predicted'])):
+                            for x, y_obs, y_pred in sorted_data:
                                 residual = y_obs - y_pred
+                                # Definir cor baseada no valor da diferença
+                                # Positivo (real > previsto) = Verde (bom, superou expectativa)
+                                # Negativo (real < previsto) = Vermelho (ruim, abaixo da expectativa)
+                                # Próximo de zero = Cinza (neutro)
+                                if abs(residual) <= 0.5:
+                                    residual_color = ft.Colors.GREY
+                                elif residual > 0:
+                                    residual_color = ft.Colors.GREEN
+                                else:
+                                    residual_color = ft.Colors.RED
+                                
                                 data_rows.append(
                                     ft.DataRow(cells=[
-                                        ft.DataCell(ft.Text(months_labels[int(x)], size=12)),
+                                        ft.DataCell(ft.Text(months_labels[int(x) - 1], size=12)),
                                         ft.DataCell(ft.Text(f"{y_obs:.2f}", size=12)),
                                         ft.DataCell(ft.Text(f"{y_pred:.2f}", size=12)),
-                                        ft.DataCell(ft.Text(f"{residual:.2f}", size=12, color=ft.Colors.RED if abs(residual) > 0.5 else ft.Colors.GREY)),
+                                        ft.DataCell(ft.Text(f"{residual:+.2f}", size=12, color=residual_color)),
                                     ])
                                 )
                             
+                            # Determinar interpretação da tendência em linguagem simples
+                            if reg_data['m'] > 0.05:
+                                trend_explanation = "Os scores estão melhorando ao longo do tempo"
+                                trend_icon = "📈"
+                                trend_color = ft.Colors.GREEN_600
+                            elif reg_data['m'] < -0.05:
+                                trend_explanation = "Os scores estão caindo ao longo do tempo"
+                                trend_icon = "📉"
+                                trend_color = ft.Colors.RED_600
+                            else:
+                                trend_explanation = "Os scores estão relativamente estáveis"
+                                trend_icon = "➡️"
+                                trend_color = ft.Colors.BLUE_600
+                            
+                            # Interpretação do R²
+                            r_squared_pct = reg_data['r_squared'] * 100
+                            if r_squared_pct >= 75:
+                                r_squared_quality = "Excelente"
+                                r_squared_explanation = "A linha de tendência representa muito bem os dados reais"
+                            elif r_squared_pct >= 50:
+                                r_squared_quality = "Boa"
+                                r_squared_explanation = "A linha de tendência representa bem os dados reais"
+                            elif r_squared_pct >= 25:
+                                r_squared_quality = "Moderada"
+                                r_squared_explanation = "A linha de tendência representa parcialmente os dados reais"
+                            else:
+                                r_squared_quality = "Fraca"
+                                r_squared_explanation = "Os dados têm muita variação, a linha é apenas uma estimativa"
+                            
                             dialog_content = ft.Column([
-                                ft.Text(f"Memorial de Cálculo - {metric}", size=18, weight="bold"),
+                                ft.Text(f"Como calcular a tendência - {metric}", size=18, weight="bold"),
                                 ft.Divider(),
                                 
-                                ft.Text("📊 Dados da Regressão Linear", size=14, weight="bold"),
+                                # Resumo em linguagem simples
                                 ft.Container(
                                     content=ft.Column([
-                                        ft.Text(f"• Número de observações (n): {reg_data['n']}", size=12),
-                                        ft.Text(f"• Média de X (meses): {reg_data['x_mean']:.2f}", size=12),
-                                        ft.Text(f"• Média de Y (scores): {reg_data['y_mean']:.2f}", size=12),
-                                        ft.Container(height=10),
-                                        ft.Text("📐 Equação da Reta: y = mx + b", size=13, weight="bold", color=primary_color),
-                                        ft.Text(f"• Coeficiente Angular (m): {reg_data['m']:.4f}", size=12),
-                                        ft.Text(f"• Coeficiente Linear (b): {reg_data['b']:.4f}", size=12),
-                                        ft.Text(f"• Equação final: y = {reg_data['m']:.4f}x + {reg_data['b']:.2f}", size=12, italic=True),
-                                        ft.Container(height=10),
-                                        ft.Text(f"📈 Coeficiente de Determinação (R²): {reg_data['r_squared']:.4f}", size=12, weight="bold"),
-                                        ft.Text(f"   → O modelo explica {reg_data['r_squared']*100:.1f}% da variação dos dados", size=11, italic=True),
+                                        ft.Row([
+                                            ft.Text(trend_icon, size=24),
+                                            ft.Column([
+                                                ft.Text("Resumo:", size=14, weight="bold", color=primary_color),
+                                                ft.Text(trend_explanation, size=13, color=trend_color, weight="bold"),
+                                            ], spacing=2),
+                                        ], spacing=10),
+                                        ft.Container(height=8),
+                                        ft.Text(f"Qualidade da previsão: {r_squared_quality} ({r_squared_pct:.1f}%)", 
+                                               size=12, weight="bold"),
+                                        ft.Text(r_squared_explanation, size=11, italic=True, color=ft.Colors.GREY_700),
                                     ], spacing=5),
-                                    padding=10,
-                                    bgcolor=ft.Colors.with_opacity(0.05, primary_color),
+                                    padding=15,
+                                    bgcolor=ft.Colors.with_opacity(0.08, primary_color),
+                                    border_radius=10,
+                                    border=ft.border.all(2, ft.Colors.with_opacity(0.2, primary_color)),
+                                ),
+                                
+                                ft.Container(height=15),
+                                
+                                ft.Text("� Informações Básicas", size=14, weight="bold"),
+                                ft.Container(
+                                    content=ft.Column([
+                                        ft.Text(f"• Quantidade de meses analisados: {reg_data['n']}", size=12),
+                                        ft.Text(f"• Score médio no período: {reg_data['y_mean']:.2f}", size=12),
+                                        ft.Container(height=8),
+                                        ft.Text("💡 Como funciona:", size=13, weight="bold", color=primary_color),
+                                        ft.Text("Traçamos uma linha que passa o mais perto possível de todos os pontos.", 
+                                               size=11, color=ft.Colors.GREY_700),
+                                        ft.Text("Essa linha mostra a direção geral dos scores.", 
+                                               size=11, color=ft.Colors.GREY_700),
+                                        ft.Container(height=8),
+                                        ft.Text(f"� Inclinação da linha: {reg_data['m']:.4f}", size=12),
+                                        ft.Text(f"   • Positivo = subindo | Negativo = descendo | Perto de zero = estável", 
+                                               size=11, color=ft.Colors.GREY_600, italic=True),
+                                    ], spacing=5),
+                                    padding=12,
+                                    bgcolor=ft.Colors.with_opacity(0.03, primary_color),
                                     border_radius=8,
                                 ),
                                 
                                 ft.Container(height=10),
-                                ft.Text("📋 Valores Observados vs Preditos", size=14, weight="bold"),
+                                ft.Text("📋 Comparação: Real vs Previsto", size=14, weight="bold"),
+                                ft.Text("Veja como o score real de cada mês se compara com o que a linha previu:", 
+                                       size=11, color=ft.Colors.GREY_600, italic=True),
+                                ft.Container(height=5),
                                 ft.Container(
                                     content=ft.DataTable(
                                         columns=[
                                             ft.DataColumn(ft.Text("Mês", size=12, weight="bold")),
-                                            ft.DataColumn(ft.Text("Observado", size=12, weight="bold")),
-                                            ft.DataColumn(ft.Text("Predito", size=12, weight="bold")),
-                                            ft.DataColumn(ft.Text("Resíduo", size=12, weight="bold")),
+                                            ft.DataColumn(ft.Text("Score Real", size=12, weight="bold")),
+                                            ft.DataColumn(ft.Text("Previsão", size=12, weight="bold")),
+                                            ft.DataColumn(ft.Text("Diferença", size=12, weight="bold")),
                                         ],
                                         rows=data_rows,
                                     ),
@@ -12419,16 +13490,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     border_radius=8,
                                     padding=10,
                                 ),
-                            ], spacing=10, scroll=ft.ScrollMode.AUTO, height=500)
+                                ft.Column([
+                                    ft.Text("Legenda:", size=11, weight="bold", color=ft.Colors.GREY_700),
+                                    ft.Text("� Verde = Real superou a previsão (diferença > +0.5)", 
+                                           size=10, color=ft.Colors.GREY_600, italic=True),
+                                    ft.Text("⚪ Cinza = Próximo da previsão (diferença entre -0.5 e +0.5)", 
+                                           size=10, color=ft.Colors.GREY_600, italic=True),
+                                    ft.Text("🔴 Vermelho = Real abaixo da previsão (diferença < -0.5)", 
+                                           size=10, color=ft.Colors.GREY_600, italic=True),
+                                ], spacing=3),
+                            ], spacing=10, scroll=ft.ScrollMode.AUTO, height=550)
                             
                             dialog = ft.AlertDialog(
                                 title=ft.Row([
-                                    ft.Icon(ft.Icons.CALCULATE, color=primary_color),
-                                    ft.Text("Detalhes do Cálculo", color=primary_color),
-                                ]),
+                                    ft.Icon(ft.Icons.SCHOOL, color=primary_color),
+                                    ft.Text("Como Funciona a Análise", color=primary_color),
+                                ], spacing=8),
                                 content=dialog_content,
                                 actions=[
-                                    ft.TextButton("Fechar", on_click=lambda e: page.close(dialog))
+                                    ft.TextButton("Entendi", on_click=lambda e: page.close(dialog))
                                 ],
                                 actions_alignment=ft.MainAxisAlignment.END,
                             )
@@ -12444,7 +13524,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     ft.IconButton(
                                         icon=ft.Icons.INFO_OUTLINE,
                                         icon_size=20,
-                                        tooltip="Ver memorial de cálculo",
+                                        tooltip="Como funciona o cálculo (clique para ver explicação)",
                                         on_click=create_info_dialog(metric_name, regression),
                                         icon_color=primary_color,
                                     ),
@@ -12487,43 +13567,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     )
                     analysis_cards.append(card)
             
-            # Montar layout final em grid 2x3
-            # Verificar se é mobile
-            is_mobile = page.window.width < 900 if page.window else False
-            
-            if is_mobile:
-                # Layout em coluna única para mobile
-                cards_layout = ft.Column(
-                    controls=analysis_cards,
-                    spacing=15,
-                )
-            else:
-                # Layout em grid 2 colunas para desktop
-                rows = []
-                for i in range(0, len(analysis_cards), 2):
-                    row_cards = analysis_cards[i:i+2]
-                    if len(row_cards) == 2:
-                        rows.append(
-                            ft.Row(
-                                controls=[
-                                    ft.Container(content=row_cards[0], expand=True),
-                                    ft.Container(width=15),
-                                    ft.Container(content=row_cards[1], expand=True),
-                                ],
-                                alignment=ft.MainAxisAlignment.START,
-                            )
-                        )
-                    else:
-                        rows.append(
-                            ft.Row(
-                                controls=[
-                                    ft.Container(content=row_cards[0], expand=True),
-                                    ft.Container(expand=True),
-                                ],
-                                alignment=ft.MainAxisAlignment.START,
-                            )
-                        )
-                cards_layout = ft.Column(controls=rows, spacing=15)
+            # Montar layout final - um card por linha
+            cards_layout = ft.Column(
+                controls=analysis_cards,
+                spacing=15,
+            )
             
             analytics_content = ft.Column(
                 controls=[
@@ -12540,11 +13588,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 expand=True,
             )
             
-            timeline_analytics_container.current.content = ft.Container(
-                content=analytics_content,
-                padding=ft.padding.all(20),
-                expand=True,
-            )
+            timeline_analytics_container.current.content=analytics_content
             timeline_analytics_container.current.update()
             
         except Exception as e:
@@ -12692,6 +13736,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ft.Container(ft.Text("Package", size=12, weight="bold", color=text_color, no_wrap=True), width=80, alignment=ft.alignment.center),
                     ft.Container(ft.Text("Total", size=12, weight="bold", color=text_color, no_wrap=True), width=80, alignment=ft.alignment.center),
                     ft.Container(ft.Text("Comentário", size=12, weight="bold", color=text_color, no_wrap=True), expand=True, alignment=ft.alignment.center_left),
+                    ft.Container(ft.Icon(ft.Icons.THERMOSTAT, size=16, color=text_color, tooltip="Confiabilidade"), width=50, alignment=ft.alignment.center),
                     ft.Container(ft.Text("Ações", size=12, weight="bold", color=text_color, no_wrap=True), width=100, alignment=ft.alignment.center),
                 ], spacing=10, tight=True),
                 padding=ft.padding.symmetric(horizontal=16, vertical=12),
@@ -12799,19 +13844,30 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 row_index = results.index(result)
                 row_bgcolor = ft.Colors.with_opacity(0.03, text_color) if row_index % 2 == 0 else None
 
+                # Analisar consistência dos dados
+                consistency_score, consistency_issues, consistency_icon, consistency_color = analyze_data_consistency(otif, nil, pickup, package)
+                consistency_tooltip = f"Confiabilidade: {consistency_score}%"
+                if consistency_issues:
+                    consistency_tooltip += "\n⚠ " + "\n⚠ ".join(consistency_issues)
+                
                 # Linha da tabela
                 table_row = ft.Container(
                     content=ft.Row([
                         ft.Container(ft.Text(f"{month_name}/{year_data}", size=13, color=text_color), width=100, alignment=ft.alignment.center_left),
-                        ft.Container(ft.Text(otif_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
-                        ft.Container(ft.Text(nil_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
-                        ft.Container(ft.Text(pickup_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
-                        ft.Container(ft.Text(package_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(ft.Text(otif_display, size=13, weight="w500", color=get_score_color(otif) if otif is not None else text_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(ft.Text(nil_display, size=13, weight="w500", color=get_score_color(nil) if nil is not None else text_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(ft.Text(pickup_display, size=13, weight="w500", color=get_score_color(pickup) if pickup is not None else text_color), width=80, alignment=ft.alignment.center),
+                        ft.Container(ft.Text(package_display, size=13, weight="w500", color=get_score_color(package) if package is not None else text_color), width=80, alignment=ft.alignment.center),
                         ft.Container(ft.Text(total_display, size=13, weight="w500", color=primary_color), width=80, alignment=ft.alignment.center),
                         ft.Container(
                             ft.Text(comment_display, size=12, color=ft.Colors.with_opacity(0.7, text_color), max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                             expand=True,
                             alignment=ft.alignment.center_left
+                        ),
+                        ft.Container(
+                            ft.Icon(consistency_icon, size=20, color=consistency_color, tooltip=consistency_tooltip),
+                            width=50,
+                            alignment=ft.alignment.center
                         ),
                         ft.Container(
                             ft.Row(action_buttons, spacing=0, tight=True),
@@ -12879,6 +13935,89 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
         update_timeline_table(vendor_id, year)
 
+    def clear_timeline_vendor(e):
+        """Limpa o fornecedor selecionado e reseta todos os cards"""
+        try:
+            print("🔄 Iniciando limpeza da timeline...")
+            
+            # Limpar o dropdown
+            if timeline_vendor_dropdown.current:
+                timeline_vendor_dropdown.current.value = None
+            
+            # Resetar todos os cards de métricas para "--"
+            metric_cards = [
+                overall_avg_card, twelve_month_avg_card, year_avg_card,
+                q1_avg_card, q2_avg_card, q3_avg_card, q4_avg_card
+            ]
+            for card in metric_cards:
+                if card.current:
+                    card.current.value = "--"
+            
+            # Resetar ícones de setas
+            arrow_icons = [q1_arrow_icon, q2_arrow_icon, q3_arrow_icon, q4_arrow_icon]
+            for icon in arrow_icons:
+                if icon.current:
+                    icon.current.name = ft.Icons.ARROW_FORWARD
+                    icon.current.color = ft.Colors.GREY_400
+            
+            # Limpar gráfico
+            if timeline_chart_container.current:
+                timeline_chart_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.SHOW_CHART, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar o gráfico", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                )
+            
+            # Limpar gráficos individuais
+            if timeline_individual_charts_container.current:
+                timeline_individual_charts_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.GRID_VIEW, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar os gráficos", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                )
+            
+            # Limpar tabela
+            if timeline_table_container.current:
+                timeline_table_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.TABLE_CHART, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar a tabela", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                )
+            
+            # Limpar analytics
+            if timeline_analytics_container.current:
+                timeline_analytics_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.ANALYTICS, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar as análises", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                )
+            
+            # Atualizar a página
+            safe_page_update(page)
+            
+            print("✅ Timeline limpa com sucesso")
+            
+        except Exception as e:
+            print(f"❌ Erro ao limpar timeline: {e}")
+            import traceback
+            traceback.print_exc()
+
     # Criar conteúdo da aba Timeline
     # Obter cores do tema para a criação inicial dos componentes
     theme_name_for_timeline = get_theme_name_from_page(page)
@@ -12914,6 +14053,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                     border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
+                ft.IconButton(
+                    icon=ft.Icons.INFO_OUTLINE,
+                    tooltip="Informações do fornecedor",
+                    on_click=lambda e: show_supplier_info_dialog(timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else None),
+                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                    icon_size=20,
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.CLEAR,
+                    tooltip="Limpar fornecedor",
+                    on_click=clear_timeline_vendor,
+                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                    icon_size=20,
+                ),
                 ft.Dropdown(
                     label="Ano",
                     ref=timeline_year_dropdown,
@@ -12928,47 +14081,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             ], spacing=15, ref=timeline_search_container),
             
             ft.Container(height=20),
-            
-            # Card com informações do fornecedor selecionado
-            ft.Container(
-                ref=supplier_info_container,
-                visible=False,
-                content=ft.Card(
-                    content=ft.Container(
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Icon(ft.Icons.BUSINESS, size=20, color=primary_color_for_timeline),
-                                ft.Text("Informações do Fornecedor", size=14, weight="bold", color=primary_color_for_timeline),
-                            ], spacing=8),
-                            ft.Divider(height=1, thickness=1),
-                            ft.Row([
-                                ft.Column([
-                                    ft.Text("Nome:", size=11, weight="w500", color=ft.Colors.with_opacity(0.6, label_color)),
-                                    ft.Text("--", ref=supplier_name_text, size=14, weight="bold", color=label_color),
-                                ], spacing=2, expand=2),
-                                ft.Column([
-                                    ft.Text("BU:", size=11, weight="w500", color=ft.Colors.with_opacity(0.6, label_color)),
-                                    ft.Text("--", ref=supplier_bu_text, size=14, weight="bold", color=label_color),
-                                ], spacing=2, expand=1),
-                                ft.Column([
-                                    ft.Text("Supplier #:", size=11, weight="w500", color=ft.Colors.with_opacity(0.6, label_color)),
-                                    ft.Text("--", ref=supplier_number_text, size=14, weight="bold", color=label_color),
-                                ], spacing=2, expand=1),
-                                ft.Column([
-                                    ft.Text("PO:", size=11, weight="w500", color=ft.Colors.with_opacity(0.6, label_color)),
-                                    ft.Text("--", ref=supplier_po_text, size=14, weight="bold", color=label_color),
-                                ], spacing=2, expand=1),
-                            ], spacing=20),
-                        ], spacing=10),
-                        padding=ft.padding.all(16),
-                        bgcolor=timeline_card_bg,
-                        border_radius=12,
-                    ),
-                    elevation=2,
-                ),
-            ),
-            
-            ft.Container(height=15),
             
             # Cards de métricas - layout clean com scroll horizontal
             ft.Container(
@@ -13135,6 +14247,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ref=timeline_tabs,
                     selected_index=0,
                     animation_duration=300,
+                    on_change=lambda e: on_timeline_tab_change(e),
                     tabs=[
                         # Tab do Gráfico
                         ft.Tab(
@@ -13149,6 +14262,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                                 ft.Icon(ft.Icons.SHOW_CHART, size=48, color=ft.Colors.GREY_400),
                                                 ft.Container(height=10),
                                                 ft.Text("Selecione um fornecedor para visualizar o gráfico", 
+                                                       size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                            alignment=ft.alignment.center,
+                                        ),
+                                        padding=ft.padding.all(20),
+                                        expand=True,
+                                    ),
+                                    elevation=1,
+                                ),
+                                padding=ft.padding.only(top=10),
+                                expand=True,
+                            ),
+                        ),
+                        # Tab dos Gráficos Individuais
+                        ft.Tab(
+                            text="Individual Metrics",
+                            icon=ft.Icons.GRID_VIEW,
+                            content=ft.Container(
+                                content=ft.Card(
+                                    content=ft.Container(
+                                        ref=timeline_individual_charts_container,
+                                        content=ft.Container(
+                                            content=ft.Column([
+                                                ft.Icon(ft.Icons.GRID_VIEW, size=48, color=ft.Colors.GREY_400),
+                                                ft.Container(height=10),
+                                                ft.Text("Selecione um fornecedor para visualizar os gráficos", 
                                                        size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
                                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
                                             alignment=ft.alignment.center,
@@ -13193,22 +14332,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             text="Analytics",
                             icon=ft.Icons.ANALYTICS,
                             content=ft.Container(
-                                content=ft.Card(
+                                content=ft.Container(
+                                    ref=timeline_analytics_container,
                                     content=ft.Container(
-                                        ref=timeline_analytics_container,
-                                        content=ft.Container(
-                                            content=ft.Column([
-                                                ft.Icon(ft.Icons.ANALYTICS, size=48, color=ft.Colors.GREY_400),
-                                                ft.Container(height=10),
-                                                ft.Text("Selecione um fornecedor para visualizar as análises", 
-                                                       size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
-                                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
-                                            alignment=ft.alignment.center,
-                                        ),
-                                        padding=ft.padding.all(20),
-                                        expand=True,
+                                        content=ft.Column([
+                                            ft.Icon(ft.Icons.ANALYTICS, size=48, color=ft.Colors.GREY_400),
+                                            ft.Container(height=10),
+                                            ft.Text("Selecione um fornecedor para visualizar as análises", 
+                                                   size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                        alignment=ft.alignment.center,
                                     ),
-                                    elevation=1,
+                                    padding=ft.padding.all(20),
+                                    expand=True,
                                 ),
                                 padding=ft.padding.only(top=10),
                                 expand=True,
@@ -13494,11 +14630,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         ft.Row(
                             controls=[
                                 ft.Column([
-                                    ft.Text(vendor_name, weight=ft.FontWeight.BOLD, size=18, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
-                                    ft.Text(f"BU: {bu}" if bu else "BU: -", size=12, color="gray"),
-                                    ft.Text(f"PO: {supplier_po}" if supplier_po else "PO: -", size=12, color="gray"),
-                                    ft.Text(f"SSID: {supplier_number}" if supplier_number else "SSID: -", size=12, color="gray"),
-                                    ft.Text(f"ID: {supplier_id}", size=11, color="gray")
+                                    ft.Text(format_display_value(vendor_name), weight=ft.FontWeight.BOLD, size=18, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(f"BU: {format_display_value(bu)}", size=12, color="gray"),
+                                    ft.Text(f"PO: {format_po_ssid(supplier_po)}", size=12, color="gray"),
+                                    ft.Text(f"SSID: {format_po_ssid(supplier_number)}", size=12, color="gray"),
+                                    ft.Text(f"ID: {format_display_value(supplier_id)}", size=11, color="gray")
                                 ], expand=True),
                                 ft.Column([
                                     ft.Row([
