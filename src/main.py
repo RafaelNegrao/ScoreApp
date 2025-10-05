@@ -6,6 +6,23 @@ from db_manager import DBManager
 import threading
 import getpass
 from concurrent.futures import ThreadPoolExecutor
+import sys
+import os
+
+# ============================================================
+# VERSÃO DO APLICATIVO
+# ============================================================
+APP_VERSION = "1.1.4"
+
+# Função para obter o caminho correto dos recursos (funciona tanto em desenvolvimento quanto em executável)
+def resource_path(relative_path):
+    """Obtém o caminho absoluto para o recurso, funciona para dev e para PyInstaller"""
+    try:
+        # PyInstaller cria uma pasta temp e armazena o caminho em _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 # Configuração mínima de toasts (usada por redirect de `print` e por notificações)
 app_settings = {'toast_duration': 3}
@@ -64,15 +81,16 @@ def show_snack_bar(message, is_error=False, is_warning=False, page=None):
             else:
                 color = ft.Colors.GREEN
             
-            # Criar SnackBar conforme documentação do Flet
+            # Criar SnackBar conforme documentação do Flet - usar content explicitamente
             snack_bar = ft.SnackBar(
-                ft.Text(message, color=ft.Colors.WHITE),
+                content=ft.Text(message, color=ft.Colors.WHITE),
                 bgcolor=color,
             )
             
             # Usar page.open() conforme exemplo oficial do Flet
             try:
                 target_page.open(snack_bar)
+                target_page.update()
             except Exception as open_error:
                 # Se open() falhar, tenta adicionar ao overlay
                 print(f"Aviso: page.open() falhou: {open_error}")
@@ -867,35 +885,15 @@ def get_primary_darker_color(theme_name="white"):
 
 def get_score_color(score):
     """
-    Retorna uma cor baseada no valor da nota (0.0 a 10.0)
-    - Nota 0: Vermelho (#FF0000)
-    - Nota 10: Verde (#00FF00)
-    - Valores intermediários: Gradação de vermelho para verde
+    Retorna uma cor neutra para o texto das notas
+    (esquema de cores vermelho/verde foi removido)
     """
     try:
-        # Garantir que o score está entre 0 e 10
-        score = max(0.0, min(10.0, float(score)))
-        
-        # Calcular a proporção (0.0 = vermelho, 1.0 = verde)
-        ratio = score / 10.0
-        
-        # Gradação de vermelho para verde passando por amarelo
-        if ratio <= 0.5:
-            # De vermelho (255,0,0) para amarelo (255,255,0)
-            r = 255
-            g = int(255 * (ratio * 2))
-            b = 0
-        else:
-            # De amarelo (255,255,0) para verde (0,255,0)
-            r = int(255 * (1 - (ratio - 0.5) * 2))
-            g = 255
-            b = 0
-        
-        # Retornar cor em formato hexadecimal
-        return f"#{r:02x}{g:02x}{b:02x}"
+        # Sempre retornar cor padrão do tema (None = cor padrão do texto)
+        return None
     except (ValueError, TypeError):
-        # Se houver erro, retornar cor neutra
-        return "#808080"  # Cinza
+        # Se houver erro, retornar cor padrão
+        return None
 
 def analyze_data_consistency(otif, nil, pickup, package):
     """
@@ -1000,24 +998,24 @@ def login_screen(page: ft.Page):
     global current_user_wwid, current_user_name, current_user_privilege, current_user_permissions
     
     # Configurações da janela de login
-    page.title = "Score App - Login"
+    page.title = f"Score App v{APP_VERSION} - Login"
     page.window.width = 500
     page.window.height = 650
     page.window.resizable = False
     page.window.center()
-    page.theme_mode = ft.ThemeMode.SYSTEM  # Usar tema do sistema Windows
+    page.theme_mode = ft.ThemeMode.LIGHT  # Forçar tema claro (branco)
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
-    page.bgcolor = None  # Deixar que o sistema defina a cor de fundo
+    page.bgcolor = "#FFFFFF"  # Fundo branco
     
-    # Cores do sistema Windows (adaptável ao tema claro/escuro)
+    # Cores da tela de login (tema claro/branco)
     Colors = {
         'primary': "#1976D2",  # Azul sistema Windows
         'on_primary': "#FFFFFF",
-        'surface': None,  # Usar cor padrão do sistema
-        'on_surface': None,  # Usar cor padrão do sistema
+        'surface': "#FFFFFF",  # Fundo branco para o card
+        'on_surface': "#000000",  # Texto preto
         'on_surface_variant': "#757575",
-        'field_background': None,  # Usar cor padrão do sistema
+        'field_background': "#FFFFFF",  # Fundo branco para campos
         'outline': "#BDBDBD",
         'error': "#D32F2F"
     }
@@ -1127,7 +1125,7 @@ def login_screen(page: ft.Page):
         """Verifica credenciais na tabela users_table"""
         try:
             result = db_manager.query_one("""
-                SELECT user_wwid, user_password, user_privilege, otif, nil, pickup, package 
+                SELECT user_wwid, user_name, user_password, user_privilege, otif, nil, pickup, package 
                 FROM users_table 
                 WHERE user_wwid = ? AND user_password = ?
             """, (wwid, password))
@@ -1135,6 +1133,7 @@ def login_screen(page: ft.Page):
             if result:
                 return {
                     'wwid': result['user_wwid'],
+                    'name': result['user_name'],
                     'password': result['user_password'],
                     'privilege': result['user_privilege'],
                     'otif': result['otif'] == '1' or result['otif'] == 1,
@@ -1192,7 +1191,7 @@ def login_screen(page: ft.Page):
             # Definir variáveis globais
             global current_user_wwid, current_user_name, current_user_privilege, current_user_permissions
             current_user_wwid = user_data['wwid']
-            current_user_name = user_data['wwid']  # Pode ser expandido com nome real
+            current_user_name = user_data['name']  # Nome do usuário do banco de dados
             current_user_privilege = user_data['privilege']
             current_user_permissions = {
                 'otif': user_data['otif'],
@@ -1213,7 +1212,7 @@ def login_screen(page: ft.Page):
 
             # Carregar aplicação principal (sem animação)
             page.controls.clear()
-            page.title = "Score App"
+            page.title = f"Score App v{APP_VERSION}"
             page.window.min_width = 850
             page.window.min_height = 900
             page.window.resizable = True
@@ -1251,10 +1250,15 @@ def login_screen(page: ft.Page):
         content=ft.Column(
             [
                 ft.Container(height=15),
-                ft.Icon(
-                    ft.Icons.ANALYTICS,
-                    size=48,
-                    color=Colors['primary']
+                # Logo da Cummins
+                ft.Container(
+                    content=ft.Image(
+                        src=resource_path("images/cummins.ico"),
+                        width=120,
+                        height=120,
+                        fit=ft.ImageFit.CONTAIN,
+                    ),
+                    alignment=ft.alignment.center,
                 ),
                 ft.Container(height=12),
                 ft.Text(
@@ -1285,13 +1289,21 @@ def login_screen(page: ft.Page):
                 error_text,
                 ft.Container(height=20),
                 login_button,
-                ft.Container(height=15)
+                ft.Container(height=15),
+                # Versão do aplicativo
+                ft.Text(
+                    f"v{APP_VERSION}",
+                    size=11,
+                    color=Colors['on_surface_variant'],
+                    text_align=ft.TextAlign.CENTER,
+                    italic=True
+                )
             ],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=0
         ),
-        bgcolor=Colors['surface'],
+        bgcolor="#FFFFFF",  # Fundo branco
         border_radius=12,
         padding=ft.padding.all(30),
         shadow=ft.BoxShadow(
@@ -1311,7 +1323,8 @@ def login_screen(page: ft.Page):
     main_container = ft.Container(
         content=login_container,
         alignment=ft.alignment.center,
-        expand=True
+        expand=True,
+        bgcolor="#FFFFFF"  # Fundo branco também no container principal
     )
     
     page.add(main_container)
@@ -1435,15 +1448,15 @@ class AddSupplierDialog(ft.AlertDialog):
         self.fields = {
             # Informações Básicas
             "vendor_name": ft.TextField(
-                label="Vendor Name*", 
-                width=250,
+                label="Vendor Name*",
+                expand=True,
                 bgcolor=get_current_theme_colors(self.page).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
             "supplier_origin": ft.Dropdown(
                 label="Origem",
-                width=250,
+                expand=True,
                 value="",
                 options=[ft.dropdown.Option(v) for v in ["Nacional", "Importado"]],
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
@@ -1452,7 +1465,7 @@ class AddSupplierDialog(ft.AlertDialog):
             "supplier_category": ft.Container(
                 content=ft.Dropdown(
                     label="Supplier Category",
-                    width=250,
+                    expand=True,
                     color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                     border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                     options=[
@@ -1461,26 +1474,31 @@ class AddSupplierDialog(ft.AlertDialog):
                     ],
                 ),
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
+                expand=True
             ),
             
             # Informações de Contato
             "supplier_email": ft.TextField(
-                label="Email", 
-                width=250,
+                label="Email (separar múltiplos emails com ;)", 
+                multiline=True,
+                min_lines=4,
+                max_lines=6,
+                expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
+                border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
+                hint_text="exemplo@email.com; outro@email.com"
             ),
             "supplier_number": ft.TextField(
-                label="SSID", 
-                width=250,
+                label="SSID",
+                expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
             ),
             "supplier_po": ft.TextField(
-                label="PO", 
-                width=250,
+                label="PO",
+                expand=True,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline')
@@ -1490,19 +1508,20 @@ class AddSupplierDialog(ft.AlertDialog):
             "bu": ft.Container(
                 content=ft.Dropdown(
                     label="BU (Business Unit)",
-                    width=200,
+                    expand=True,
                     color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                     border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                     filled=False,
                     options=[ft.dropdown.Option(v) for v in (self.list_options.get('bu') or ["", "Operations", "Manufacturing", "Procurement", "Quality", "Logistics"]) ]
                 ),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                expand=True
             ),
 
             "supplier_status": ft.Container(
                 content=ft.Dropdown(
                     label="Status",
-                    width=200,
+                    expand=True,
                     value="Active",  # Valor padrão
                     color="green",  # Cor inicial verde para "Active"
                     border_color=get_current_theme_colors(self.page).get('outline'),
@@ -1512,117 +1531,138 @@ class AddSupplierDialog(ft.AlertDialog):
                     ],
                     on_change=update_status_color_dialog
                 ),
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                expand=True
             ),
 
                         "planner": ft.Container(
                             content=ft.Dropdown(
                                 label="Planner",
-                                width=200,
+                                expand=True,
                                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                                 options=[ft.dropdown.Option(v) for v in ((self.list_options.get('planner') or []) )]
                             ),
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                            expand=True
                         ),
 
                         "continuity": ft.Container(
                             content=ft.Dropdown(
                                 label="Continuity", 
-                                width=200,
+                                expand=True,
                                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                                 options=[ft.dropdown.Option(v) for v in ((self.list_options.get('continuity') or []) )]
                             ),
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                            expand=True
                         ),
 
                         "sourcing": ft.Container(
                             content=ft.Dropdown(
                                 label="Sourcing",
-                                width=200,
+                                expand=True,
                                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                                 options=[ft.dropdown.Option(v) for v in ((self.list_options.get('sourcing') or []) )]
                             ),
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                            expand=True
                         ),
 
                         "sqie": ft.Container(
                             content=ft.Dropdown(
                                 label="SQIE",
-                                width=200,
+                                expand=True,
                                 color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface'),
                                 border_color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline'),
                                 options=[ft.dropdown.Option(v) for v in ((self.list_options.get('sqie') or []) )]
                             ),
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background')
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                            expand=True
                         ),
 
         }
         
-        self.title = ft.Text("➕ Adicionar Novo Supplier", size=18, weight=ft.FontWeight.BOLD)
-        self.error_text = ft.Text("", color="red", visible=False)
+        self.title = ft.Text("➕ Adicionar Novo Supplier", size=20, weight=ft.FontWeight.BOLD)
+        self.error_text = ft.Text("", color="error", visible=False, size=13, weight=ft.FontWeight.W_500)
         
-        # Criar seções organizadas com tema padrão
+        # Criar seções organizadas com tema padrão - Layout Clean
         basic_info_section = ft.Container(
             content=ft.Column([
                 ft.Text("📋 Informações Básicas", size=14, weight=ft.FontWeight.BOLD),
-                ft.Divider(height=1),
                 ft.Row([self.fields["vendor_name"], self.fields["supplier_origin"]], spacing=15),
                 ft.Row([self.fields["supplier_category"], self.fields["supplier_status"]], spacing=15),
             ], spacing=10),
             padding=ft.padding.all(15),
-            bgcolor="surface_variant",
-            border_radius=8
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('card_background'),
+            border_radius=10,
+            border=ft.border.all(1, get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline_variant'))
         )
         
         contact_section = ft.Container(
             content=ft.Column([
                 ft.Text("📞 Informações de Contato", size=14, weight=ft.FontWeight.BOLD),
-                ft.Divider(height=1),
-                ft.Row([self.fields["supplier_email"], self.fields["supplier_po"]], spacing=15),
-                ft.Row([self.fields["supplier_number"]], spacing=15),
-            ], spacing=10),
+                ft.Container(
+                    content=self.fields["supplier_email"],
+                    padding=ft.padding.only(bottom=5)
+                ),
+                ft.Container(
+                    content=ft.Text(
+                        "💡 Dica: Separe múltiplos emails com ponto e vírgula (;)",
+                        size=11,
+                        italic=True,
+                        color=get_current_theme_colors(get_theme_name_from_page(self.page)).get('on_surface_variant')
+                    ),
+                    padding=ft.padding.only(bottom=10)
+                ),
+                ft.Row([self.fields["supplier_number"], self.fields["supplier_po"]], spacing=15),
+            ], spacing=8),
             padding=ft.padding.all(15),
-            bgcolor="surface_variant",
-            border_radius=8
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('card_background'),
+            border_radius=10,
+            border=ft.border.all(1, get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline_variant'))
         )
         
         org_section = ft.Container(
             content=ft.Column([
                 ft.Text("🏢 Configurações Organizacionais", size=14, weight=ft.FontWeight.BOLD),
-                ft.Divider(height=1),
                 ft.Row([self.fields["bu"]], spacing=15),
             ], spacing=10),
             padding=ft.padding.all(15),
-            bgcolor="surface_variant",
-            border_radius=8
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('card_background'),
+            border_radius=10,
+            border=ft.border.all(1, get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline_variant'))
         )
         
         management_section = ft.Container(
             content=ft.Column([
                 ft.Text("⚙️ Configurações de Gestão", size=14, weight=ft.FontWeight.BOLD),
-                ft.Divider(height=1),
                 ft.Row([self.fields["planner"], self.fields["continuity"]], spacing=15),
                 ft.Row([self.fields["sourcing"], self.fields["sqie"]], spacing=15),
             ], spacing=10),
             padding=ft.padding.all(15),
-            bgcolor="surface_variant",
-            border_radius=8
+            bgcolor=get_current_theme_colors(get_theme_name_from_page(self.page)).get('card_background'),
+            border_radius=10,
+            border=ft.border.all(1, get_current_theme_colors(get_theme_name_from_page(self.page)).get('outline_variant'))
         )
         
         self.content = ft.Container(
             content=ft.Column([
-                ft.Text("* Campos obrigatórios", size=12, color="red", weight=ft.FontWeight.BOLD),
+                ft.Container(
+                    content=ft.Text("* Campos obrigatórios", size=12, weight=ft.FontWeight.W_500, color="error"),
+                    padding=ft.padding.only(bottom=5)
+                ),
                 basic_info_section,
                 contact_section,
                 org_section,
                 management_section,
                 self.error_text
-            ], spacing=20, scroll=ft.ScrollMode.AUTO),
+            ], spacing=15, scroll=ft.ScrollMode.AUTO),
             width=600,
-            height=500
+            height=550,
+            padding=ft.padding.all(10)
         )
         
         self.actions = [
@@ -2100,7 +2140,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             animate=200,
             width=160 if show_text else 40,
         )
-    page.title = "Score App"
+    page.title = f"Score App v{APP_VERSION}"
     page.padding = 0
     page.theme_mode = ft.ThemeMode.LIGHT
 
@@ -4631,19 +4671,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except ImportError as e:
             error_msg = f"❌ Biblioteca openpyxl não encontrada. Erro: {e}"
             print(error_msg)
-            show_snack_bar(error_msg, True)
+            show_snack_bar(error_msg, True, False, page)
             return
         except Exception as e:
             error_msg = f"❌ Erro ao importar bibliotecas: {e}"
             print(error_msg)
-            show_snack_bar(error_msg, True)
+            show_snack_bar(error_msg, True, False, page)
             return
 
         try:
             print("🔄 DEBUG: Executando query no banco...")
-            # Buscar suppliers ativos
+            # Buscar suppliers ativos (incluindo supplier_po)
             base_query = """
-                SELECT supplier_id, supplier_number, bu, vendor_name 
+                SELECT supplier_id, supplier_number, bu, vendor_name, supplier_po 
                 FROM supplier_database_table 
                 WHERE supplier_status = 'Active'
                 ORDER BY vendor_name
@@ -4653,7 +4693,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if not suppliers:
                 error_msg = "❌ Nenhum supplier ativo encontrado."
                 print(error_msg)
-                show_snack_bar(error_msg)
+                show_snack_bar(error_msg, False, False, page)
                 return
 
             print(f"🔍 DEBUG: Encontrados {len(suppliers)} suppliers ativos")
@@ -4738,7 +4778,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if not permission_columns:
                 error_msg = "❌ Usuário não tem permissão para nenhuma coluna de nota."
                 print(error_msg)
-                show_snack_bar(error_msg, False)
+                show_snack_bar(error_msg, False, False, page)
                 return
                 
             for col, header in enumerate(headers, 1):
@@ -4762,11 +4802,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 month_name = month_names.get(str(month), f"MÊS {month}")
                 
                 # Instrução principal
-                instruction_cell.value = f"DADOS COM NOTAS DE {month_name}/{year} - Preencha as notas de 0.0 a 10.0"
+                instruction_cell.value = f"DADOS COM NOTAS DE {month_name}/{year} - Preencha as notas de 0.0 a 10.0 | Preencha 10 caso não haja entrega no mês"
                 instruction_cell.font = Font(bold=True, italic=True, color="0066CC", size=12)
                 
             else:
-                instruction_cell.value = "INSTRUÇÕES: Preencha as notas de 0.0 a 10.0"
+                instruction_cell.value = "INSTRUÇÕES: Preencha as notas de 0.0 a 10.0 | Preencha 10 caso não haja entrega no mês"
                 instruction_cell.font = Font(bold=True, italic=True, color="0066CC")
             
             # Adicionar mais informações na linha 2
@@ -4791,12 +4831,31 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Preencher dados dos suppliers
             for row, supplier in enumerate(suppliers, 2):
                 supplier_id_value = supplier.get('supplier_id') or ''
-                po_value = supplier.get('supplier_number') or ''
+                
+                # Tratar supplier_po como número inteiro, removendo decimais
+                raw_po = supplier.get('supplier_po')
+                if raw_po is not None and raw_po != '' and str(raw_po).strip() != '':
+                    try:
+                        # Converter para float primeiro, depois para int para remover decimais
+                        po_value = int(float(raw_po))
+                    except (ValueError, TypeError):
+                        # Se falhar a conversão, manter como vazio
+                        po_value = ''
+                else:
+                    po_value = ''
+                
                 bu_value = supplier.get('bu') or ''
                 name_value = supplier.get('vendor_name') or ''
                 
                 ws.cell(row=row, column=1, value=supplier_id_value) # Supplier ID
-                ws.cell(row=row, column=2, value=po_value)          # PO (supplier_number)
+                
+                # PO (supplier_po) - usar número inteiro diretamente
+                if po_value != '':
+                    po_cell = ws.cell(row=row, column=2, value=po_value)
+                    po_cell.number_format = '0'  # Formato de número inteiro no Excel (sem decimais)
+                else:
+                    po_cell = ws.cell(row=row, column=2, value='')
+                
                 ws.cell(row=row, column=3, value=bu_value)          # BU
                 ws.cell(row=row, column=4, value=name_value)        # Supplier Name (vendor_name)
                 
@@ -4947,13 +5006,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Nome do arquivo: Score_[nota]_[data_ref]
             suggested_filename = f"Score_{note_type}_{data_ref}.xlsx"
             
+            # Variável para armazenar o file_picker
+            file_picker_ref = [None]  # Usar lista para permitir acesso em função aninhada
+            
             # Abrir diálogo para salvar arquivo
             def save_file_dialog():
                 try:
                     # Criar diálogo de seleção de arquivo
                     file_picker = ft.FilePicker(
-                        on_result=lambda e: save_selected_file(e)
+                        on_result=lambda e: save_selected_file(e, file_picker)
                     )
+                    file_picker_ref[0] = file_picker
                     page.overlay.append(file_picker)
                     safe_page_update(page)
                     
@@ -4969,26 +5032,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     # Fallback para Desktop
                     save_to_desktop()
             
-            def save_selected_file(e):
+            def save_selected_file(e, picker):
                 try:
+                    # Remover file picker do overlay primeiro
+                    if picker and picker in page.overlay:
+                        page.overlay.remove(picker)
+                    safe_page_update(page)
+                    
                     if e.path:
                         # Usuário selecionou um local
                         full_path = e.path
                         wb.save(full_path)
                         print(f"📁 DEBUG: Arquivo salvo em: {full_path}")
                         success_message = f"✅ Arquivo exportado com sucesso!\n{os.path.basename(full_path)}\nLocalização: {os.path.dirname(full_path)}"
-                        show_snack_bar(success_message)
+                        show_snack_bar(success_message, is_error=False, is_warning=False, page=page)
                     else:
                         # Usuário cancelou
-                        show_snack_bar("❌ Exportação cancelada pelo usuário")
+                        show_snack_bar("❌ Exportação cancelada pelo usuário", is_error=True, is_warning=False, page=page)
                         
                 except Exception as save_error:
                     print(f"❌ Erro ao salvar no local selecionado: {save_error}")
                     save_to_desktop()
-                finally:
-                    # Remover file picker do overlay
-                    page.overlay.clear()
-                    safe_page_update(page)
             
             def save_to_desktop():
                 """Fallback: salvar na Desktop"""
@@ -4998,7 +5062,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     wb.save(full_path)
                     print(f"📁 DEBUG: Arquivo salvo em: {full_path}")
                     success_message = f"✅ Arquivo exportado com sucesso!\n{suggested_filename}\nLocalização: Desktop"
-                    show_snack_bar(success_message)
+                    show_snack_bar(success_message, is_error=False, is_warning=False, page=page)
                 except Exception as desktop_error:
                     print(f"❌ Erro ao salvar na Desktop: {desktop_error}")
                     # Último fallback para pasta atual
@@ -5006,7 +5070,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         wb.save(suggested_filename)
                         print(f"📁 DEBUG: Arquivo salvo na pasta atual: {suggested_filename}")
                         fallback_message = f"✅ Arquivo exportado: {suggested_filename}\n(salvo na pasta do aplicativo)"
-                        show_snack_bar(fallback_message)
+                        show_snack_bar(fallback_message, is_error=False, is_warning=False, page=page)
                     except Exception as fallback_error:
                         print(f"❌ Erro no fallback final: {fallback_error}")
                         raise fallback_error
@@ -5017,7 +5081,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         except Exception as e:
             error_msg = f"❌ Erro ao exportar: {str(e)}"
             print(error_msg)
-            show_snack_bar(error_msg, True)
+            show_snack_bar(error_msg, True, False, page)
 
     def export_form_dialog():
         """Abre diálogo com opção para exportar suppliers ativos com ou sem notas existentes"""
@@ -5355,6 +5419,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             configs_view.visible = idx == 5
             
             # Carregar dados específicos da aba quando ela for selecionada
+            if idx == 2:  # Aba Timeline
+                # Sempre voltar para a primeira subaba (Performance Chart)
+                if timeline_tabs.current:
+                    timeline_tabs.current.selected_index = 0
+            
             if idx == 4:  # Aba Email
                 # O EmailManager já cuida de toda a inicialização
                 # Força atualização da página de forma segura
@@ -8107,8 +8176,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             (ft.Icons.PEOPLE, "Users", 3),
             (ft.Icons.LIST, "Lists", 4),
             (ft.Icons.HISTORY, "Log", 5),
-            (ft.Icons.INFO_OUTLINED, "Info", 6),
             (ft.Icons.STORAGE, "Data", 7),
+            (ft.Icons.INFO_OUTLINED, "Info", 6),
         ]
         
         if privilege == "Super Admin":
@@ -12128,7 +12197,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         ft.Column([
                             ft.Row([
                                 ft.Text("Versão:", size=13, color=theme_colors.get('on_surface_variant'), width=80),
-                                ft.Text("1.0.0", size=13, weight="w500", color=theme_colors.get('on_surface'))
+                                ft.Text(f"{APP_VERSION}", size=13, weight="w500", color=theme_colors.get('on_surface'))
                             ]),
                             ft.Row([
                                 ft.Text("Banco:", size=13, color=theme_colors.get('on_surface_variant'), width=80),
@@ -12252,6 +12321,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     q2_arrow_icon = ft.Ref[ft.Icon]()
     q3_arrow_icon = ft.Ref[ft.Icon]()
     q4_arrow_icon = ft.Ref[ft.Icon]()
+    
+    # Referências para containers dinâmicos (ALL mode)
+    yearly_cards_container = ft.Ref[ft.Row]()
+    quarterly_cards_container = ft.Ref[ft.Row]()
 
     # Referências para aba Risks
     risks_year_dropdown = ft.Ref[ft.Dropdown]()
@@ -12346,6 +12419,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             q3_avg_card.current.value = "--"
             q4_avg_card.current.value = "--"
             
+            # Ocultar cards dinâmicos e restaurar visibilidade padrão
+            if yearly_cards_container.current:
+                yearly_cards_container.current.controls = []
+            if quarterly_cards_container.current:
+                quarterly_cards_container.current.visible = True
+            if timeline_cards_refs["year"]["card"].current:
+                timeline_cards_refs["year"]["card"].current.visible = True
+            
             safe_page_update(page)
             return
         
@@ -12354,10 +12435,37 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
         calculate_overall_average(vendor_id)
         calculate_twelve_month_average(vendor_id)
-        calculate_year_average(vendor_id, year)
-        calculate_quarterly_averages(vendor_id, year)
+        
+        # Modo ALL: mostrar cards anuais, ocultar trimestrais e Year Avg
+        if year == "ALL":
+            # Ocultar cards trimestrais
+            if quarterly_cards_container.current:
+                quarterly_cards_container.current.visible = False
+            
+            # Ocultar card Year Avg (não faz sentido em modo ALL)
+            if timeline_cards_refs["year"]["card"].current:
+                timeline_cards_refs["year"]["card"].current.visible = False
+            
+            # Criar e mostrar cards anuais
+            if yearly_cards_container.current:
+                yearly_cards = create_yearly_average_cards(vendor_id)
+                yearly_cards_container.current.controls = yearly_cards
+        else:
+            # Modo ano específico: mostrar trimestrais e Year Avg, ocultar anuais
+            if quarterly_cards_container.current:
+                quarterly_cards_container.current.visible = True
+            
+            # Mostrar card Year Avg
+            if timeline_cards_refs["year"]["card"].current:
+                timeline_cards_refs["year"]["card"].current.visible = True
+            
+            if yearly_cards_container.current:
+                yearly_cards_container.current.controls = []
+            
+            calculate_year_average(vendor_id, year)
+            calculate_quarterly_averages(vendor_id, year)
+        
         update_timeline_chart(vendor_id, year)
-        update_timeline_analytics(vendor_id, year)
         
         # Atualizar a página após todos os cálculos
         safe_page_update(page)
@@ -12369,7 +12477,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
             year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
             
-            # Índice 1 = Tab de Gráficos Individuais (0=Chart, 1=Individual Charts, 2=Table, 3=Analytics)
+            # Índice 1 = Tab de Gráficos Individuais (0=Chart, 1=Individual Charts, 2=Table)
             if selected_tab_index == 1:
                 if vendor_id:
                     print(f"🔄 Atualizando Gráficos Individuais ao entrar na aba para vendor: {vendor_id}, year: {year}")
@@ -12377,15 +12485,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     safe_page_update(page)
                 else:
                     print("⚠️ Nenhum fornecedor selecionado para atualizar Gráficos Individuais")
-            
-            # Índice 3 = Tab de Analytics (0=Chart, 1=Individual Charts, 2=Table, 3=Analytics)
-            elif selected_tab_index == 3:
-                if vendor_id:
-                    print(f"🔄 Atualizando Analytics ao entrar na aba para vendor: {vendor_id}, year: {year}")
-                    update_timeline_analytics(vendor_id, year)
-                    safe_page_update(page)
-                else:
-                    print("⚠️ Nenhum fornecedor selecionado para atualizar Analytics")
         except Exception as ex:
             print(f"❌ Erro ao mudar de aba na Timeline: {ex}")
             import traceback
@@ -12417,29 +12516,51 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Buscar dados completos dos responsáveis
             responsible_data = {}
             responsible_types = [
-                ('planner', 'planner_table', 'alias'),
-                ('continuity', 'continuity_table', 'alias'),
-                ('sourcing', 'sourcing_table', 'alias'),
-                ('sqie', 'sqie_table', 'alias')
+                ('planner', 'planner_table', 'name'),
+                ('continuity', 'continuity_table', 'name'),
+                ('sourcing', 'sourcing_table', 'name'),
+                ('sqie', 'sqie_table', 'name')
             ]
             
             for resp_key, table_name, field_name in responsible_types:
                 alias_value = supplier.get(resp_key)
-                print(f"🔍 Buscando {resp_key}: alias_value = '{alias_value}'")
+                print(f"\n🔍 ===== Buscando {resp_key} =====")
+                print(f"  Name value: '{alias_value}' (tipo: {type(alias_value)})")
                 if alias_value:
                     query_resp = f"SELECT name, alias, email FROM {table_name} WHERE {field_name} = ?"
-                    print(f"  📝 Query: {query_resp} com parâmetro: {alias_value}")
+                    print(f"  📝 Query: {query_resp}")
+                    print(f"  📝 Parâmetro: {alias_value}")
                     result_resp = db_manager.query_one(query_resp, (alias_value,))
-                    print(f"  📋 Resultado da query: {result_resp}")
+                    print(f"  📋 Resultado bruto: {result_resp}")
                     print(f"  📋 Tipo do resultado: {type(result_resp)}")
+                    if result_resp:
+                        print(f"  📋 Keys do resultado: {result_resp.keys() if isinstance(result_resp, dict) else 'N/A'}")
+                        if isinstance(result_resp, dict):
+                            for key in ['name', 'alias', 'email']:
+                                val = result_resp.get(key)
+                                print(f"      - {key}: '{val}' (tipo: {type(val)}, None: {val is None})")
                     
                     if result_resp:
                         # Tentar diferentes formas de acessar os dados
                         try:
-                            # Tentar como dicionário
-                            name_val = result_resp.get('name', '') if hasattr(result_resp, 'get') else result_resp[0] if isinstance(result_resp, (list, tuple)) else ''
-                            alias_val = result_resp.get('alias', '') if hasattr(result_resp, 'get') else result_resp[1] if isinstance(result_resp, (list, tuple)) else ''
-                            email_val = result_resp.get('email', '') if hasattr(result_resp, 'get') else result_resp[2] if isinstance(result_resp, (list, tuple)) else ''
+                            # Acessar como dicionário (query_one retorna dict)
+                            if isinstance(result_resp, dict):
+                                name_val = result_resp.get('name', '') or ''
+                                alias_val = result_resp.get('alias', '') or ''
+                                email_val = result_resp.get('email', '') or ''
+                            elif isinstance(result_resp, (list, tuple)):
+                                name_val = result_resp[0] if len(result_resp) > 0 else ''
+                                alias_val = result_resp[1] if len(result_resp) > 1 else ''
+                                email_val = result_resp[2] if len(result_resp) > 2 else ''
+                            else:
+                                name_val = str(result_resp) if result_resp else ''
+                                alias_val = alias_value
+                                email_val = ''
+                            
+                            # Garantir que os valores são strings não-None
+                            name_val = str(name_val) if name_val is not None else ''
+                            alias_val = str(alias_val) if alias_val is not None else ''
+                            email_val = str(email_val) if email_val is not None else ''
                             
                             print(f"  ✅ Extraído - Nome: '{name_val}', Alias: '{alias_val}', Email: '{email_val}'")
                             
@@ -12450,6 +12571,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             }
                         except Exception as ex:
                             print(f"  ❌ Erro ao extrair dados: {ex}")
+                            import traceback
+                            traceback.print_exc()
                             responsible_data[resp_key] = {'name': alias_value, 'alias': alias_value, 'email': ''}
                     else:
                         print(f"  ⚠️ Nenhum resultado encontrado, usando alias como fallback")
@@ -12500,18 +12623,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     return ft.Container(
                         content=ft.Column([
                             ft.Row([
-                                ft.Icon(icon, size=16, color=ft.Colors.GREY_400),
-                                ft.Text(title, size=12, weight="bold", color=ft.Colors.GREY_400),
+                                ft.Icon(icon, size=18, color=ft.Colors.GREY_400),
+                                ft.Text(title, size=14, weight="bold", color=ft.Colors.GREY_400),
                             ], spacing=5),
-                            ft.Text("Não atribuído", size=11, color=ft.Colors.GREY_500, italic=True),
+                            ft.Text("Não atribuído", size=13, color=ft.Colors.GREY_500, italic=True),
                             ft.Container(expand=True),  # Espaçador para manter altura
                         ], spacing=5),
                         bgcolor=card_bg_color,
                         border=ft.border.all(1, border_color),
                         border_radius=8,
-                        padding=12,
+                        padding=14,
                         expand=True,
-                        height=120,  # Altura fixa
+                        height=130,  # Altura fixa aumentada
                     )
                 
                 name_value = data.get('name', '')
@@ -12522,21 +12645,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 card_content = [
                     ft.Row([
-                        ft.Icon(icon, size=16, color=primary_color),
-                        ft.Text(title, size=12, weight="bold", color=primary_color),
+                        ft.Icon(icon, size=18, color=primary_color),
+                        ft.Text(title, size=14, weight="bold", color=primary_color),
                     ], spacing=5),
                 ]
                 
                 # Adicionar nome (sempre uma linha, mesmo vazio)
                 card_content.append(
-                    ft.Text(name_value if name_value else "N/A", size=11, weight="w500", color=text_color)
+                    ft.Text(name_value if name_value else "N/A", size=13, weight="w500", color=text_color)
                 )
                 
                 # Adicionar alias (sempre uma linha)
                 card_content.append(
                     ft.Row([
-                        ft.Icon(ft.Icons.BADGE, size=12, color=ft.Colors.with_opacity(0.6, text_color)),
-                        ft.Text(alias_value if alias_value else "N/A", size=10, color=ft.Colors.with_opacity(0.7, text_color)),
+                        ft.Icon(ft.Icons.BADGE, size=14, color=ft.Colors.with_opacity(0.6, text_color)),
+                        ft.Text(alias_value if alias_value else "N/A", size=12, color=ft.Colors.with_opacity(0.7, text_color)),
                     ], spacing=5)
                 )
                 
@@ -12544,19 +12667,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 email_display = email_value if email_value else "Sem email"
                 card_content.append(
                     ft.Row([
-                        ft.Icon(ft.Icons.EMAIL, size=12, color=ft.Colors.with_opacity(0.6, text_color)),
-                        ft.Text(email_display, size=10, color=ft.Colors.with_opacity(0.7, text_color), selectable=True, italic=not bool(email_value)),
+                        ft.Icon(ft.Icons.EMAIL, size=14, color=ft.Colors.with_opacity(0.6, text_color)),
+                        ft.Text(email_display, size=12, color=ft.Colors.with_opacity(0.7, text_color), selectable=True, italic=not bool(email_value)),
                     ], spacing=5, tight=True)
                 )
                 
                 return ft.Container(
-                    content=ft.Column(card_content, spacing=5),
+                    content=ft.Column(card_content, spacing=6),
                     bgcolor=card_bg_color,
                     border=ft.border.all(1, border_color),
                     border_radius=8,
-                    padding=12,
+                    padding=14,
                     expand=True,
-                    height=120,  # Altura fixa
+                    height=130,  # Altura fixa aumentada
                 )
             
             # Criar conteúdo do diálogo
@@ -12827,6 +12950,95 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     card.current.value = "Error"
                 except Exception:
                     pass
+    
+    def create_yearly_average_cards(vendor_id):
+        """Cria cards com médias anuais para cada ano com dados disponíveis (modo ALL)"""
+        try:
+            if not db_conn:
+                return []
+            
+            # Buscar todos os anos disponíveis para o fornecedor
+            query = """SELECT DISTINCT year FROM supplier_score_records_table 
+                      WHERE supplier_id = ? AND total_score > 0 
+                      ORDER BY year"""
+            years_data = db_manager.query(query, (vendor_id,))
+            
+            if not years_data:
+                return []
+            
+            cards = []
+            # Obter cores do tema
+            theme_name_for_timeline = get_theme_name_from_page(page)
+            theme_colors_for_timeline = get_current_theme_colors(theme_name_for_timeline)
+            primary_color_for_timeline = theme_colors_for_timeline.get('primary')
+            
+            if theme_name_for_timeline == 'dracula':
+                timeline_card_bg = theme_colors_for_timeline.get('field_background') or "#44475A"
+                label_color = primary_color_for_timeline
+            else:
+                timeline_card_bg = None
+                label_color = ft.Colors.GREY_600
+            
+            for row in years_data:
+                year = int(row['year'])
+                
+                # Calcular média anual
+                query_avg = """SELECT AVG(total_score) as avg_score FROM supplier_score_records_table 
+                              WHERE supplier_id = ? AND year = ? AND total_score > 0"""
+                result = db_manager.query(query_avg, (vendor_id, year))
+                
+                if result and result[0]['avg_score']:
+                    avg_score = float(result[0]['avg_score'])
+                    
+                    # Comparar com ano anterior se existir
+                    prev_year = year - 1
+                    query_prev = """SELECT AVG(total_score) as avg_score FROM supplier_score_records_table 
+                                   WHERE supplier_id = ? AND year = ? AND total_score > 0"""
+                    prev_result = db_manager.query(query_prev, (vendor_id, prev_year))
+                    
+                    # Determinar ícone e cor
+                    icon_name = ft.Icons.ARROW_FORWARD
+                    icon_color = ft.Colors.GREY_400
+                    
+                    if prev_result and prev_result[0]['avg_score']:
+                        prev_avg = float(prev_result[0]['avg_score'])
+                        if avg_score > prev_avg:
+                            icon_name = ft.Icons.ARROW_UPWARD
+                            icon_color = ft.Colors.GREEN
+                        elif avg_score < prev_avg:
+                            icon_name = ft.Icons.ARROW_DOWNWARD
+                            icon_color = ft.Colors.RED
+                    
+                    # Criar card
+                    card = ft.Card(
+                        content=ft.Container(
+                            content=ft.Column([
+                                ft.Row([
+                                    ft.Text(str(year), size=11, weight="w600", color=label_color),
+                                    ft.Container(expand=True),
+                                    ft.Icon(icon_name, color=icon_color, size=16),
+                                ], spacing=6),
+                                ft.Container(expand=True),
+                                ft.Text(f"{avg_score:.1f}", size=24, weight="bold", color=primary_color_for_timeline),
+                            ], spacing=4),
+                            padding=ft.padding.all(14),
+                            bgcolor=timeline_card_bg,
+                            width=135,
+                            height=90,
+                            border_radius=10
+                        ),
+                        elevation=2,
+                        surface_tint_color=primary_color_for_timeline
+                    )
+                    cards.append(card)
+            
+            return cards
+            
+        except Exception as e:
+            print(f"Erro ao criar cards anuais: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
                 
     def find_intersection(p1, p2, target_y):
         # p1 = (x1, y1), p2 = (x2, y2)
@@ -12908,6 +13120,314 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ))
         return series
 
+    def calculate_regression(points):
+        """Calcula regressão linear para os pontos fornecidos"""
+        if not points or len(points) < 2:
+            return None
+        
+        x_values = [p[0] for p in points]
+        y_values = [p[1] for p in points]
+        n = len(x_values)
+        
+        x_mean = sum(x_values) / n
+        y_mean = sum(y_values) / n
+        
+        # Calcular variações para detectar dados sem variação
+        ss_tot = sum((y_values[i] - y_mean) ** 2 for i in range(n))
+        
+        # Se não há variação nos dados Y (todos os valores são iguais)
+        if ss_tot == 0 or ss_tot < 0.0001:  # Tolerância para erros de ponto flutuante
+            # Sem variação = não há nada para explicar = R² = 0
+            # (Matematicamente, R² é indefinido quando SS_tot = 0, mas usamos 0 por convenção)
+            return {
+                'm': 0,  # Linha horizontal (sem inclinação)
+                'b': y_mean,  # Intercepto é a própria média
+                'r_squared': 0,  # Não há variação para explicar
+                'n': n,
+                'x_values': x_values,
+                'y_values': y_values,
+                'x_mean': x_mean,
+                'y_mean': y_mean,
+                'y_predicted': [y_mean] * n  # Todos os valores previstos são a média
+            }
+        
+        numerator = sum((x_values[i] - x_mean) * (y_values[i] - y_mean) for i in range(n))
+        denominator = sum((x_values[i] - x_mean) ** 2 for i in range(n))
+        
+        if denominator == 0:
+            # Não há variação em X (todos os meses são iguais - não deveria acontecer)
+            # Mas temos variação em Y, então usamos a média
+            return {
+                'm': 0,
+                'b': y_mean,
+                'r_squared': 0,  # Não conseguimos fazer previsão baseada em X
+                'n': n,
+                'x_values': x_values,
+                'y_values': y_values,
+                'x_mean': x_mean,
+                'y_mean': y_mean,
+                'y_predicted': [y_mean] * n
+            }
+        
+        m = numerator / denominator
+        b = y_mean - m * x_mean
+        
+        y_predicted = [m * x + b for x in x_values]
+        ss_res = sum((y_values[i] - y_predicted[i]) ** 2 for i in range(n))
+        
+        # Calcular R²
+        r_squared = 1 - (ss_res / ss_tot)
+        # Garantir que R² esteja entre 0 e 1
+        r_squared = max(0, min(1, r_squared))
+        
+        return {
+            'm': m,
+            'b': b,
+            'r_squared': r_squared,
+            'n': n,
+            'x_values': x_values,
+            'y_values': y_values,
+            'x_mean': x_mean,
+            'y_mean': y_mean,
+            'y_predicted': y_predicted
+        }
+
+    def show_trend_explanation_dialog(metric_name, reg_data, metric_color=None):
+        """Mostra o diálogo de explicação da tendência para qualquer métrica"""
+        if not reg_data:
+            return
+        
+        color = metric_color or ft.Colors.BLUE
+        months_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        
+        # Criar tabela com dados observados vs preditos
+        sorted_data = sorted(zip(reg_data['x_values'], reg_data['y_values'], reg_data['y_predicted']), 
+                           key=lambda item: item[0])
+        
+        data_rows = []
+        for x, y_obs, y_pred in sorted_data:
+            residual = y_obs - y_pred
+            if abs(residual) <= 0.5:
+                residual_color = ft.Colors.GREY
+            elif residual > 0:
+                residual_color = ft.Colors.GREEN
+            else:
+                residual_color = ft.Colors.RED
+            
+            data_rows.append(
+                ft.DataRow(cells=[
+                    ft.DataCell(ft.Text(months_labels[int(x) - 1], size=14)),
+                    ft.DataCell(ft.Text(f"{y_obs:.2f}", size=14)),
+                    ft.DataCell(ft.Text(f"{y_pred:.2f}", size=14)),
+                    ft.DataCell(ft.Text(f"{residual:+.2f}", size=14, color=residual_color)),
+                ])
+            )
+        
+        # Determinar interpretação da tendência
+        if reg_data['m'] > 0.05:
+            trend_explanation = "Os scores estão melhorando ao longo do tempo"
+            trend_icon = "📈"
+            trend_color_dialog = ft.Colors.GREEN_600
+        elif reg_data['m'] < -0.05:
+            trend_explanation = "Os scores estão caindo ao longo do tempo"
+            trend_icon = "📉"
+            trend_color_dialog = ft.Colors.RED_600
+        else:
+            trend_explanation = "Os scores estão relativamente estáveis"
+            trend_icon = "➡️"
+            trend_color_dialog = ft.Colors.BLUE_600
+        
+        # Interpretação do R² - mede o quanto a equação explica a variação dos dados
+        r_squared_pct = reg_data['r_squared'] * 100
+        
+        # Caso especial: R² = 0 pode significar que não há variação nos dados
+        if r_squared_pct < 0.1:  # Praticamente zero
+            # Verificar se todos os Y são iguais (sem variação)
+            y_values_set = set(reg_data['y_values'])
+            if len(y_values_set) == 1:
+                r_squared_quality = "0%"
+                r_squared_explanation = "Não há variação nos dados - todos os valores são constantes"
+            else:
+                r_squared_quality = "0-19%"
+                r_squared_explanation = "A equação não explica quase nada da variação dos dados observados"
+        elif r_squared_pct >= 80:
+            r_squared_quality = "80-100%"
+            r_squared_explanation = "A equação explica muito bem a variação dos dados observados"
+        elif r_squared_pct >= 60:
+            r_squared_quality = "60-79%"
+            r_squared_explanation = "A equação explica boa parte da variação dos dados observados"
+        elif r_squared_pct >= 40:
+            r_squared_quality = "40-59%"
+            r_squared_explanation = "A equação explica parte da variação dos dados observados"
+        elif r_squared_pct >= 20:
+            r_squared_quality = "20-39%"
+            r_squared_explanation = "A equação explica pouca variação dos dados observados"
+        else:
+            r_squared_quality = "0-19%"
+            r_squared_explanation = "A equação não explica quase nada da variação dos dados observados"
+        
+        dialog_content = ft.Column([
+            ft.Text(f"Como calcular a tendência - {metric_name}", size=22, weight="bold"),
+            ft.Divider(),
+            
+            # Resumo em linguagem simples
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Text(trend_icon, size=32),
+                        ft.Column([
+                            ft.Text("Resumo:", size=18, weight="bold", color=color),
+                            ft.Text(trend_explanation, size=16, color=trend_color_dialog, weight="bold"),
+                        ], spacing=2),
+                    ], spacing=10),
+                    ft.Container(height=8),
+                    ft.Text(f"R² (Coeficiente de Determinação): {r_squared_pct:.1f}%", 
+                           size=15, weight="bold"),
+                    ft.Text("👉 Mede o quanto a equação consegue explicar a variação dos dados", 
+                           size=14, italic=True, color=ft.Colors.BLUE_700),
+                    ft.Text(r_squared_explanation, size=14, italic=True, color=ft.Colors.GREY_700),
+                    ft.Container(height=5),
+                    ft.Row([
+                        ft.Text("• R² = 1 (100%)", size=13, weight="bold"),
+                        ft.Text("→ explica toda variação", size=13, italic=True, color=ft.Colors.GREY_600),
+                    ], spacing=5),
+                    ft.Row([
+                        ft.Text("• R² = 0 (0%)", size=13, weight="bold"),
+                        ft.Text("→ não explica nada", size=13, italic=True, color=ft.Colors.GREY_600),
+                    ], spacing=5),
+                    
+                    # Indicador visual do R² na escala 0 a 1
+                    ft.Container(height=15),
+                    ft.Text("Indicador de R²:", size=13, weight="bold"),
+                    ft.Container(height=5),
+                    
+                    # Escala visual de 0 a 1 (largura total da janela)
+                    ft.Column([
+                        # Marcador de posição do R² atual (acima da barra)
+                        ft.Container(
+                            content=ft.Stack([
+                                # Indicador posicionado
+                                ft.Container(
+                                    content=ft.Column([
+                                        ft.Container(
+                                            content=ft.Text(f"{reg_data['r_squared']:.3f}", size=12, weight="bold", color=ft.Colors.WHITE),
+                                            bgcolor=ft.Colors.BLUE_700,
+                                            padding=ft.padding.symmetric(horizontal=8, vertical=3),
+                                            border_radius=4,
+                                        ),
+                                        ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=28, color=ft.Colors.BLUE_700),
+                                    ], spacing=-5, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                                    left=max(0, min(480, reg_data['r_squared'] * 520 - 25)),  # Limita para não sair da barra
+                                    top=10,
+                                ),
+                            ], width=520, height=50),
+                            margin=ft.margin.only(bottom=0),
+                        ),
+                        
+                        # Barra de gradiente (vermelho → amarelo → verde)
+                        ft.Container(
+                            width=520,
+                            height=30,
+                            border_radius=5,
+                            border=ft.border.all(2, ft.Colors.BLACK),
+                            gradient=ft.LinearGradient(
+                                begin=ft.alignment.center_left,
+                                end=ft.alignment.center_right,
+                                colors=[
+                                    ft.Colors.RED_700,      # 0.0
+                                    ft.Colors.ORANGE_700,   # 0.25
+                                    ft.Colors.YELLOW_700,   # 0.5
+                                    ft.Colors.LIGHT_GREEN,  # 0.75
+                                    ft.Colors.GREEN_700,    # 1.0
+                                ],
+                            ),
+                        ),
+                        
+                        # Labels da escala (0.0, 0.25, 0.50, 0.75, 1.0)
+                        ft.Container(height=5),
+                        ft.Row([
+                            ft.Text("0.0", size=11, weight="bold"),
+                            ft.Container(expand=True),
+                            ft.Text("0.25", size=11, weight="bold"),
+                            ft.Container(expand=True),
+                            ft.Text("0.50", size=11, weight="bold"),
+                            ft.Container(expand=True),
+                            ft.Text("0.75", size=11, weight="bold"),
+                            ft.Container(expand=True),
+                            ft.Text("1.0", size=11, weight="bold"),
+                        ], width=520),
+                        
+                        # Legendas dos extremos
+                        ft.Container(height=3),
+                        ft.Row([
+                            ft.Text("Nenhuma explicação", size=10, italic=True, color=ft.Colors.GREY_600),
+                            ft.Container(expand=True),
+                            ft.Text("Explicação perfeita", size=10, italic=True, color=ft.Colors.GREY_600),
+                        ], width=520),
+                    ], spacing=0),
+                    
+                ], spacing=5),
+                padding=10,
+                bgcolor=ft.Colors.with_opacity(0.05, color),
+                border_radius=8,
+            ),
+            
+            ft.Container(height=10),
+            ft.Text("📊 Informações Básicas", size=17, weight="bold"),
+            ft.Container(
+                content=ft.Column([
+                    ft.Text(f"Equação da linha: y = {reg_data['m']:.4f}x + {reg_data['b']:.2f}", size=14),
+                    ft.Text(f"Inclinação (m): {reg_data['m']:.4f}", size=13),
+                    ft.Text(f"Intercepto (b): {reg_data['b']:.2f}", size=13),
+                    ft.Text(f"Número de pontos (n): {reg_data['n']}", size=13),
+                    ft.Text(f"Média dos valores X: {reg_data['x_mean']:.2f}", size=13),
+                    ft.Text(f"Média dos valores Y: {reg_data['y_mean']:.2f}", size=13),
+                ], spacing=5),
+                padding=10,
+                bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.BLUE),
+                border_radius=8,
+            ),
+            
+            ft.Container(height=10),
+            ft.Text("📈 Previsão vs Realidade", size=17, weight="bold"),
+            ft.Container(
+                content=ft.DataTable(
+                    columns=[
+                        ft.DataColumn(ft.Text("Mês", size=14, weight="bold")),
+                        ft.DataColumn(ft.Text("Score Real", size=14, weight="bold")),
+                        ft.DataColumn(ft.Text("Previsão", size=14, weight="bold")),
+                        ft.DataColumn(ft.Text("Diferença", size=14, weight="bold")),
+                    ],
+                    rows=data_rows,
+                ),
+                border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                border_radius=8,
+                padding=10,
+            ),
+            ft.Column([
+                ft.Text("Legenda:", size=13, weight="bold", color=ft.Colors.GREY_700),
+                ft.Text("🟢 Verde = Real superou a previsão (diferença > +0.5)", 
+                       size=13, color=ft.Colors.GREY_600, italic=True),
+                ft.Text("⚪ Cinza = Próximo da previsão (diferença entre -0.5 e +0.5)", 
+                       size=13, color=ft.Colors.GREY_600, italic=True),
+                ft.Text("🔴 Vermelho = Real abaixo da previsão (diferença < -0.5)", 
+                       size=13, color=ft.Colors.GREY_600, italic=True),
+            ], spacing=3),
+        ], spacing=10, scroll=ft.ScrollMode.AUTO, height=550)
+        
+        dialog = ft.AlertDialog(
+            title=ft.Row([
+                ft.Icon(ft.Icons.SCHOOL, color=color),
+                ft.Text("Como Funciona a Análise", color=color),
+            ], spacing=8),
+            content=dialog_content,
+            actions=[
+                ft.TextButton("Entendi", on_click=lambda e: page.close(dialog))
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.open(dialog)
+
     def update_timeline_chart(vendor_id, year=None):
         """Atualiza o gráfico de linha baseado no vendor, ano e métricas selecionadas."""
         try:
@@ -12926,12 +13446,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
 
             target_value = target_slider.value if target_slider and target_slider.value is not None else 5.0
-            analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
-
-            query = "SELECT month, total_score, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
-            results = db_manager.query(query, (vendor_id, analysis_year))
-
-            monthly_data = {m: {} for m in range(1, 13)}
+            
+            # Verificar se é "Todo o Período" ou um ano específico
+            if year == "ALL":
+                query = "SELECT month, year, total_score, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? ORDER BY year, month"
+                results = db_manager.query(query, (vendor_id,))
+                # Para ALL: usar lista simples, cada item é um mês em ordem cronológica
+                monthly_data = []
+            else:
+                analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
+                query = "SELECT month, total_score, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
+                results = db_manager.query(query, (vendor_id, analysis_year))
+                monthly_data = {m: {} for m in range(1, 13)}
+            
             for row in results:
                 month = row['month']
                 total = row['total_score']
@@ -12941,21 +13468,44 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 package = row['quality_package']
                 try:
                     month_int = int(month)
-                    monthly_data[month_int] = {
-                        "total_score": float(total) if total is not None else None, "otif": float(otif) if otif is not None else None,
-                        "nil": float(nil) if nil is not None else None, "pickup": float(pickup) if pickup is not None else None,
-                        "package": float(package) if package is not None else None,
-                    }
+                    
+                    if year == "ALL":
+                        # Para ALL: adicionar cada mês encontrado sequencialmente
+                        year_val = int(row['year'])
+                        monthly_data.append({
+                            "total_score": float(total) if total is not None else None,
+                            "otif": float(otif) if otif is not None else None,
+                            "nil": float(nil) if nil is not None else None,
+                            "pickup": float(pickup) if pickup is not None else None,
+                            "package": float(package) if package is not None else None,
+                            "year": year_val,
+                            "month": month_int
+                        })
+                    else:
+                        monthly_data[month_int] = {
+                            "total_score": float(total) if total is not None else None,
+                            "otif": float(otif) if otif is not None else None,
+                            "nil": float(nil) if nil is not None else None,
+                            "pickup": float(pickup) if pickup is not None else None,
+                            "package": float(package) if package is not None else None,
+                        }
                 except (ValueError, TypeError):
                     print(f"⚠️ Dados inválidos ignorados: month='{month}'")
                     continue
 
-            if not any(data.get("total_score") is not None for data in monthly_data.values()):
+            # Verificar se há dados
+            if year == "ALL":
+                has_data = any(data.get("total_score") is not None for data in monthly_data)
+            else:
+                has_data = any(data.get("total_score") is not None for data in monthly_data.values())
+            
+            if not has_data:
+                period_text = "todo o período" if year == "ALL" else str(analysis_year)
                 timeline_chart_container.current.content = ft.Container(
                     content=ft.Column([
                         ft.Icon(ft.Icons.CALENDAR_TODAY, size=48, color=ft.Colors.GREY_400),
                         ft.Container(height=10),
-                        ft.Text(f"Nenhum dado de score encontrado para {analysis_year}", 
+                        ft.Text(f"Nenhum dado de score encontrado para {period_text}", 
                                size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
                     alignment=ft.alignment.center,
@@ -12966,14 +13516,29 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
             data_series = []
             series_names = []
-            total_score_points = [(m - 1, d["total_score"]) for m, d in monthly_data.items() if d and d.get("total_score") is not None]
-            if total_score_points:
-                colored_series = create_colored_line_series(total_score_points, target_value)
+            
+            if year == "ALL":
+                # Para ALL: usar índice 0, 1, 2, 3... para cada mês encontrado
+                total_score_points_chart = [(idx, d["total_score"]) for idx, d in enumerate(monthly_data) if d.get("total_score") is not None]
+                total_score_points = total_score_points_chart  # Mesmos valores para regressão
+            else:
+                # Para um ano específico, usar índice 0-11 para gráfico e 1-12 para regressão
+                total_score_points_chart = [(m - 1, d["total_score"]) for m, d in monthly_data.items() if d and d.get("total_score") is not None]
+                total_score_points = [(m, d["total_score"]) for m, d in monthly_data.items() if d and d.get("total_score") is not None]
+            
+            if total_score_points_chart:
+                colored_series = create_colored_line_series(total_score_points_chart, target_value)
                 data_series.extend(colored_series)
                 series_names.extend(["Total Score"] * len(colored_series))
 
             # Adicionar linha de target
-            target_line_points = [ft.LineChartDataPoint(i, target_value, tooltip=f"Target - {target_value}") for i in range(12)]
+            if year == "ALL":
+                # Para ALL: linha de target ao longo de todos os meses encontrados
+                num_points = len(monthly_data)
+                target_line_points = [ft.LineChartDataPoint(i, target_value, tooltip=f"Target - {target_value}") for i in range(num_points)]
+            else:
+                # Para um ano específico, linha de target nos 12 meses
+                target_line_points = [ft.LineChartDataPoint(i, target_value, tooltip=f"Target - {target_value}") for i in range(12)]
             data_series.append(ft.LineChartData(
                 data_points=target_line_points,
                 color=ft.Colors.AMBER_700,
@@ -12991,7 +13556,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             }
             for key, details in additional_scores_map.items():
                 if hasattr(details["ref"], 'current') and details["ref"].current and details["ref"].current.value:
-                    points = [ft.LineChartDataPoint(m - 1, d[key], tooltip=f"{details['tooltip']} - {d[key]}") for m, d in monthly_data.items() if d and d.get(key) is not None]
+                    if year == "ALL":
+                        points = [ft.LineChartDataPoint(idx, d[key], tooltip=f"{details['tooltip']} - {d[key]}") for idx, d in enumerate(monthly_data) if d.get(key) is not None]
+                    else:
+                        points = [ft.LineChartDataPoint(m - 1, d[key], tooltip=f"{details['tooltip']} - {d[key]}") for m, d in monthly_data.items() if d and d.get(key) is not None]
                     if points:
                         data_series.append(ft.LineChartData(data_points=points, color=details["color"], stroke_width=2, curved=False, dash_pattern=[3, 3]))
                         series_names.append(details["tooltip"])
@@ -13005,34 +13573,42 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     return f"{name} - {value}"
                 return f"{point.y}"
             
-            line_chart = ft.LineChart(
-                data_series=data_series,
-                border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
-                horizontal_grid_lines=ft.ChartGridLines(
-                    interval=1, 
-                    color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE), 
-                    width=1
-                ),
-                vertical_grid_lines=ft.ChartGridLines(
-                    interval=1, 
-                    color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE), 
-                    width=1
-                ),
-                left_axis=ft.ChartAxis(
-                    labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=10)) for i in range(0, 11, 1)], 
-                    labels_size=30
-                ),
-                bottom_axis=ft.ChartAxis(
-                    labels=[ft.ChartAxisLabel(value=i, label=ft.Text(label, size=10, weight=ft.FontWeight.BOLD)) for i, label in enumerate(months_labels)], 
-                    labels_size=30
-                ),
-                tooltip_bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.BLUE_GREY),
-                min_y=0, 
-                max_y=10, 
-                min_x=0, 
-                max_x=11, 
-                expand=True,
-            )
+            # Configurar eixos baseado no período
+            if year == "ALL":
+                # Para ALL: criar labels para cada mês em ordem cronológica
+                bottom_labels = []
+                for idx, data in enumerate(monthly_data):
+                    year_val = data.get("year", 2025)
+                    month_val = data.get("month", 1)
+                    label_text = f"{months_labels[month_val-1]}/{str(year_val)[2:]}"
+                    bottom_labels.append(ft.ChartAxisLabel(value=idx, label=ft.Text(label_text, size=8, weight=ft.FontWeight.BOLD)))
+                
+                max_index = len(monthly_data) - 1 if monthly_data else 0
+                
+                line_chart = ft.LineChart(
+                    data_series=data_series,
+                    border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                    horizontal_grid_lines=ft.ChartGridLines(interval=1, color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE), width=1),
+                    vertical_grid_lines=ft.ChartGridLines(interval=1, color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE), width=1),
+                    left_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=10)) for i in range(0, 11, 1)], labels_size=30),
+                    bottom_axis=ft.ChartAxis(labels=bottom_labels, labels_size=40),
+                    tooltip_bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.BLUE_GREY),
+                    min_y=0, max_y=10, min_x=0, max_x=max_index,
+                    expand=True,
+                )
+            else:
+                # Para um ano específico, usar labels mensais normais
+                line_chart = ft.LineChart(
+                    data_series=data_series,
+                    border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                    horizontal_grid_lines=ft.ChartGridLines(interval=1, color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE), width=1),
+                    vertical_grid_lines=ft.ChartGridLines(interval=1, color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE), width=1),
+                    left_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=10)) for i in range(0, 11, 1)], labels_size=30),
+                    bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(label, size=10, weight=ft.FontWeight.BOLD)) for i, label in enumerate(months_labels)], labels_size=30),
+                    tooltip_bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.BLUE_GREY),
+                    min_y=0, max_y=10, min_x=0, max_x=11,
+                    expand=True,
+                )
             # Criar legenda
             legend_items = []
             if total_score_points:
@@ -13042,10 +13618,58 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 if hasattr(details["ref"], 'current') and details["ref"].current and details["ref"].current.value:
                     legend_items.append(ft.Row([ft.Container(width=20, height=10, bgcolor=details["color"]), ft.Text(details["tooltip"], size=12)], spacing=5))
             
+            # Calcular regressão para Total Score e criar análise
+            total_score_regression = calculate_regression(total_score_points) if total_score_points and len(total_score_points) >= 2 else None
+            
+            # Criar botão e informações de análise
+            analysis_row_items = [ft.Row(legend_items, spacing=10, wrap=True)]
+            
+            if total_score_regression:
+                # Determinar tendência
+                if total_score_regression['m'] > 0.05:
+                    trend_text = "↗ Crescente"
+                    trend_color = ft.Colors.GREEN_600
+                elif total_score_regression['m'] < -0.05:
+                    trend_text = "↘ Decrescente"
+                    trend_color = ft.Colors.RED_600
+                else:
+                    trend_text = "→ Estável"
+                    trend_color = ft.Colors.BLUE_600
+                
+                # Adicionar divider
+                analysis_row_items.append(ft.VerticalDivider(width=1, color=ft.Colors.with_opacity(0.3, ft.Colors.ON_SURFACE)))
+                
+                # Adicionar informações da análise
+                analysis_row_items.extend([
+                    ft.Text(f"y={total_score_regression['m']:.3f}x+{total_score_regression['b']:.2f}", 
+                           size=11, weight="w500",
+                           tooltip="Equação da linha de tendência"),
+                    ft.Text(trend_text, size=11, color=trend_color, weight="bold",
+                           tooltip="Tendência dos dados"),
+                    ft.Text(f"R²={total_score_regression['r_squared']:.3f}", 
+                           size=11, color=ft.Colors.GREY,
+                           tooltip="Coeficiente de determinação"),
+                ])
+                
+                # Função para mostrar dialog
+                def show_total_score_info(e):
+                    show_trend_explanation_dialog("Total Score", total_score_regression, ft.Colors.GREEN_600)
+                
+                # Adicionar botão de info
+                analysis_row_items.append(
+                    ft.IconButton(
+                        icon=ft.Icons.INFO_OUTLINE,
+                        icon_size=18,
+                        icon_color=ft.Colors.GREEN_600,
+                        tooltip="Como funciona a análise de tendência",
+                        on_click=show_total_score_info,
+                    )
+                )
+            
             chart_with_legend = ft.Column([
                 line_chart,
                 ft.Container(height=10),
-                ft.Row(legend_items, spacing=10, alignment=ft.MainAxisAlignment.START, wrap=True)
+                ft.Row(analysis_row_items, spacing=10, alignment=ft.MainAxisAlignment.START)
             ], spacing=5, expand=True)
             
             timeline_chart_container.current.content = chart_with_legend
@@ -13083,12 +13707,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 timeline_individual_charts_container.current.update()
                 return
 
-            analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
+            # Obter valor do target
+            target_value = target_slider.value if target_slider and target_slider.value is not None else 5.0
 
-            query = "SELECT month, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
-            results = db_manager.query(query, (vendor_id, analysis_year))
-
-            monthly_data = {m: {} for m in range(1, 13)}
+            # Verificar se é "Todo o Período" ou um ano específico
+            if year == "ALL":
+                query = "SELECT month, year, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? ORDER BY year, month"
+                results = db_manager.query(query, (vendor_id,))
+                # Para ALL: usar lista simples
+                monthly_data = []
+            else:
+                analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
+                query = "SELECT month, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
+                results = db_manager.query(query, (vendor_id, analysis_year))
+                monthly_data = {m: {} for m in range(1, 13)}
+            
             for row in results:
                 month = row['month']
                 otif = row['otif']
@@ -13097,22 +13730,42 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 package = row['quality_package']
                 try:
                     month_int = int(month)
-                    monthly_data[month_int] = {
-                        "otif": float(otif) if otif is not None else None,
-                        "nil": float(nil) if nil is not None else None,
-                        "pickup": float(pickup) if pickup is not None else None,
-                        "package": float(package) if package is not None else None,
-                    }
+                    
+                    if year == "ALL":
+                        # Para ALL: adicionar cada mês sequencialmente
+                        year_val = int(row['year'])
+                        monthly_data.append({
+                            "otif": float(otif) if otif is not None else None,
+                            "nil": float(nil) if nil is not None else None,
+                            "pickup": float(pickup) if pickup is not None else None,
+                            "package": float(package) if package is not None else None,
+                            "year": year_val,
+                            "month": month_int
+                        })
+                    else:
+                        monthly_data[month_int] = {
+                            "otif": float(otif) if otif is not None else None,
+                            "nil": float(nil) if nil is not None else None,
+                            "pickup": float(pickup) if pickup is not None else None,
+                            "package": float(package) if package is not None else None,
+                        }
                 except (ValueError, TypeError):
                     print(f"⚠️ Dados inválidos ignorados: month='{month}'")
                     continue
 
-            if not any(any(d.values()) for d in monthly_data.values() if d):
+            # Verificar se há dados
+            if year == "ALL":
+                has_data = any(any(d.values()) for d in monthly_data if d)
+            else:
+                has_data = any(any(d.values()) for d in monthly_data.values() if d)
+            
+            if not has_data:
+                period_text = "todo o período" if year == "ALL" else str(analysis_year)
                 timeline_individual_charts_container.current.content = ft.Container(
                     content=ft.Column([
                         ft.Icon(ft.Icons.CALENDAR_TODAY, size=48, color=ft.Colors.GREY_400),
                         ft.Container(height=10),
-                        ft.Text(f"Nenhum dado encontrado para {analysis_year}", 
+                        ft.Text(f"Nenhum dado encontrado para {period_text}", 
                                size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
                     alignment=ft.alignment.center,
@@ -13125,12 +13778,59 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             # Função para criar um gráfico individual
             def create_individual_chart(metric_key, metric_name, color):
-                points = [
-                    ft.LineChartDataPoint(m - 1, d[metric_key], tooltip=f"{metric_name} - {d[metric_key]}")
-                    for m, d in monthly_data.items() if d and d.get(metric_key) is not None
-                ]
+                # Criar pontos de dados para cada mês e calcular média
+                data_points = []
+                values_list = []
+                points = []
                 
-                if not points:
+                # Preparar labels do eixo X baseado em ano ALL ou específico
+                bottom_labels = []
+                
+                if year == "ALL":
+                    # Para ALL: usar índice 0, 1, 2... para cada mês encontrado
+                    for idx, d in enumerate(monthly_data):
+                        if d.get(metric_key) is not None:
+                            value = d[metric_key]
+                            values_list.append(value)
+                            points.append((idx, value))
+                            
+                            # Obter ano e mês do dado
+                            year_val = d.get("year", 2025)
+                            month_val = d.get("month", 1)
+                            label_text = f"{months_labels[month_val-1]}/{str(year_val)[2:]}"
+                            
+                            bottom_labels.append(ft.ChartAxisLabel(
+                                value=idx,
+                                label=ft.Text(label_text, size=8, weight=ft.FontWeight.BOLD)
+                            ))
+                            
+                            data_points.append(
+                                ft.LineChartDataPoint(
+                                    idx,
+                                    value,
+                                    tooltip=f"{metric_name} ({label_text}) - {value}"
+                                )
+                            )
+                else:
+                    # Para ano específico, usar índices 0-11 (meses)
+                    for m, d in monthly_data.items():
+                        if d and d.get(metric_key) is not None:
+                            value = d[metric_key]
+                            values_list.append(value)
+                            points.append((m, value))
+                            data_points.append(
+                                ft.LineChartDataPoint(
+                                    m - 1,
+                                    value,
+                                    tooltip=f"{metric_name} - {value}"
+                                )
+                            )
+                    
+                    # Labels fixos para meses
+                    bottom_labels = [ft.ChartAxisLabel(value=i, label=ft.Text(label, size=10, weight=ft.FontWeight.BOLD)) 
+                                   for i, label in enumerate(months_labels)]
+                
+                if not data_points:
                     return ft.Container(
                         content=ft.Column([
                             ft.Text(metric_name, size=14, weight="bold", text_align=ft.TextAlign.CENTER),
@@ -13143,71 +13843,447 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         expand=True,
                     )
                 
+                # Calcular média
+                average = sum(values_list) / len(values_list) if values_list else 0
+                
+                # Criar linha principal do gráfico
+                line_data = ft.LineChartData(
+                    data_points=data_points,
+                    color=color,
+                    stroke_width=3,
+                    curved=False,
+                )
+                
+                # Adicionar linha de target baseada no modo (ALL ou ano específico)
+                if year == "ALL":
+                    # Para ALL, a linha de target vai através de todos os pontos
+                    num_points = len(monthly_data)
+                    target_line_points = [ft.LineChartDataPoint(i, target_value, tooltip=f"Target - {target_value}") 
+                                        for i in range(num_points)]
+                    max_x_value = num_points - 1 if num_points > 0 else 0
+                    min_x_value = 0
+                else:
+                    # Para ano específico, target de 0 a 11
+                    target_line_points = [ft.LineChartDataPoint(i, target_value, tooltip=f"Target - {target_value}") 
+                                        for i in range(12)]
+                    max_x_value = 11
+                    min_x_value = 0
+                
+                target_line_data = ft.LineChartData(
+                    data_points=target_line_points,
+                    color=ft.Colors.AMBER_700,
+                    stroke_width=2,
+                    curved=False,
+                    dash_pattern=[5, 5]
+                )
+                
                 chart = ft.LineChart(
-                    data_series=[
-                        ft.LineChartData(
-                            data_points=points,
-                            color=color,
-                            stroke_width=3,
-                            curved=True,
-                            stroke_cap_round=True,
-                            below_line_gradient=ft.LinearGradient(
-                                begin=ft.alignment.top_center,
-                                end=ft.alignment.bottom_center,
-                                colors=[ft.Colors.with_opacity(0.3, color), ft.Colors.with_opacity(0.0, color)]
-                            )
-                        )
-                    ],
+                    data_series=[line_data, target_line_data],
                     border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
-                    horizontal_grid_lines=ft.ChartGridLines(
-                        interval=1,
-                        color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE),
-                        width=1
-                    ),
                     vertical_grid_lines=ft.ChartGridLines(
                         interval=1,
                         color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE),
                         width=1
                     ),
                     left_axis=ft.ChartAxis(
-                        labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=9)) for i in range(0, 11, 2)],
-                        labels_size=25
+                        labels=[ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=10)) for i in range(0, 11, 1)],
+                        labels_size=30
                     ),
                     bottom_axis=ft.ChartAxis(
-                        labels=[ft.ChartAxisLabel(value=i, label=ft.Text(label, size=8)) for i, label in enumerate(months_labels)],
-                        labels_size=25
+                        labels=bottom_labels,
+                        labels_size=30
                     ),
                     tooltip_bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.BLUE_GREY),
                     min_y=0,
                     max_y=10,
-                    min_x=0,
-                    max_x=11,
+                    min_x=min_x_value,
+                    max_x=max_x_value,
                     expand=True,
                 )
                 
-                return ft.Container(
+                # Calcular regressão linear
+                regression = None
+                trend_text = ""
+                trend_color = ft.Colors.GREY
+                
+                if len(points) >= 2:
+                    x_values = [p[0] for p in points]
+                    y_values = [p[1] for p in points]
+                    n = len(x_values)
+                    
+                    x_mean = sum(x_values) / n
+                    y_mean = sum(y_values) / n
+                    
+                    numerator = sum((x_values[i] - x_mean) * (y_values[i] - y_mean) for i in range(n))
+                    denominator = sum((x_values[i] - x_mean) ** 2 for i in range(n))
+                    
+                    if denominator != 0:
+                        m = numerator / denominator
+                        b = y_mean - m * x_mean
+                        
+                        y_predicted = [m * x + b for x in x_values]
+                        ss_res = sum((y_values[i] - y_predicted[i]) ** 2 for i in range(n))
+                        ss_tot = sum((y_values[i] - y_mean) ** 2 for i in range(n))
+                        r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+                        
+                        regression = {'m': m, 'b': b, 'r_squared': r_squared}
+                        
+                        # Determinar tendência
+                        if m > 0.05:
+                            trend_text = "↗ Crescente"
+                            trend_color = ft.Colors.GREEN_600
+                        elif m < -0.05:
+                            trend_text = "↘ Decrescente"
+                            trend_color = ft.Colors.RED_600
+                        else:
+                            trend_text = "→ Estável"
+                            trend_color = ft.Colors.BLUE_600
+                
+                # Preparar dados de regressão completos para usar na função existente
+                regression_data = None
+                if regression and len(points) >= 2:
+                    x_values = [p[0] for p in points]
+                    y_values = [p[1] for p in points]
+                    y_predicted = [regression['m'] * x + regression['b'] for x in x_values]
+                    
+                    x_mean = sum(x_values) / len(x_values)
+                    y_mean = sum(y_values) / len(y_values)
+                    
+                    regression_data = {
+                        'm': regression['m'],
+                        'b': regression['b'],
+                        'r_squared': regression['r_squared'],
+                        'n': len(points),
+                        'x_values': x_values,
+                        'y_values': y_values,
+                        'x_mean': x_mean,
+                        'y_mean': y_mean,
+                        'y_predicted': y_predicted
+                    }
+                
+                # Função que cria o diálogo de detalhes (igual à aba Analytics)
+                def create_info_dialog_for_metric(metric, reg_data):
+                    def show_info(e):
+                        if not reg_data:
+                            return
+                        
+                        months_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+                        
+                        # Criar tabela com dados observados vs preditos
+                        sorted_data = sorted(zip(reg_data['x_values'], reg_data['y_values'], reg_data['y_predicted']), 
+                                           key=lambda item: item[0])
+                        
+                        data_rows = []
+                        for x, y_obs, y_pred in sorted_data:
+                            residual = y_obs - y_pred
+                            if abs(residual) <= 0.5:
+                                residual_color = ft.Colors.GREY
+                            elif residual > 0:
+                                residual_color = ft.Colors.GREEN
+                            else:
+                                residual_color = ft.Colors.RED
+                            
+                            # Determinar o label do período
+                            if year == "ALL":
+                                # Para ALL, x é o índice sequencial (0, 1, 2...)
+                                x_int = int(x)
+                                if 0 <= x_int < len(monthly_data):
+                                    year_val = monthly_data[x_int].get("year", 2025)
+                                    month_val = monthly_data[x_int].get("month", 1)
+                                    period_label = f"{months_labels[month_val-1]}/{str(year_val)[2:]}"
+                                else:
+                                    period_label = f"Idx {x_int}"
+                            else:
+                                # Para ano específico, x é o mês (1-12)
+                                period_label = months_labels[int(x) - 1]
+                            
+                            data_rows.append(
+                                ft.DataRow(cells=[
+                                    ft.DataCell(ft.Text(period_label, size=14)),
+                                    ft.DataCell(ft.Text(f"{y_obs:.2f}", size=14)),
+                                    ft.DataCell(ft.Text(f"{y_pred:.2f}", size=14)),
+                                    ft.DataCell(ft.Text(f"{residual:+.2f}", size=14, color=residual_color)),
+                                ])
+                            )
+                        
+                        # Determinar interpretação da tendência
+                        if reg_data['m'] > 0.05:
+                            trend_explanation = "Os scores estão melhorando ao longo do tempo"
+                            trend_icon = "📈"
+                            trend_color_dialog = ft.Colors.GREEN_600
+                        elif reg_data['m'] < -0.05:
+                            trend_explanation = "Os scores estão caindo ao longo do tempo"
+                            trend_icon = "📉"
+                            trend_color_dialog = ft.Colors.RED_600
+                        else:
+                            trend_explanation = "Os scores estão relativamente estáveis"
+                            trend_icon = "➡️"
+                            trend_color_dialog = ft.Colors.BLUE_600
+                        
+                        # Interpretação do R² - mede o quanto a equação explica a variação dos dados
+                        r_squared_pct = reg_data['r_squared'] * 100
+                        if r_squared_pct >= 80:
+                            r_squared_quality = "80-100%"
+                            r_squared_explanation = "A equação explica muito bem a variação dos dados observados"
+                        elif r_squared_pct >= 60:
+                            r_squared_quality = "60-79%"
+                            r_squared_explanation = "A equação explica boa parte da variação dos dados observados"
+                        elif r_squared_pct >= 40:
+                            r_squared_quality = "40-59%"
+                            r_squared_explanation = "A equação explica parte da variação dos dados observados"
+                        elif r_squared_pct >= 20:
+                            r_squared_quality = "20-39%"
+                            r_squared_explanation = "A equação explica pouca variação dos dados observados"
+                        else:
+                            r_squared_quality = "0-19%"
+                            r_squared_explanation = "A equação não explica quase nada da variação dos dados observados"
+                        
+                        dialog_content = ft.Column([
+                            ft.Text(f"Como calcular a tendência - {metric}", size=22, weight="bold"),
+                            ft.Divider(),
+                            
+                            # Resumo em linguagem simples
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Text(trend_icon, size=32),
+                                        ft.Column([
+                                            ft.Text("Resumo:", size=18, weight="bold", color=color),
+                                            ft.Text(trend_explanation, size=16, color=trend_color_dialog, weight="bold"),
+                                        ], spacing=2),
+                                    ], spacing=10),
+                                    ft.Container(height=8),
+                                    ft.Text(f"R² (Coeficiente de Determinação): {r_squared_pct:.1f}%", 
+                                           size=15, weight="bold"),
+                                    ft.Text("👉 Mede o quanto a equação consegue explicar a variação dos dados", 
+                                           size=14, italic=True, color=ft.Colors.BLUE_700),
+                                    ft.Text(r_squared_explanation, size=14, italic=True, color=ft.Colors.GREY_700),
+                                    ft.Container(height=4),
+                                    ft.Text("• R² = 1 (100%) → a equação explica toda a variação", 
+                                           size=13, color=ft.Colors.GREY_600),
+                                    ft.Text("• R² = 0 (0%) → a equação não explica nada", 
+                                           size=13, color=ft.Colors.GREY_600),
+                                    
+                                    # Indicador visual do R² na escala 0 a 1
+                                    ft.Container(height=15),
+                                    ft.Text("Indicador de R²:", size=13, weight="bold"),
+                                    ft.Container(height=5),
+                                    
+                                    # Escala visual de 0 a 1
+                                    ft.Column([
+                                        # Marcador de posição do R² atual (acima da barra)
+                                        ft.Container(
+                                            content=ft.Stack([
+                                                # Indicador posicionado
+                                                ft.Container(
+                                                    content=ft.Column([
+                                                        ft.Container(
+                                                            content=ft.Text(f"{reg_data['r_squared']:.3f}", size=12, weight="bold", color=ft.Colors.WHITE),
+                                                            bgcolor=ft.Colors.BLUE_700,
+                                                            padding=ft.padding.symmetric(horizontal=8, vertical=3),
+                                                            border_radius=4,
+                                                        ),
+                                                        ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=28, color=ft.Colors.BLUE_700),
+                                                    ], spacing=-5, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                                                    left=max(0, min(450, reg_data['r_squared'] * 490 - 25)),
+                                                    top=10,
+                                                ),
+                                            ], width=490, height=50),
+                                            margin=ft.margin.only(bottom=0),
+                                        ),
+                                        
+                                        # Barra de gradiente (vermelho → amarelo → verde)
+                                        ft.Container(
+                                            width=490,
+                                            height=30,
+                                            border_radius=5,
+                                            border=ft.border.all(2, ft.Colors.BLACK),
+                                            gradient=ft.LinearGradient(
+                                                begin=ft.alignment.center_left,
+                                                end=ft.alignment.center_right,
+                                                colors=[
+                                                    ft.Colors.RED_700,
+                                                    ft.Colors.ORANGE_700,
+                                                    ft.Colors.YELLOW_700,
+                                                    ft.Colors.LIGHT_GREEN,
+                                                    ft.Colors.GREEN_700,
+                                                ],
+                                            ),
+                                        ),
+                                        
+                                        # Labels da escala
+                                        ft.Container(height=5),
+                                        ft.Row([
+                                            ft.Text("0.0", size=11, weight="bold"),
+                                            ft.Container(expand=True),
+                                            ft.Text("0.25", size=11, weight="bold"),
+                                            ft.Container(expand=True),
+                                            ft.Text("0.50", size=11, weight="bold"),
+                                            ft.Container(expand=True),
+                                            ft.Text("0.75", size=11, weight="bold"),
+                                            ft.Container(expand=True),
+                                            ft.Text("1.0", size=11, weight="bold"),
+                                        ], width=490),
+                                        
+                                        # Legendas dos extremos
+                                        ft.Container(height=3),
+                                        ft.Row([
+                                            ft.Text("Nenhuma explicação", size=10, italic=True, color=ft.Colors.GREY_600),
+                                            ft.Container(expand=True),
+                                            ft.Text("Explicação perfeita", size=10, italic=True, color=ft.Colors.GREY_600),
+                                        ], width=490),
+                                    ], spacing=0),
+                                    
+                                ], spacing=5),
+                                padding=15,
+                                bgcolor=ft.Colors.with_opacity(0.08, color),
+                                border_radius=10,
+                                border=ft.border.all(2, ft.Colors.with_opacity(0.2, color)),
+                            ),
+                            
+                            ft.Container(height=15),
+                            
+                            ft.Text("📊 Informações Básicas", size=17, weight="bold"),
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Text(f"• Quantidade de meses analisados: {reg_data['n']}", size=14),
+                                    ft.Text(f"• Score médio no período: {reg_data['y_mean']:.2f}", size=14),
+                                    ft.Container(height=8),
+                                    ft.Text("💡 Como funciona:", size=16, weight="bold", color=color),
+                                    ft.Text("Traçamos uma linha que passa o mais perto possível de todos os pontos.", 
+                                           size=13, color=ft.Colors.GREY_700),
+                                    ft.Text("Essa linha mostra a direção geral dos scores.", 
+                                           size=13, color=ft.Colors.GREY_700),
+                                    ft.Container(height=8),
+                                    ft.Text(f"📈 Inclinação da linha: {reg_data['m']:.4f}", size=14),
+                                    ft.Text(f"   • Positivo = subindo | Negativo = descendo | Perto de zero = estável", 
+                                           size=13, color=ft.Colors.GREY_600, italic=True),
+                                ], spacing=5),
+                                padding=12,
+                                bgcolor=ft.Colors.with_opacity(0.03, color),
+                                border_radius=8,
+                            ),
+                            
+                            ft.Container(height=10),
+                            ft.Text("📋 Comparação: Real vs Previsto", size=17, weight="bold"),
+                            ft.Text("Veja como o score real de cada mês se compara com o que a linha previu:", 
+                                   size=13, color=ft.Colors.GREY_600, italic=True),
+                            ft.Container(height=5),
+                            ft.Container(
+                                content=ft.DataTable(
+                                    columns=[
+                                        ft.DataColumn(ft.Text("Mês", size=14, weight="bold")),
+                                        ft.DataColumn(ft.Text("Score Real", size=14, weight="bold")),
+                                        ft.DataColumn(ft.Text("Previsão", size=14, weight="bold")),
+                                        ft.DataColumn(ft.Text("Diferença", size=14, weight="bold")),
+                                    ],
+                                    rows=data_rows,
+                                ),
+                                border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                                border_radius=8,
+                                padding=10,
+                            ),
+                            ft.Column([
+                                ft.Text("Legenda:", size=13, weight="bold", color=ft.Colors.GREY_700),
+                                ft.Text("🟢 Verde = Real superou a previsão (diferença > +0.5)", 
+                                       size=13, color=ft.Colors.GREY_600, italic=True),
+                                ft.Text("⚪ Cinza = Próximo da previsão (diferença entre -0.5 e +0.5)", 
+                                       size=13, color=ft.Colors.GREY_600, italic=True),
+                                ft.Text("🔴 Vermelho = Real abaixo da previsão (diferença < -0.5)", 
+                                       size=13, color=ft.Colors.GREY_600, italic=True),
+                            ], spacing=3),
+                        ], spacing=10, scroll=ft.ScrollMode.AUTO, height=550)
+                        
+                        dialog = ft.AlertDialog(
+                            title=ft.Row([
+                                ft.Icon(ft.Icons.SCHOOL, color=color),
+                                ft.Text("Como Funciona a Análise", color=color),
+                            ], spacing=8),
+                            content=dialog_content,
+                            actions=[
+                                ft.TextButton("Entendi", on_click=lambda e: page.close(dialog))
+                            ],
+                            actions_alignment=ft.MainAxisAlignment.END,
+                        )
+                        page.open(dialog)
+                    return show_info
+                
+                # Container do gráfico com análise integrada - TUDO EM UMA LINHA
+                chart_container = ft.Container(
                     content=ft.Column([
-                        ft.Text(metric_name, size=14, weight="bold", text_align=ft.TextAlign.CENTER),
-                        ft.Container(height=5),
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Container(
+                                    content=ft.Row([
+                                        ft.Text(metric_name, size=16, weight="bold", color=color, overflow=ft.TextOverflow.ELLIPSIS, no_wrap=True),
+                                        ft.Container(width=15),
+                                        ft.Container(
+                                            content=ft.Text(f"Média: {average:.1f}", size=13, weight="w500", 
+                                                   color=ft.Colors.with_opacity(0.7, color), overflow=ft.TextOverflow.ELLIPSIS, no_wrap=True),
+                                            tooltip="Média dos scores ao longo do período analisado",
+                                        ),
+                                        ft.Container(width=5) if regression else ft.Container(),
+                                        ft.VerticalDivider(width=1, color=ft.Colors.with_opacity(0.3, color)) if regression else ft.Container(),
+                                        ft.Container(width=5) if regression else ft.Container(),
+                                        ft.Container(
+                                            content=ft.Text(f"y={regression['m']:.3f}x+{regression['b']:.2f}", size=11, weight="w500", overflow=ft.TextOverflow.ELLIPSIS, no_wrap=True),
+                                            tooltip="Equação da linha de tendência: y = mx + b\nOnde 'm' é a inclinação e 'b' é o ponto inicial",
+                                        ) if regression else ft.Container(),
+                                        ft.Container(width=12) if regression else ft.Container(),
+                                        ft.Container(
+                                            content=ft.Text(trend_text, size=11, color=trend_color, weight="bold", overflow=ft.TextOverflow.ELLIPSIS, no_wrap=True),
+                                            tooltip="Tendência dos dados:\n↗ Crescente: scores melhorando\n↘ Decrescente: scores piorando\n→ Estável: scores sem grande variação",
+                                        ) if regression else ft.Container(),
+                                        ft.Container(width=12) if regression else ft.Container(),
+                                        ft.Container(
+                                            content=ft.Text(f"R²={regression['r_squared']:.3f}", size=11, color=ft.Colors.GREY, overflow=ft.TextOverflow.ELLIPSIS, no_wrap=True),
+                                            tooltip="R² (coeficiente de determinação):\nIndica o quanto a linha de tendência representa bem os dados\n75-100%: Excelente ajuste\n50-75%: Bom ajuste\n25-50%: Ajuste moderado\n0-25%: Ajuste fraco",
+                                        ) if regression else ft.Container(),
+                                    ], spacing=0, alignment=ft.MainAxisAlignment.START),
+                                    expand=True,
+                                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.INFO_OUTLINE,
+                                    icon_size=18,
+                                    tooltip="Clique para ver análise detalhada",
+                                    on_click=create_info_dialog_for_metric(metric_name, regression_data),
+                                    icon_color=color,
+                                ) if regression else ft.Container(),
+                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+                            bgcolor=ft.Colors.with_opacity(0.05, color),
+                            padding=ft.padding.symmetric(vertical=10, horizontal=15),
+                            border_radius=8,
+                        ),
+                        ft.Container(height=10),
                         chart,
-                    ], spacing=5),
-                    border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
-                    border_radius=8,
+                    ], spacing=0),
+                    border=ft.border.all(2, ft.Colors.with_opacity(0.15, ft.Colors.ON_SURFACE)),
+                    border_radius=12,
                     padding=15,
                     expand=True,
+                    shadow=ft.BoxShadow(
+                        spread_radius=1,
+                        blur_radius=10,
+                        color=ft.Colors.with_opacity(0.1, ft.Colors.BLACK),
+                        offset=ft.Offset(0, 2),
+                    ),
+                    bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.SURFACE),
                 )
+                
+                return chart_container
             
-            # Criar os 4 gráficos
-            otif_chart = create_individual_chart("otif", "OTIF", ft.Colors.ORANGE_ACCENT_700)
-            nil_chart = create_individual_chart("nil", "NIL", ft.Colors.PURPLE_ACCENT_700)
-            pickup_chart = create_individual_chart("pickup", "Quality Pickup", ft.Colors.CYAN_700)
-            package_chart = create_individual_chart("package", "Quality Package", ft.Colors.PINK_ACCENT_700)
+            # Criar os 4 gráficos com cores modernas e vibrantes
+            otif_chart = create_individual_chart("otif", "OTIF", ft.Colors.DEEP_ORANGE_500)
+            nil_chart = create_individual_chart("nil", "NIL", ft.Colors.DEEP_PURPLE_500)
+            pickup_chart = create_individual_chart("pickup", "Quality Pickup", ft.Colors.LIGHT_BLUE_500)
+            package_chart = create_individual_chart("package", "Quality Package", ft.Colors.PINK_500)
             
-            # Layout 2x2
+            # Layout 2x2 com espaçamento aprimorado
             charts_grid = ft.Column([
-                ft.Row([otif_chart, nil_chart], spacing=15, expand=True),
-                ft.Row([pickup_chart, package_chart], spacing=15, expand=True),
-            ], spacing=15, expand=True)
+                ft.Row([otif_chart, nil_chart], spacing=20, expand=True),
+                ft.Row([pickup_chart, package_chart], spacing=20, expand=True),
+            ], spacing=20, expand=True)
             
             timeline_individual_charts_container.current.content = charts_grid
             timeline_individual_charts_container.current.update()
@@ -13290,43 +14366,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 except (ValueError, TypeError):
                     continue
             
-            # Função auxiliar para calcular regressão
-            def calculate_regression(points):
-                if not points or len(points) < 2:
-                    return None
-                
-                x_values = [p[0] for p in points]
-                y_values = [p[1] for p in points]
-                n = len(x_values)
-                
-                x_mean = sum(x_values) / n
-                y_mean = sum(y_values) / n
-                
-                numerator = sum((x_values[i] - x_mean) * (y_values[i] - y_mean) for i in range(n))
-                denominator = sum((x_values[i] - x_mean) ** 2 for i in range(n))
-                
-                if denominator == 0:
-                    return None
-                
-                m = numerator / denominator
-                b = y_mean - m * x_mean
-                
-                y_predicted = [m * x + b for x in x_values]
-                ss_res = sum((y_values[i] - y_predicted[i]) ** 2 for i in range(n))
-                ss_tot = sum((y_values[i] - y_mean) ** 2 for i in range(n))
-                r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
-                
-                return {
-                    'm': m,
-                    'b': b,
-                    'r_squared': r_squared,
-                    'n': n,
-                    'x_values': x_values,
-                    'y_values': y_values,
-                    'x_mean': x_mean,
-                    'y_mean': y_mean,
-                    'y_predicted': y_predicted
-                }
+            # Usar a função calculate_regression global (já definida anteriormente)
+            # Não precisa redefinir aqui
             
             # Criar cards de análise para cada métrica
             theme_name = get_theme_name_from_page(page)
@@ -13387,10 +14428,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 
                                 data_rows.append(
                                     ft.DataRow(cells=[
-                                        ft.DataCell(ft.Text(months_labels[int(x) - 1], size=12)),
-                                        ft.DataCell(ft.Text(f"{y_obs:.2f}", size=12)),
-                                        ft.DataCell(ft.Text(f"{y_pred:.2f}", size=12)),
-                                        ft.DataCell(ft.Text(f"{residual:+.2f}", size=12, color=residual_color)),
+                                        ft.DataCell(ft.Text(months_labels[int(x) - 1], size=14)),
+                                        ft.DataCell(ft.Text(f"{y_obs:.2f}", size=14)),
+                                        ft.DataCell(ft.Text(f"{y_pred:.2f}", size=14)),
+                                        ft.DataCell(ft.Text(f"{residual:+.2f}", size=14, color=residual_color)),
                                     ])
                                 )
                             
@@ -13408,39 +14449,49 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 trend_icon = "➡️"
                                 trend_color = ft.Colors.BLUE_600
                             
-                            # Interpretação do R²
+                            # Interpretação do R² - mede o quanto a equação explica a variação dos dados
                             r_squared_pct = reg_data['r_squared'] * 100
-                            if r_squared_pct >= 75:
-                                r_squared_quality = "Excelente"
-                                r_squared_explanation = "A linha de tendência representa muito bem os dados reais"
-                            elif r_squared_pct >= 50:
-                                r_squared_quality = "Boa"
-                                r_squared_explanation = "A linha de tendência representa bem os dados reais"
-                            elif r_squared_pct >= 25:
-                                r_squared_quality = "Moderada"
-                                r_squared_explanation = "A linha de tendência representa parcialmente os dados reais"
+                            if r_squared_pct >= 80:
+                                r_squared_quality = "80-100%"
+                                r_squared_explanation = "A equação explica muito bem a variação dos dados observados"
+                            elif r_squared_pct >= 60:
+                                r_squared_quality = "60-79%"
+                                r_squared_explanation = "A equação explica boa parte da variação dos dados observados"
+                            elif r_squared_pct >= 40:
+                                r_squared_quality = "40-59%"
+                                r_squared_explanation = "A equação explica parte da variação dos dados observados"
+                            elif r_squared_pct >= 20:
+                                r_squared_quality = "20-39%"
+                                r_squared_explanation = "A equação explica pouca variação dos dados observados"
                             else:
-                                r_squared_quality = "Fraca"
-                                r_squared_explanation = "Os dados têm muita variação, a linha é apenas uma estimativa"
+                                r_squared_quality = "0-19%"
+                                r_squared_explanation = "A equação não explica quase nada da variação dos dados observados"
                             
                             dialog_content = ft.Column([
-                                ft.Text(f"Como calcular a tendência - {metric}", size=18, weight="bold"),
+                                ft.Text(f"Como calcular a tendência - {metric}", size=22, weight="bold"),
                                 ft.Divider(),
                                 
                                 # Resumo em linguagem simples
                                 ft.Container(
                                     content=ft.Column([
                                         ft.Row([
-                                            ft.Text(trend_icon, size=24),
+                                            ft.Text(trend_icon, size=32),
                                             ft.Column([
-                                                ft.Text("Resumo:", size=14, weight="bold", color=primary_color),
-                                                ft.Text(trend_explanation, size=13, color=trend_color, weight="bold"),
+                                                ft.Text("Resumo:", size=18, weight="bold", color=primary_color),
+                                                ft.Text(trend_explanation, size=16, color=trend_color, weight="bold"),
                                             ], spacing=2),
                                         ], spacing=10),
                                         ft.Container(height=8),
-                                        ft.Text(f"Qualidade da previsão: {r_squared_quality} ({r_squared_pct:.1f}%)", 
-                                               size=12, weight="bold"),
-                                        ft.Text(r_squared_explanation, size=11, italic=True, color=ft.Colors.GREY_700),
+                                        ft.Text(f"R² (Coeficiente de Determinação): {r_squared_pct:.1f}%", 
+                                               size=15, weight="bold"),
+                                        ft.Text("👉 Mede o quanto a equação consegue explicar a variação dos dados", 
+                                               size=14, italic=True, color=ft.Colors.BLUE_700),
+                                        ft.Text(r_squared_explanation, size=14, italic=True, color=ft.Colors.GREY_700),
+                                        ft.Container(height=4),
+                                        ft.Text("• R² = 1 (100%) → a equação explica toda a variação", 
+                                               size=13, color=ft.Colors.GREY_600),
+                                        ft.Text("• R² = 0 (0%) → a equação não explica nada", 
+                                               size=13, color=ft.Colors.GREY_600),
                                     ], spacing=5),
                                     padding=15,
                                     bgcolor=ft.Colors.with_opacity(0.08, primary_color),
@@ -13450,21 +14501,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 
                                 ft.Container(height=15),
                                 
-                                ft.Text("� Informações Básicas", size=14, weight="bold"),
+                                ft.Text("📊 Informações Básicas", size=17, weight="bold"),
                                 ft.Container(
                                     content=ft.Column([
-                                        ft.Text(f"• Quantidade de meses analisados: {reg_data['n']}", size=12),
-                                        ft.Text(f"• Score médio no período: {reg_data['y_mean']:.2f}", size=12),
+                                        ft.Text(f"• Quantidade de meses analisados: {reg_data['n']}", size=14),
+                                        ft.Text(f"• Score médio no período: {reg_data['y_mean']:.2f}", size=14),
                                         ft.Container(height=8),
-                                        ft.Text("💡 Como funciona:", size=13, weight="bold", color=primary_color),
+                                        ft.Text("💡 Como funciona:", size=16, weight="bold", color=primary_color),
                                         ft.Text("Traçamos uma linha que passa o mais perto possível de todos os pontos.", 
-                                               size=11, color=ft.Colors.GREY_700),
+                                               size=13, color=ft.Colors.GREY_700),
                                         ft.Text("Essa linha mostra a direção geral dos scores.", 
-                                               size=11, color=ft.Colors.GREY_700),
+                                               size=13, color=ft.Colors.GREY_700),
                                         ft.Container(height=8),
-                                        ft.Text(f"� Inclinação da linha: {reg_data['m']:.4f}", size=12),
+                                        ft.Text(f"📈 Inclinação da linha: {reg_data['m']:.4f}", size=14),
                                         ft.Text(f"   • Positivo = subindo | Negativo = descendo | Perto de zero = estável", 
-                                               size=11, color=ft.Colors.GREY_600, italic=True),
+                                               size=13, color=ft.Colors.GREY_600, italic=True),
                                     ], spacing=5),
                                     padding=12,
                                     bgcolor=ft.Colors.with_opacity(0.03, primary_color),
@@ -13472,17 +14523,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ),
                                 
                                 ft.Container(height=10),
-                                ft.Text("📋 Comparação: Real vs Previsto", size=14, weight="bold"),
+                                ft.Text("📋 Comparação: Real vs Previsto", size=17, weight="bold"),
                                 ft.Text("Veja como o score real de cada mês se compara com o que a linha previu:", 
-                                       size=11, color=ft.Colors.GREY_600, italic=True),
+                                       size=13, color=ft.Colors.GREY_600, italic=True),
                                 ft.Container(height=5),
                                 ft.Container(
                                     content=ft.DataTable(
                                         columns=[
-                                            ft.DataColumn(ft.Text("Mês", size=12, weight="bold")),
-                                            ft.DataColumn(ft.Text("Score Real", size=12, weight="bold")),
-                                            ft.DataColumn(ft.Text("Previsão", size=12, weight="bold")),
-                                            ft.DataColumn(ft.Text("Diferença", size=12, weight="bold")),
+                                            ft.DataColumn(ft.Text("Mês", size=14, weight="bold")),
+                                            ft.DataColumn(ft.Text("Score Real", size=14, weight="bold")),
+                                            ft.DataColumn(ft.Text("Previsão", size=14, weight="bold")),
+                                            ft.DataColumn(ft.Text("Diferença", size=14, weight="bold")),
                                         ],
                                         rows=data_rows,
                                     ),
@@ -13491,13 +14542,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     padding=10,
                                 ),
                                 ft.Column([
-                                    ft.Text("Legenda:", size=11, weight="bold", color=ft.Colors.GREY_700),
-                                    ft.Text("� Verde = Real superou a previsão (diferença > +0.5)", 
-                                           size=10, color=ft.Colors.GREY_600, italic=True),
+                                    ft.Text("Legenda:", size=14, weight="bold", color=ft.Colors.GREY_700),
+                                    ft.Text("🟢 Verde = Real superou a previsão (diferença > +0.5)", 
+                                           size=13, color=ft.Colors.GREY_600, italic=True),
                                     ft.Text("⚪ Cinza = Próximo da previsão (diferença entre -0.5 e +0.5)", 
-                                           size=10, color=ft.Colors.GREY_600, italic=True),
+                                           size=13, color=ft.Colors.GREY_600, italic=True),
                                     ft.Text("🔴 Vermelho = Real abaixo da previsão (diferença < -0.5)", 
-                                           size=10, color=ft.Colors.GREY_600, italic=True),
+                                           size=13, color=ft.Colors.GREY_600, italic=True),
                                 ], spacing=3),
                             ], spacing=10, scroll=ft.ScrollMode.AUTO, height=550)
                             
@@ -13686,7 +14737,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
             cursor = db_conn.cursor()
             
-            if year and year.strip():
+            if year == "ALL":
+                # Para "Todo o Período", buscar todos os dados ordenados cronologicamente
+                query = """SELECT month, year, otif, nil, quality_pickup, quality_package, 
+                          total_score, comment FROM supplier_score_records_table 
+                          WHERE supplier_id = ? ORDER BY year ASC, CAST(month AS INTEGER) ASC"""
+                results = db_manager.query(query, (vendor_id,))
+            elif year and year.strip():
                 query = """SELECT month, year, otif, nil, quality_pickup, quality_package, 
                           total_score, comment FROM supplier_score_records_table 
                           WHERE supplier_id = ? AND year = ? ORDER BY year DESC, CAST(month AS INTEGER) ASC"""
@@ -13960,6 +15017,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     icon.current.name = ft.Icons.ARROW_FORWARD
                     icon.current.color = ft.Colors.GREY_400
             
+            # Limpar containers dinâmicos e restaurar visibilidade
+            if yearly_cards_container.current:
+                yearly_cards_container.current.controls = []
+            if quarterly_cards_container.current:
+                quarterly_cards_container.current.visible = True
+            if timeline_cards_refs["year"]["card"].current:
+                timeline_cards_refs["year"]["card"].current.visible = True
+            
             # Limpar gráfico
             if timeline_chart_container.current:
                 timeline_chart_container.current.content = ft.Container(
@@ -14071,9 +15136,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     label="Ano",
                     ref=timeline_year_dropdown,
                     on_change=on_timeline_year_change,
-                    options=[ft.dropdown.Option("", "(Ano Atual)")] + [ft.dropdown.Option(str(y)) for y in range(2024, 2040)],
+                    options=[
+                        ft.dropdown.Option("", "(Ano Atual)"),
+                        ft.dropdown.Option("ALL", "📊 Todo o Período")
+                    ] + [ft.dropdown.Option(str(y)) for y in range(2025, 2041)],
                     value="",
-                    width=150,
+                    width=180,
                     bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                     color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                     border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
@@ -14144,97 +15212,112 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     elevation=2,
                     surface_tint_color=primary_color_for_timeline
                 ),
-                # Card Q1
-                ft.Card(
-                    ref=timeline_cards_refs["q1"]["card"],
-                    content=ft.Container(
-                        ref=timeline_cards_refs["q1"]["gradient"],
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Text("Q1", size=11, weight="w600", color=label_color),
-                                ft.Container(expand=True),
-                                ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q1_arrow_icon),
-                            ], spacing=6),
-                            ft.Container(expand=True),
-                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q1_avg_card),
-                        ], spacing=4),
-                        padding=ft.padding.all(14),
-                        bgcolor=timeline_card_bg,
-                        width=135,
-                        height=90,
-                        border_radius=10
-                    ),
-                    elevation=2,
-                    surface_tint_color=primary_color_for_timeline
+                # Container para cards trimestrais (Q1-Q4) - visível em modo ano específico
+                ft.Row(
+                    ref=quarterly_cards_container,
+                    controls=[
+                        # Card Q1
+                        ft.Card(
+                            ref=timeline_cards_refs["q1"]["card"],
+                            content=ft.Container(
+                                ref=timeline_cards_refs["q1"]["gradient"],
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Text("Q1", size=11, weight="w600", color=label_color),
+                                        ft.Container(expand=True),
+                                        ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q1_arrow_icon),
+                                    ], spacing=6),
+                                    ft.Container(expand=True),
+                                    ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q1_avg_card),
+                                ], spacing=4),
+                                padding=ft.padding.all(14),
+                                bgcolor=timeline_card_bg,
+                                width=135,
+                                height=90,
+                                border_radius=10
+                            ),
+                            elevation=2,
+                            surface_tint_color=primary_color_for_timeline
+                        ),
+                        # Card Q2
+                        ft.Card(
+                            ref=timeline_cards_refs["q2"]["card"],
+                            content=ft.Container(
+                                ref=timeline_cards_refs["q2"]["gradient"],
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Text("Q2", size=11, weight="w600", color=label_color),
+                                        ft.Container(expand=True),
+                                        ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q2_arrow_icon),
+                                    ], spacing=6),
+                                    ft.Container(expand=True),
+                                    ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q2_avg_card),
+                                ], spacing=4),
+                                padding=ft.padding.all(14),
+                                bgcolor=timeline_card_bg,
+                                width=135,
+                                height=90,
+                                border_radius=10
+                            ),
+                            elevation=2,
+                            surface_tint_color=primary_color_for_timeline
+                        ),
+                        # Card Q3
+                        ft.Card(
+                            ref=timeline_cards_refs["q3"]["card"],
+                            content=ft.Container(
+                            ref=timeline_cards_refs["q3"]["gradient"],
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Text("Q3", size=11, weight="w600", color=label_color),
+                                        ft.Container(expand=True),
+                                        ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q3_arrow_icon),
+                                    ], spacing=6),
+                                    ft.Container(expand=True),
+                                    ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q3_avg_card),
+                                ], spacing=4),
+                                padding=ft.padding.all(14),
+                                bgcolor=timeline_card_bg,
+                                width=135,
+                                height=90,
+                                border_radius=10
+                            ),
+                            elevation=2,
+                            surface_tint_color=primary_color_for_timeline
+                        ),
+                        # Card Q4
+                        ft.Card(
+                            ref=timeline_cards_refs["q4"]["card"],
+                            content=ft.Container(
+                                ref=timeline_cards_refs["q4"]["gradient"],
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Text("Q4", size=11, weight="w600", color=label_color),
+                                        ft.Container(expand=True),
+                                        ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q4_arrow_icon),
+                                    ], spacing=6),
+                                    ft.Container(expand=True),
+                                    ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q4_avg_card),
+                                ], spacing=4),
+                                padding=ft.padding.all(14),
+                                bgcolor=timeline_card_bg,
+                                width=135,
+                                height=90,
+                                border_radius=10
+                            ),
+                            elevation=2,
+                            surface_tint_color=primary_color_for_timeline
+                        ),
+                    ],
+                    spacing=12,
+                    visible=True,
                 ),
-                # Card Q2
-                ft.Card(
-                    ref=timeline_cards_refs["q2"]["card"],
-                    content=ft.Container(
-                        ref=timeline_cards_refs["q2"]["gradient"],
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Text("Q2", size=11, weight="w600", color=label_color),
-                                ft.Container(expand=True),
-                                ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q2_arrow_icon),
-                            ], spacing=6),
-                            ft.Container(expand=True),
-                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q2_avg_card),
-                        ], spacing=4),
-                        padding=ft.padding.all(14),
-                        bgcolor=timeline_card_bg,
-                        width=135,
-                        height=90,
-                        border_radius=10
-                    ),
-                    elevation=2,
-                    surface_tint_color=primary_color_for_timeline
-                ),
-                # Card Q3
-                ft.Card(
-                    ref=timeline_cards_refs["q3"]["card"],
-                    content=ft.Container(
-                    ref=timeline_cards_refs["q3"]["gradient"],
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Text("Q3", size=11, weight="w600", color=label_color),
-                                ft.Container(expand=True),
-                                ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q3_arrow_icon),
-                            ], spacing=6),
-                            ft.Container(expand=True),
-                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q3_avg_card),
-                        ], spacing=4),
-                        padding=ft.padding.all(14),
-                        bgcolor=timeline_card_bg,
-                        width=135,
-                        height=90,
-                        border_radius=10
-                    ),
-                    elevation=2,
-                    surface_tint_color=primary_color_for_timeline
-                ),
-                # Card Q4
-                ft.Card(
-                    ref=timeline_cards_refs["q4"]["card"],
-                    content=ft.Container(
-                        ref=timeline_cards_refs["q4"]["gradient"],
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Text("Q4", size=11, weight="w600", color=label_color),
-                                ft.Container(expand=True),
-                                ft.Icon(ft.Icons.ARROW_FORWARD, color=ft.Colors.GREY_400, size=16, ref=q4_arrow_icon),
-                            ], spacing=6),
-                            ft.Container(expand=True),
-                            ft.Text("--", size=24, weight="bold", color=primary_color_for_timeline, ref=q4_avg_card),
-                        ], spacing=4),
-                        padding=ft.padding.all(14),
-                        bgcolor=timeline_card_bg,
-                        width=135,
-                        height=90,
-                        border_radius=10
-                    ),
-                    elevation=2,
-                    surface_tint_color=primary_color_for_timeline
+                # Container para cards anuais - visível em modo ALL
+                ft.Row(
+                    ref=yearly_cards_container,
+                    controls=[],  # Será preenchido dinamicamente
+                    spacing=12,
+                    scroll=ft.ScrollMode.AUTO,
                 ),
             ], spacing=12, scroll=ft.ScrollMode.AUTO),
             ),
@@ -14322,29 +15405,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                         expand=True,
                                     ),
                                     elevation=1,
-                                ),
-                                padding=ft.padding.only(top=10),
-                                expand=True,
-                            ),
-                        ),
-                        # Tab de Analytics
-                        ft.Tab(
-                            text="Analytics",
-                            icon=ft.Icons.ANALYTICS,
-                            content=ft.Container(
-                                content=ft.Container(
-                                    ref=timeline_analytics_container,
-                                    content=ft.Container(
-                                        content=ft.Column([
-                                            ft.Icon(ft.Icons.ANALYTICS, size=48, color=ft.Colors.GREY_400),
-                                            ft.Container(height=10),
-                                            ft.Text("Selecione um fornecedor para visualizar as análises", 
-                                                   size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
-                                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
-                                        alignment=ft.alignment.center,
-                                    ),
-                                    padding=ft.padding.all(20),
-                                    expand=True,
                                 ),
                                 padding=ft.padding.only(top=10),
                                 expand=True,
