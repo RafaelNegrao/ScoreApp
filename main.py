@@ -5499,11 +5499,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             risks_view.visible = idx == 3
             email_view.visible = idx == 4
             configs_view.visible = idx == 5
-            cross_check_view.visible = idx == 6
-            
-            # Atualizar Cross Check quando aba for selecionada
-            if idx == 6:
-                update_cross_check_view()
             
             # Carregar dados específicos da aba quando ela for selecionada
             if idx == 2:  # Aba Timeline
@@ -5593,14 +5588,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def get_user_accessible_tabs(privilege):
         """Retorna lista de índices de abas que o usuário pode acessar baseado no privilégio"""
         if privilege == "Super Admin":
-            # Super Admin pode acessar tudo (Cross Check será índice 6)
-            return [0, 1, 2, 3, 4, 5, 6]  # Home, Score, Timeline, Risks, Email, Configs, Cross Check
+            # Super Admin pode acessar tudo
+            return [0, 1, 2, 3, 4, 5]  # Home, Score, Timeline, Risks, Email, Configs
         elif privilege == "Admin":
-            # Admin pode: Home, Score, Timeline, Risks, Email, Configs, Cross Check
-            return [0, 1, 2, 3, 4, 5, 6]  # Home, Score, Timeline, Risks, Email, Configs, Cross Check
+            # Admin pode: Home, Score, Timeline, Risks, Email, Configs
+            return [0, 1, 2, 3, 4, 5]  # Home, Score, Timeline, Risks, Email, Configs
         else:  # User
-            # User pode: Home, Timeline, Risks, Configs limitado, Cross Check
-            return [0, 2, 3, 5, 6]  # Home, Timeline, Risks, Configs, Cross Check
+            # User pode: Home, Timeline, Risks, Configs limitado
+            return [0, 2, 3, 5]  # Home, Timeline, Risks, Configs
 
     def is_tab_accessible(tab_index, privilege):
         """Verifica se uma aba específica é acessível para o privilégio do usuário"""
@@ -5670,10 +5665,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ("email_outlined", "Email", 4),
                 ("settings_outlined", "Settings", 5),
             ]
-            
-            # Adicionar Cross Check apenas se houver pendências
-            if has_pending_scores():
-                all_menu_items.append(("checklist_outlined", "Cross Check", 6))
             
             # Filtrar itens baseado no privilégio do usuário
             accessible_tabs = get_user_accessible_tabs(current_user_privilege or "User")
@@ -5972,12 +5963,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 e.control.value = f"{num:.1f}"
                 # Aplicar cor baseada no valor
                 e.control.color = get_score_color(num)
-                e.control.update()
+                # Verificar se o controle ainda está na página antes de atualizar
+                if hasattr(e.control, 'page') and e.control.page is not None:
+                    e.control.update()
             except (ValueError, TypeError):
                 # Se não conseguir converter, voltar para 0.0
                 e.control.value = "0.0"
                 e.control.color = get_score_color(0.0)
-                e.control.update()
+                # Verificar se o controle ainda está na página antes de atualizar
+                if hasattr(e.control, 'page') and e.control.page is not None:
+                    e.control.update()
 
         # Usar on_blur em vez de on_change para não interferir durante a digitação
         score_field.on_blur = on_field_blur
@@ -6603,6 +6598,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Erro: Banco de dados não conectado.", True)
                 return
@@ -6612,6 +6608,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Selecione mês e ano antes de salvar.", is_warning=True)
                 return
@@ -6624,6 +6621,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Selecione mês e ano antes de salvar.", is_warning=True)
                 return
@@ -6643,6 +6641,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Valores de mês e ano inválidos.", True)
                 return
@@ -6653,6 +6652,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Não é possível salvar scores para meses futuros.")
                 return
@@ -6843,41 +6843,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 show_snack_bar(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", False)
                 
-                # Restaurar botão após sucesso com ícone de confirmação temporário
-                save_button.text = "Salvo!"
-                save_button.icon = ft.Icons.CHECK
+                # Restaurar botão após sucesso
+                save_button.text = original_text
+                save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
-                
-                # Cancelar thread anterior se existir
-                if hasattr(save_button, '_restore_thread') and save_button._restore_thread is not None:
-                    save_button._restore_thread_cancelled = True
-                
-                # Agendar restauração do botão original após 2 segundos
-                def restore_button():
-                    import time
-                    # Verificar cancelamento durante a espera
-                    for i in range(20):  # 20 x 0.1s = 2s
-                        if hasattr(save_button, '_restore_thread_cancelled') and save_button._restore_thread_cancelled:
-                            return  # Thread foi cancelada
-                        time.sleep(0.1)
-                    
-                    # Verificar novamente se foi cancelada antes de restaurar
-                    if hasattr(save_button, '_restore_thread_cancelled') and save_button._restore_thread_cancelled:
-                        return
-                        
-                    if hasattr(save_button, 'update'):  # Verificar se ainda existe
-                        save_button.text = original_text
-                        save_button.icon = original_icon
-                        save_button._restore_thread = None
-                        save_button._restore_thread_cancelled = False
-                        save_button._is_processing = False  # CRÍTICO: resetar flag de processamento
-                        safe_update_control(save_button, page)
-                
-                import threading
-                save_button._restore_thread_cancelled = False
-                save_button._restore_thread = threading.Thread(target=restore_button, daemon=True)
-                save_button._restore_thread.start()
                 
             except Exception as ex:
                 # Restaurar botão em caso de erro
@@ -6976,12 +6947,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             comment_field,
         ], expand=True, alignment=ft.MainAxisAlignment.START)
 
-        # Criar referência para o botão de salvar para permitir animações
+        # Criar referência para o botão de salvar
         save_button = ft.ElevatedButton(
             "Salvar", 
             on_click=save_score, 
-            icon=ft.Icons.SAVE,
-            animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT)
+            icon=ft.Icons.SAVE
         )
 
         card = ft.Card(
@@ -7369,6 +7339,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Erro: Banco de dados não conectado.", True)
                 return
@@ -7378,6 +7349,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Selecione mês e ano antes de salvar.", is_warning=True)
                 return
@@ -7390,6 +7362,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Selecione mês e ano antes de salvar.", is_warning=True)
                 return
@@ -7409,6 +7382,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Valores de mês e ano inválidos.", True)
                 return
@@ -7419,6 +7393,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 save_button.text = original_text
                 save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
                 show_snack_bar("Não é possível salvar scores para meses futuros.", False)
                 return
@@ -7577,41 +7552,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 saved_fields = [k.replace('quality_', '').replace('_', ' ').title() for k in values_to_save.keys()]
                 show_snack_bar(f"✅ Score salvo para {vendor_name} ({month_val}/{year_val}) - Total: {total_score:.1f}", False)
                 
-                # Restaurar botão após sucesso com ícone de confirmação temporário
-                save_button.text = "Salvo!"
-                save_button.icon = ft.Icons.CHECK
+                # Restaurar botão após sucesso
+                save_button.text = original_text
+                save_button.icon = original_icon
                 save_button.disabled = False
+                save_button._is_processing = False
                 safe_update_control(save_button, page)
-                
-                # Cancelar thread anterior se existir
-                if hasattr(save_button, '_restore_thread') and save_button._restore_thread is not None:
-                    save_button._restore_thread_cancelled = True
-                
-                # Agendar restauração do botão original após 2 segundos
-                def restore_button():
-                    import time
-                    # Verificar cancelamento durante a espera
-                    for i in range(20):  # 20 x 0.1s = 2s
-                        if hasattr(save_button, '_restore_thread_cancelled') and save_button._restore_thread_cancelled:
-                            return  # Thread foi cancelada
-                        time.sleep(0.1)
-                    
-                    # Verificar novamente se foi cancelada antes de restaurar
-                    if hasattr(save_button, '_restore_thread_cancelled') and save_button._restore_thread_cancelled:
-                        return
-                        
-                    if hasattr(save_button, 'update'):  # Verificar se ainda existe
-                        save_button.text = original_text
-                        save_button.icon = original_icon
-                        save_button._restore_thread = None
-                        save_button._restore_thread_cancelled = False
-                        save_button._is_processing = False  # CRÍTICO: resetar flag de processamento
-                        safe_update_control(save_button, page)
-                
-                import threading
-                save_button._restore_thread_cancelled = False
-                save_button._restore_thread = threading.Thread(target=restore_button, daemon=True)
-                save_button._restore_thread.start()
                 
             except Exception as ex:
                 # Restaurar botão em caso de erro
@@ -7757,15 +7703,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         tight=True  # Manter controles juntos
         )
 
-        # Criar referência para o botão de salvar para permitir animações
+        # Criar referência para o botão de salvar
         save_button = ft.ElevatedButton(
             "Salvar",
             on_click=save_score,
             icon=ft.Icons.SAVE,
             style=ft.ButtonStyle(
                 shape=ft.RoundedRectangleBorder(radius=8)
-            ),
-            animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_IN_OUT)
+            )
         )
 
         # Card principal usando Stack para posicionar botões absolutamente
@@ -7900,8 +7845,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         finally:
             search_lock = False
 
-        # Se não há termo de busca nem BU nem PO selecionados, mostrar favoritos
-        if not search_term and (not bu_val or not bu_val.strip()) and (not po_val or not str(po_val).strip()):
+        # Validar se há critérios de busca válidos
+        # Mês/ano sozinhos NÃO devem buscar - precisam de termo de busca OU PO
+        # BU sozinho também não é suficiente
+        has_search_term = search_term and search_term.strip()
+        has_po = po_val and str(po_val).strip()
+        
+        # Se não há termo de busca E não há PO, mostrar apenas favoritos
+        if not has_search_term and not has_po:
             show_favorites_only()
             return
 
@@ -8159,7 +8110,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         label="Mês", 
         options=month_options, 
         ref=selected_month, 
-        expand=True,  # Responsivo - se ajusta com o container
+        expand=1,  # Ajuste proporcional
         value="", # Não pré-selecionar mês (iniciar vazio)
         on_change=on_month_year_change,
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
@@ -8171,7 +8122,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         label="Ano", 
         options=year_options, 
         ref=selected_year, 
-        expand=True,  # Responsivo - se ajusta com o container
+        expand=1,  # Ajuste proporcional
         value="", # Pré-selecionar "(Ano Atual)"
         on_change=on_month_year_change,
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
@@ -8199,7 +8150,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 controls=[
                     ft.TextField(
                         label="PO", 
-                        expand=True,  # Responsivo - se ajusta com o container
+                        expand=1,  # Ajuste proporcional
                         border_radius=8,
                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
@@ -8209,7 +8160,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ),
                     ft.Dropdown(
                         label="BU",
-                        expand=True,  # Responsivo - se ajusta com o container
+                        expand=1,  # Ajuste proporcional
                         border_radius=8,
                         ref=selected_bu,
                         on_change=lambda e: search_suppliers_debounced(),
@@ -8220,7 +8171,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ),
                     month_dropdown,
                     year_dropdown,
-                    ft.Container(expand=True),
                     ft.PopupMenuButton(
                         icon=ft.Icons.MORE_VERT,
                         tooltip="Mais opções",
@@ -8274,18 +8224,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         ],
-        spacing=12,
+        spacing=16,
     )
 
     score_form_container = ft.Container(
         content=score_form, 
-        padding=15,  # Padding será ajustado dinamicamente
+        padding=25,  # Padding aumentado para melhor espaçamento
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
-        border_radius=8
+        border_radius=8,
+        width=700,  # Largura reduzida do container de filtros
     )
 
-    # Container responsivo - sem largura fixa, se ajusta automaticamente
-    # A largura máxima de 900px será controlada pelos spacers laterais
+    # Container responsivo - largura fixa de 700px para os filtros
     score_view_content = ft.Card(
         content=score_form_container,
         elevation=2,
@@ -12492,53 +12442,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             if not user_permissions:
                 return []
             
-            # Pegar mês e ano atual
-            now = datetime.datetime.now()
-            current_month = now.strftime("%m")
-            current_year = str(now.year)
-            
-            # Construir condições WHERE baseado nas permissões do usuário
-            conditions = []
-            pending_columns = {}
-            
-            if user_permissions.get('otif', False):
-                conditions.append("(r.otif IS NULL OR r.otif = '')")
-                pending_columns['otif'] = 'OTIF'
-                
-            if user_permissions.get('nil', False):
-                conditions.append("(r.nil IS NULL OR r.nil = '')")
-                pending_columns['nil'] = 'NIL'
-                
-            if user_permissions.get('pickup', False):
-                conditions.append("(r.quality_pickup IS NULL OR r.quality_pickup = '')")
-                pending_columns['quality_pickup'] = 'Pickup'
-                
-            if user_permissions.get('package', False):
-                conditions.append("(r.quality_package IS NULL OR r.quality_package = '')")
-                pending_columns['quality_package'] = 'Package'
-            
-            if not conditions:
-                return []
-            
-            # Buscar suppliers com notas NULL nas colunas que o usuário pode preencher
-            where_clause = " OR ".join(conditions)
-            query = f"""
+            # Buscar TODOS os suppliers com QUALQUER nota pendente (NULL ou vazia)
+            # em TODOS os meses/anos, não apenas o mês atual
+            query = """
                 SELECT DISTINCT 
                     s.supplier_id, 
                     s.vendor_name as supplier_name, 
                     s.bu, 
                     s.supplier_po as po,
+                    r.month,
+                    r.year,
                     r.otif,
                     r.nil,
                     r.quality_pickup,
                     r.quality_package
                 FROM supplier_score_records_table r
                 JOIN supplier_database_table s ON r.supplier_id = s.supplier_id
-                WHERE r.month = ? AND r.year = ? AND ({where_clause})
-                ORDER BY s.vendor_name
+                WHERE (
+                    r.otif IS NULL OR r.otif = '' OR
+                    r.nil IS NULL OR r.nil = '' OR
+                    r.quality_pickup IS NULL OR r.quality_pickup = '' OR
+                    r.quality_package IS NULL OR r.quality_package = ''
+                )
+                ORDER BY r.year DESC, r.month DESC, s.vendor_name
             """
             
-            suppliers = db_manager.query(query, (current_month, current_year))
+            suppliers = db_manager.query(query)
             
             for supplier_row in suppliers:
                 # Extrair dados
@@ -12547,34 +12476,51 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     supplier_name = supplier_row.get('supplier_name')
                     bu = supplier_row.get('bu')
                     po = supplier_row.get('po')
+                    month = supplier_row.get('month')
+                    year = supplier_row.get('year')
                     otif = supplier_row.get('otif')
                     nil = supplier_row.get('nil')
                     pickup = supplier_row.get('quality_pickup')
                     package = supplier_row.get('quality_package')
                 else:
-                    supplier_id, supplier_name, bu, po, otif, nil, pickup, package = supplier_row
+                    supplier_id, supplier_name, bu, po, month, year, otif, nil, pickup, package = supplier_row
                 
                 # Verificar quais notas estão pendentes (NULL ou string vazia)
+                # Mostrar TODAS as notas pendentes, mas destacar as que o usuário pode preencher
                 pending_scores = []
                 
-                if user_permissions.get('otif', False) and (otif is None or otif == ''):
+                # Verificar todas as notas pendentes
+                if otif is None or otif == '':
                     pending_scores.append('OTIF')
-                if user_permissions.get('nil', False) and (nil is None or nil == ''):
+                if nil is None or nil == '':
                     pending_scores.append('NIL')
-                if user_permissions.get('pickup', False) and (pickup is None or pickup == ''):
+                if pickup is None or pickup == '':
                     pending_scores.append('Pickup')
-                if user_permissions.get('package', False) and (package is None or package == ''):
+                if package is None or package == '':
                     pending_scores.append('Package')
                 
-                if pending_scores:
+                # Apenas adicionar à lista se houver notas pendentes que o usuário pode preencher
+                user_can_fill = []
+                if user_permissions.get('otif', False) and (otif is None or otif == ''):
+                    user_can_fill.append('OTIF')
+                if user_permissions.get('nil', False) and (nil is None or nil == ''):
+                    user_can_fill.append('NIL')
+                if user_permissions.get('pickup', False) and (pickup is None or pickup == ''):
+                    user_can_fill.append('Pickup')
+                if user_permissions.get('package', False) and (package is None or package == ''):
+                    user_can_fill.append('Package')
+                
+                # Adicionar à lista se houver notas pendentes que o usuário pode preencher
+                if user_can_fill:
                     pending_list.append({
                         'supplier_id': supplier_id,
                         'supplier_name': supplier_name,
                         'bu': bu,
                         'po': po,
-                        'pending_scores': pending_scores,
-                        'month': current_month,
-                        'year': current_year
+                        'pending_scores': user_can_fill,  # Apenas as que o usuário pode preencher
+                        'all_pending_scores': pending_scores,  # Todas as pendentes (para referência)
+                        'month': month,
+                        'year': year
                     })
             
             return pending_list
@@ -12753,8 +12699,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # --- Fim: Aba Cross Check ---
 
-    # Container para resultados de pendências
-    pending_results_list = ft.Column([], spacing=10, scroll=ft.ScrollMode.AUTO)
+    # Container para resultados de pendências - usando Column com scroll
+    pending_results_list = ft.Column([], spacing=16, scroll=ft.ScrollMode.AUTO, expand=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+    
+    # Envolver o pending_results_list em um Container com bgcolor
+    pending_results_container = ft.Container(
+        content=pending_results_list,
+        expand=True,
+        bgcolor="#282A36",
+        padding=ft.padding.symmetric(horizontal=20, vertical=20)
+    )
     
     def create_score_control_standalone(label, value, has_permission):
         """Cria controle de score standalone (igual ao dos cards normais)"""
@@ -12925,13 +12879,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             pending_suppliers = get_pending_suppliers()
             
             if not pending_suppliers:
+                # Adicionar mensagem centralizada quando não há pendências
                 pending_results_list.controls.append(
                     ft.Container(
                         content=ft.Column([
                             ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=80, color=ft.Colors.GREEN),
-                            ft.Text("✅ Nenhuma pendência encontrada!", size=24, weight="bold"),
-                            ft.Text("Todas as suas avaliações estão em dia.", size=16, color=ft.Colors.GREY_700),
-                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
+                            ft.Text("✅ Nenhuma pendência encontrada!", size=24, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                            ft.Text("Todas as suas avaliações estão em dia.", size=16, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, alignment=ft.MainAxisAlignment.CENTER, expand=True),
                         alignment=ft.alignment.center,
                         expand=True
                     )
@@ -12963,25 +12918,61 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             supplier_number,
                             bu,
                             supplier_po,
-                            pending['pending_scores']
+                            pending['pending_scores'],
+                            pending['month'],
+                            pending['year']
                         )
             
             pending_results_list.update()
+            
+            # Atualizar estilo da tab baseado em pendências
+            try:
+                if pending_suppliers and len(pending_suppliers) > 0:
+                    # Há pendências - pintar de laranja
+                    pending_tab.text = f"Pendências ({len(pending_suppliers)})"
+                    pending_tab.icon = ft.Icons.WARNING
+                    # Tentar adicionar cor laranja ao texto
+                    try:
+                        pending_tab.tab_content = ft.Row([
+                            ft.Icon(ft.Icons.WARNING, color=ft.Colors.ORANGE),
+                            ft.Text(f"Pendências ({len(pending_suppliers)})", color=ft.Colors.ORANGE)
+                        ])
+                    except:
+                        pass
+                else:
+                    # Sem pendências - estilo padrão
+                    pending_tab.text = "Pendências"
+                    pending_tab.icon = ft.Icons.PENDING_ACTIONS
+                    try:
+                        pending_tab.tab_content = None
+                    except:
+                        pass
+                score_tabs.update()
+            except Exception as ex:
+                print(f"Aviso: não foi possível atualizar estilo da tab: {ex}")
             
         except Exception as e:
             print(f"Erro ao carregar pendências: {e}")
             import traceback
             traceback.print_exc()
     
-    def create_pending_card(supplier_id, vendor_name, supplier_number, bu, supplier_po, pending_scores):
+    def create_pending_card(supplier_id, vendor_name, supplier_number, bu, supplier_po, pending_scores, month, year):
         """Cria um card de pendência com controles de avaliação direta"""
         Colors = get_current_theme_colors(get_theme_name_from_page(page))
         
-        # Pegar mês e ano atual
-        now = datetime.datetime.now()
-        current_month = now.strftime("%m")
-        current_year = str(now.year)
-        month_name = now.strftime("%B")  # Nome do mês
+        # Usar o mês e ano do registro pendente
+        # Garantir que month está no formato string (pode vir como int ou string do banco)
+        current_month = str(month) if month else "01"
+        current_year = str(year) if year else "2025"
+        
+        # Converter para nome do mês
+        try:
+            month_int = int(month)
+            month_names = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
+                          "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            month_name = month_names[month_int] if 1 <= month_int <= 12 else str(month)
+        except:
+            month_name = str(month)
         
         # Buscar os scores atuais do supplier para este mês
         score_query = """
@@ -12989,6 +12980,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             FROM supplier_score_records_table
             WHERE supplier_id = ? AND month = ? AND year = ?
         """
+        # Month e year são TEXT no banco, usar como string
         score_data = db_manager.query_one(score_query, (supplier_id, current_month, current_year))
         
         # Criar controles de score usando a mesma função dos cards normais
@@ -13050,6 +13042,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     FROM supplier_score_records_table
                     WHERE supplier_id = ? AND month = ? AND year = ?
                 """
+                # Month e year são TEXT no banco, usar como string
                 current_scores_data = db_manager.query_one(current_scores_query, (supplier_id, current_month, current_year))
                 print(f"🔍 Scores atuais do banco: {current_scores_data}")
                 
@@ -13132,6 +13125,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     SET {set_clause}
                     WHERE supplier_id = ? AND month = ? AND year = ?
                 """
+                # Month e year são TEXT no banco, usar como string
                 params = list(updates.values()) + [current_user_wwid, supplier_id, current_month, current_year]
                 
                 db_manager.execute(update_query, params)
@@ -13159,115 +13153,78 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         if package_control:
             score_controls_list.append(package_control)
         
-        # Definir cor de destaque para pendências
-        warning_color = Colors['primary']
-        warning_light = ft.Colors.with_opacity(0.08, Colors['primary'])
-        
-        # Criar card com layout melhorado
-        card = ft.Card(
+        # Criar card com layout ocupando linha inteira
+        card = ft.Container(
             content=ft.Container(
                 content=ft.Column([
-                    # Header: Período de referência e status
-                    ft.Container(
-                        content=ft.Row([
-                            ft.Icon(ft.Icons.PENDING_ACTIONS, color=warning_color, size=20),
-                            ft.Text(f"{month_name}/{current_year}", size=13, weight="bold", color=Colors['primary']),
-                            ft.Container(expand=True),
-                            ft.Container(
-                                content=ft.Text("PENDENTE", size=10, weight="bold", color=ft.Colors.WHITE),
-                                bgcolor=Colors['primary'],
-                                padding=ft.padding.symmetric(horizontal=8, vertical=2),
-                                border_radius=4
-                            )
-                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        padding=ft.padding.only(bottom=8)
+                    # Nome do fornecedor
+                    ft.Text(
+                        vendor_name, 
+                        size=18, 
+                        weight="bold", 
+                        color=Colors['on_surface']
                     ),
                     
-                    ft.Divider(height=1, color=Colors['outline']),
+                    # Espaço
+                    ft.Container(height=12),
                     
-                    # Informações do fornecedor - Layout em Grid
-                    ft.Container(
-                        content=ft.Column([
-                            # Nome do fornecedor - destaque
-                            ft.Text(vendor_name, size=18, weight="bold", color=Colors['on_surface']),
-                            
-                            # Grid de informações
-                            ft.Row([
-                                # Coluna 1
-                                ft.Column([
-                                    ft.Row([
-                                        ft.Icon(ft.Icons.TAG, size=14, color=Colors['on_surface_variant']),
-                                        ft.Text("ID:", size=11, color=Colors['on_surface_variant']),
-                                        ft.Text(str(supplier_id), size=11, weight="bold", color=Colors['on_surface']),
-                                    ], spacing=4),
-                                    ft.Row([
-                                        ft.Icon(ft.Icons.BUSINESS, size=14, color=Colors['on_surface_variant']),
-                                        ft.Text("BU:", size=11, color=Colors['on_surface_variant']),
-                                        ft.Text(bu or 'N/A', size=11, weight="bold", color=Colors['on_surface']),
-                                    ], spacing=4),
-                                ], spacing=6, expand=True),
-                                
-                                # Coluna 2
-                                ft.Column([
-                                    ft.Row([
-                                        ft.Icon(ft.Icons.NUMBERS, size=14, color=Colors['on_surface_variant']),
-                                        ft.Text("Number:", size=11, color=Colors['on_surface_variant']),
-                                        ft.Text(format_po_ssid(supplier_number), size=11, weight="bold", color=Colors['on_surface']),
-                                    ], spacing=4),
-                                    ft.Row([
-                                        ft.Icon(ft.Icons.RECEIPT_LONG, size=14, color=Colors['on_surface_variant']),
-                                        ft.Text("PO:", size=11, color=Colors['on_surface_variant']),
-                                        ft.Text(format_po_ssid(supplier_po), size=11, weight="bold", color=Colors['on_surface']),
-                                    ], spacing=4),
-                                ], spacing=6, expand=True),
-                            ], spacing=20),
-                        ], spacing=8),
-                        padding=ft.padding.symmetric(vertical=8)
-                    ),
-                    
-                    ft.Divider(height=1, color=Colors['outline']),
-                    
-                    # Área de avaliação
-                    ft.Container(
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Icon(ft.Icons.EDIT_NOTE, size=18, color=Colors['primary']),
-                                ft.Text("Avaliar Notas Pendentes", size=13, weight="bold", color=Colors['primary']),
-                            ], spacing=8),
-                            ft.Container(height=8),
-                            ft.Row(
+                    # Layout horizontal: Dados à esquerda, Notas à direita
+                    ft.Row([
+                        # Coluna de dados à esquerda
+                        ft.Column([
+                            ft.Text(f"Data ref: {month_name}/{current_year}", size=14, color=Colors['on_surface']),
+                            ft.Text(f"ID: {supplier_id}", size=14, color=Colors['on_surface']),
+                            ft.Text(f"SSID: {format_po_ssid(supplier_number)}", size=14, color=Colors['on_surface']),
+                            ft.Text(f"PO: {format_po_ssid(supplier_po)}", size=14, color=Colors['on_surface']),
+                            ft.Text(f"BU: {bu or 'N/A'}", size=14, color=Colors['on_surface']),
+                        ], spacing=6, expand=1),
+                        
+                        # Divider vertical
+                        ft.VerticalDivider(width=1, color=Colors['outline_variant']),
+                        
+                        # Controles de avaliação à direita
+                        ft.Container(
+                            content=ft.Row(
                                 score_controls_list,
-                                spacing=15,
-                                wrap=True,
-                                alignment=ft.MainAxisAlignment.CENTER
+                                spacing=30,
+                                alignment=ft.MainAxisAlignment.CENTER,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
                             ),
-                        ], spacing=0),
-                        padding=ft.padding.all(12),
-                        bgcolor=warning_light,
-                        border_radius=8,
-                        border=ft.border.all(1, ft.Colors.with_opacity(0.3, Colors['primary']))
-                    ),
+                            alignment=ft.alignment.center,
+                            expand=2,
+                        ),
+                    ], spacing=20, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                     
-                    # Botão para salvar
+                    # Espaço
+                    ft.Container(height=12),
+                    
+                    # Divider entre os campos e o botão
+                    ft.Divider(height=1, color=Colors['outline_variant']),
+                    
+                    # Espaço
+                    ft.Container(height=10),
+                    
+                    # Botão salvar alinhado à direita
                     ft.Container(
                         content=ft.ElevatedButton(
-                            "Salvar Avaliação",
-                            icon=ft.Icons.SAVE,
+                            "Salvar",
+                            icon=ft.Icons.CHECK,
                             on_click=save_pending_scores,
                             bgcolor=Colors['primary'],
                             color=Colors['on_primary'],
-                            height=40,
+                            height=38,
                         ),
-                        alignment=ft.alignment.center,
-                        padding=ft.padding.only(top=8)
-                    )
-                ], spacing=0),
-                padding=ft.padding.all(16),
-                border_radius=12,
-                bgcolor=Colors['card_background'],
-                border=ft.border.all(2, Colors['primary'])
+                        alignment=ft.alignment.center_right
+                    ),
+                ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.START),
+                padding=ft.padding.all(20),
+                expand=True,  # Ocupar largura disponível
+                border=ft.border.all(1, Colors['outline_variant']),
+                border_radius=8,
+                bgcolor=Colors['card_background']  # Cor do tema
             ),
-            elevation=4
+            padding=ft.padding.symmetric(horizontal=0, vertical=6),
+            expand=True  # Ocupar linha inteira
         )
         
         pending_results_list.controls.append(card)
@@ -13334,17 +13291,47 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             padding=ft.padding.all(20)
         ),
         ft.Divider(color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
-        ft.Container(
-            content=pending_results_list,
-            expand=True,
-            clip_behavior=ft.ClipBehavior.HARD_EDGE,
-        ),
+        pending_results_container,
     ], expand=True)
+    
+    def check_and_update_pending_tab():
+        """Verifica pendências e atualiza estilo da tab ao inicializar"""
+        try:
+            pending_suppliers = get_pending_suppliers()
+            if pending_suppliers and len(pending_suppliers) > 0:
+                # Há pendências - pintar de laranja
+                pending_tab.text = f"Pendências ({len(pending_suppliers)})"
+                pending_tab.icon = ft.Icons.WARNING
+                # Tentar adicionar cor laranja ao texto
+                try:
+                    pending_tab.tab_content = ft.Row([
+                        ft.Icon(ft.Icons.WARNING, color=ft.Colors.ORANGE),
+                        ft.Text(f"Pendências ({len(pending_suppliers)})", color=ft.Colors.ORANGE, weight="bold")
+                    ])
+                except:
+                    pass
+            else:
+                # Sem pendências - estilo padrão
+                pending_tab.text = "Pendências"
+                pending_tab.icon = ft.Icons.PENDING_ACTIONS
+                try:
+                    pending_tab.tab_content = None
+                except:
+                    pass
+        except Exception as ex:
+            print(f"Erro ao verificar pendências na inicialização: {ex}")
     
     def on_tab_change(e):
         """Callback quando muda de tab"""
         if score_tabs.selected_index == 1:  # Tab de Pendências
             load_pending_scores()
+    
+    # Criar referência para a tab de Pendências
+    pending_tab = ft.Tab(
+        text="Pendências",
+        icon=ft.Icons.PENDING_ACTIONS,
+        content=pending_tab_content
+    )
     
     score_tabs = ft.Tabs(
         selected_index=0,
@@ -13355,15 +13342,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 icon=ft.Icons.SEARCH,
                 content=search_tab_content
             ),
-            ft.Tab(
-                text="Pendências",
-                icon=ft.Icons.PENDING_ACTIONS,
-                content=pending_tab_content
-            ),
+            pending_tab,
         ],
         expand=True,
         on_change=on_tab_change
     )
+    
+    # Verificar pendências ao inicializar
+    check_and_update_pending_tab()
+    
+    # Carregar pendências na inicialização
+    load_pending_scores()
     
     score_view = ft.Column(
         [score_tabs],
@@ -13374,6 +13363,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # Referências para os campos de seleção do Timeline
     timeline_vendor_dropdown = ft.Ref[ft.Dropdown]()
+    timeline_vendor_search_field = ft.Ref[ft.TextField]()  # Campo de pesquisa visual
+    selected_vendor_id = ft.Ref[str]()  # Armazena o ID do fornecedor selecionado
     timeline_year_dropdown = ft.Ref[ft.Dropdown]()
     timeline_bu_dropdown = ft.Ref[ft.Dropdown]()
     
@@ -13440,6 +13431,145 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         "q3": {"card": ft.Ref(), "icon": ft.Ref(), "value": q3_avg_card, "gradient": ft.Ref()},
         "q4": {"card": ft.Ref(), "icon": ft.Ref(), "value": q4_avg_card, "gradient": ft.Ref()},
     }
+    
+    def open_vendor_selection_dialog(e):
+        """Abre um diálogo com campo de pesquisa e lista de fornecedores"""
+        search_query = ft.Ref[ft.TextField]()
+        vendors_list = ft.Ref[ft.Column]()
+        
+        def load_vendors_list(filter_text=""):
+            """Carrega a lista de fornecedores filtrada do banco (limite 50)"""
+            try:
+                if not db_conn:
+                    return []
+                
+                # Se há filtro, buscar no banco; senão, carregar os primeiros 50
+                if filter_text.strip():
+                    query = """
+                        SELECT supplier_id, vendor_name, bu, supplier_po 
+                        FROM supplier_database_table 
+                        WHERE vendor_name LIKE ? OR supplier_id LIKE ?
+                        ORDER BY vendor_name
+                        LIMIT 50
+                    """
+                    filter_param = f"%{filter_text}%"
+                    suppliers = db_manager.query(query, (filter_param, filter_param))
+                else:
+                    query = """
+                        SELECT supplier_id, vendor_name, bu, supplier_po 
+                        FROM supplier_database_table 
+                        ORDER BY vendor_name
+                        LIMIT 50
+                    """
+                    suppliers = db_manager.query(query)
+                
+                items = []
+                for supplier in suppliers:
+                    supplier_id = supplier['supplier_id']
+                    vendor_name = supplier['vendor_name']
+                    bu = supplier['bu'] if supplier['bu'] else "N/A"
+                    # Converter PO para inteiro, se for número
+                    po_value = supplier['supplier_po']
+                    if po_value:
+                        try:
+                            po = str(int(float(po_value)))
+                        except (ValueError, TypeError):
+                            po = str(po_value)
+                    else:
+                        po = "N/A"
+                    
+                    def create_select_handler(sid, vname):
+                        def handler(e):
+                            # Atualizar o campo de pesquisa visual
+                            if timeline_vendor_search_field.current:
+                                timeline_vendor_search_field.current.value = vname
+                                timeline_vendor_search_field.current.update()
+                            
+                            # Atualizar o dropdown oculto (compatibilidade)
+                            if timeline_vendor_dropdown.current:
+                                timeline_vendor_dropdown.current.value = sid
+                            
+                            # Fechar o diálogo
+                            page.close(vendor_dialog)
+                            
+                            # Chamar a função de mudança
+                            on_timeline_vendor_change(None)
+                        return handler
+                    
+                    items.append(
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Text(vendor_name, size=14, weight="w500", expand=2),
+                                ft.Text(bu, size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'), expand=1),
+                                ft.Text(po, size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'), expand=1),
+                            ], spacing=12, alignment=ft.MainAxisAlignment.START),
+                            padding=ft.padding.symmetric(horizontal=12, vertical=10),
+                            on_click=create_select_handler(supplier_id, vendor_name),
+                            ink=True,
+                            border_radius=4,
+                        )
+                    )
+                
+                return items
+            except Exception as ex:
+                print(f"Erro ao carregar fornecedores: {ex}")
+                return []
+        
+        def on_search_input(e):
+            """Filtra a lista quando o usuário digita"""
+            filter_text = search_query.current.value if search_query.current else ""
+            vendors_list.current.controls = load_vendors_list(filter_text)
+            vendors_list.current.update()
+        
+        # Criar o diálogo
+        vendor_dialog = ft.AlertDialog(
+            title=ft.Text("Selecionar Fornecedor", size=18, weight="bold"),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.TextField(
+                        hint_text="Buscar fornecedor...",
+                        prefix_icon=ft.Icons.SEARCH,
+                        ref=search_query,
+                        on_change=on_search_input,
+                        border_radius=8,
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                        text_size=14,
+                    ),
+                    ft.Container(height=10),
+                    # Cabeçalho das colunas
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Text("Nome", size=13, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'), expand=2),
+                            ft.Text("BU", size=13, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'), expand=1),
+                            ft.Text("PO", size=13, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'), expand=1),
+                        ], spacing=12, alignment=ft.MainAxisAlignment.START),
+                        padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
+                        border_radius=ft.border_radius.only(top_left=8, top_right=8),
+                    ),
+                    ft.Container(
+                        content=ft.Column(
+                            controls=load_vendors_list(),
+                            ref=vendors_list,
+                            scroll=ft.ScrollMode.AUTO,
+                            spacing=0,
+                        ),
+                        height=400,
+                        border=ft.border.all(1, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
+                        border_radius=ft.border_radius.only(bottom_left=8, bottom_right=8),
+                    ),
+                ], spacing=0, tight=True),
+                width=600,
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: page.close(vendor_dialog)),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        
+        page.open(vendor_dialog)
     
     def load_suppliers_for_timeline():
         """Carrega todos os suppliers do banco de dados para o dropdown no formato 'Supplier - BU'"""
@@ -15235,6 +15365,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     ft.Text("Essa linha mostra a direção geral dos scores.", 
                                            size=13, color=ft.Colors.GREY_700),
                                     ft.Container(height=8),
+                                    ft.Text("📐 Equação da Linha de Tendência:", size=16, weight="bold", color=color),
+                                    ft.Container(
+                                        content=ft.Column([
+                                            ft.Text(f"y = {reg_data['m']:.3f}x + {reg_data['b']:.2f}", 
+                                                   size=16, weight="bold", color=ft.Colors.BLUE_700),
+                                            ft.Container(height=4),
+                                            ft.Text(f"Onde:", size=13, weight="bold", color=ft.Colors.GREY_700),
+                                            ft.Text(f"   • y = score previsto", size=13, color=ft.Colors.GREY_600),
+                                            ft.Text(f"   • x = período (mês)", size=13, color=ft.Colors.GREY_600),
+                                            ft.Text(f"   • m = {reg_data['m']:.3f} (inclinação da linha)", size=13, color=ft.Colors.GREY_600),
+                                            ft.Text(f"   • b = {reg_data['b']:.2f} (ponto inicial)", size=13, color=ft.Colors.GREY_600),
+                                        ], spacing=2),
+                                        padding=10,
+                                        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.BLUE),
+                                        border_radius=6,
+                                        border=ft.border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.BLUE)),
+                                    ),
+                                    ft.Container(height=8),
                                     ft.Text(f"📈 Inclinação da linha: {reg_data['m']:.4f}", size=14),
                                     ft.Text(f"   • Positivo = subindo | Negativo = descendo | Perto de zero = estável", 
                                            size=13, color=ft.Colors.GREY_600, italic=True),
@@ -15332,7 +15480,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ) if regression else ft.Container(),
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
                             bgcolor=ft.Colors.with_opacity(0.05, color),
-                            padding=ft.padding.symmetric(vertical=10, horizontal=15),
+                            padding=ft.padding.symmetric(vertical=1, horizontal=6),
                             border_radius=8,
                         ),
                         ft.Container(height=10),
@@ -16002,9 +16150,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             alignment=ft.alignment.center_left
                         ),
                         ft.Container(
-                            ft.Icon(consistency_icon, size=20, color=consistency_color, tooltip=consistency_tooltip),
+                            content=ft.Icon(consistency_icon, size=20, color=consistency_color),
                             width=50,
-                            alignment=ft.alignment.center
+                            alignment=ft.alignment.center,
+                            tooltip=consistency_tooltip
                         ),
                         ft.Container(
                             ft.Row(action_buttons, spacing=0, tight=True),
@@ -16187,16 +16336,31 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             # Campos de seleção - mais clean e minimalista
             ft.Row([
-                ft.Dropdown(
-                    label="Fornecedor",
-                    hint_text="Selecione um fornecedor",
-                    ref=timeline_vendor_dropdown,
-                    on_change=on_timeline_vendor_change,
-                    options=load_suppliers_for_timeline(),
+                ft.Container(
+                    content=ft.TextField(
+                        label="Fornecedor",
+                        hint_text="Clique para selecionar...",
+                        ref=timeline_vendor_search_field,
+                        read_only=True,
+                        on_click=open_vendor_selection_dialog,
+                        suffix_icon=ft.Icons.ARROW_DROP_DOWN,
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                        text_size=14,
+                    ),
                     expand=True,
-                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                    padding=ft.padding.all(5)
+                ),
+                # Dropdown oculto para manter compatibilidade
+                ft.Container(
+                    content=ft.Dropdown(
+                        ref=timeline_vendor_dropdown,
+                        visible=False,
+                        options=load_suppliers_for_timeline(),
+                    ),
+                    width=0,
+                    height=0,
                 ),
                 ft.IconButton(
                     icon=ft.Icons.INFO_OUTLINE,
@@ -17290,8 +17454,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     rail_container,
                     ft.VerticalDivider(width=1),  # Removido color para ficar transparente
                     ft.Container( # Container principal para o conteúdo das abas
-                        content=ft.Column([home_view, score_view, timeline_view, risks_view, email_view, configs_view, cross_check_view], expand=True),
+                        content=ft.Column([home_view, score_view, timeline_view, risks_view, email_view, configs_view], expand=True),
                         expand=True,
+                        padding=ft.padding.all(20),  # Padding ao redor de todas as abas
                     ),
                 ],
                 expand=True,
