@@ -5663,7 +5663,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ("timeline_outlined", "Timeline", 2),
                 ("warning_outlined", "Risks", 3),
                 ("email_outlined", "Email", 4),
-                ("settings_outlined", "Settings", 5),
+                # Settings removido - acessível apenas pela top bar
             ]
             
             # Filtrar itens baseado no privilégio do usuário
@@ -8133,18 +8133,26 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Conteúdo da aba Score
     score_form = ft.Column(
         controls=[
-            # Campo de pesquisa - responsivo
-            ft.TextField(
-                hint_text="Pesquisar por nome ou ID do fornecedor...",
-                prefix_icon=ft.Icons.SEARCH,
-                border_radius=8,
-                on_change=lambda e: search_suppliers_debounced(),
-                ref=search_field_ref,
-                bgcolor=None,
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
-                expand=True  # Tornar responsivo
-            ),
+            # Campo de pesquisa com botão - responsivo
+            ft.Row([
+                ft.TextField(
+                    hint_text="Pesquisar por nome ou ID do fornecedor...",
+                    border_radius=8,
+                    ref=search_field_ref,
+                    bgcolor=None,
+                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                    expand=True,  # Tornar responsivo
+                    on_submit=lambda e: search_suppliers(),  # Buscar ao pressionar Enter
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.SEARCH,
+                    tooltip="Buscar",
+                    on_click=lambda e: search_suppliers(),
+                    icon_size=20,
+                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                ),
+            ], spacing=5),
             # Primeira linha de filtros: PO, BU, Mês e Ano
             ft.Row(
                 controls=[
@@ -8156,14 +8164,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                         ref=selected_po,
-                        on_change=lambda e: search_suppliers_debounced()
                     ),
                     ft.Dropdown(
                         label="BU",
                         expand=1,  # Ajuste proporcional
                         border_radius=8,
                         ref=selected_bu,
-                        on_change=lambda e: search_suppliers_debounced(),
                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
@@ -8181,7 +8187,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                         label="Mostrar Inativos",
                                         value=False,
                                         ref=show_inactive_switch,
-                                        on_change=lambda e: search_suppliers_debounced()
                                     ),
                                 ], tight=True),
                             ),
@@ -8199,7 +8204,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                         ref=selected_card_limit,
                                         width=80,
                                         value="6",
-                                        on_change=lambda e: search_suppliers_debounced(),
                                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
@@ -12925,31 +12929,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             pending_results_list.update()
             
-            # Atualizar estilo da tab baseado em pendências
-            try:
-                if pending_suppliers and len(pending_suppliers) > 0:
-                    # Há pendências - pintar de laranja
-                    pending_tab.text = f"Pendências ({len(pending_suppliers)})"
-                    pending_tab.icon = ft.Icons.WARNING
-                    # Tentar adicionar cor laranja ao texto
-                    try:
-                        pending_tab.tab_content = ft.Row([
-                            ft.Icon(ft.Icons.WARNING, color=ft.Colors.ORANGE),
-                            ft.Text(f"Pendências ({len(pending_suppliers)})", color=ft.Colors.ORANGE)
-                        ])
-                    except:
-                        pass
-                else:
-                    # Sem pendências - estilo padrão
-                    pending_tab.text = "Pendências"
-                    pending_tab.icon = ft.Icons.PENDING_ACTIONS
-                    try:
-                        pending_tab.tab_content = None
-                    except:
-                        pass
-                score_tabs.update()
-            except Exception as ex:
-                print(f"Aviso: não foi possível atualizar estilo da tab: {ex}")
+            # Não precisa atualizar o estilo da tab - apenas o ícone do menu superior indica pendências
             
         except Exception as e:
             print(f"Erro ao carregar pendências: {e}")
@@ -13294,39 +13274,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         pending_results_container,
     ], expand=True)
     
-    def check_and_update_pending_tab():
-        """Verifica pendências e atualiza estilo da tab ao inicializar"""
-        try:
-            pending_suppliers = get_pending_suppliers()
-            if pending_suppliers and len(pending_suppliers) > 0:
-                # Há pendências - pintar de laranja
-                pending_tab.text = f"Pendências ({len(pending_suppliers)})"
-                pending_tab.icon = ft.Icons.WARNING
-                # Tentar adicionar cor laranja ao texto
-                try:
-                    pending_tab.tab_content = ft.Row([
-                        ft.Icon(ft.Icons.WARNING, color=ft.Colors.ORANGE),
-                        ft.Text(f"Pendências ({len(pending_suppliers)})", color=ft.Colors.ORANGE, weight="bold")
-                    ])
-                except:
-                    pass
-            else:
-                # Sem pendências - estilo padrão
-                pending_tab.text = "Pendências"
-                pending_tab.icon = ft.Icons.PENDING_ACTIONS
-                try:
-                    pending_tab.tab_content = None
-                except:
-                    pass
-        except Exception as ex:
-            print(f"Erro ao verificar pendências na inicialização: {ex}")
-    
     def on_tab_change(e):
         """Callback quando muda de tab"""
         if score_tabs.selected_index == 1:  # Tab de Pendências
             load_pending_scores()
     
-    # Criar referência para a tab de Pendências
+    # Criar referência para a tab de Pendências com ícone
     pending_tab = ft.Tab(
         text="Pendências",
         icon=ft.Icons.PENDING_ACTIONS,
@@ -13347,9 +13300,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         expand=True,
         on_change=on_tab_change
     )
-    
-    # Verificar pendências ao inicializar
-    check_and_update_pending_tab()
     
     # Carregar pendências na inicialização
     load_pending_scores()
@@ -13528,7 +13478,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 content=ft.Column([
                     ft.TextField(
                         hint_text="Buscar fornecedor...",
-                        prefix_icon=ft.Icons.SEARCH,
                         ref=search_query,
                         on_change=on_search_input,
                         border_radius=8,
@@ -13536,6 +13485,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                         text_size=14,
+                        suffix_icon=ft.Icons.SEARCH,
                     ),
                     ft.Container(height=10),
                     # Cabeçalho das colunas
@@ -16343,7 +16293,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         ref=timeline_vendor_search_field,
                         read_only=True,
                         on_click=open_vendor_selection_dialog,
-                        suffix_icon=ft.Icons.ARROW_DROP_DOWN,
+                        suffix_icon=ft.Icons.SEARCH,
                         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
@@ -17447,6 +17397,112 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page))["rail_background"]  # Cor mais escura
     )
 
+    # Função para mudar para aba de configurações
+    def go_to_configs(e):
+        selected_index.current = 5
+        home_view.visible = False
+        score_view.visible = False
+        timeline_view.visible = False
+        risks_view.visible = False
+        email_view.visible = False
+        configs_view.visible = True
+        page.update()
+    
+    # Função para ir para aba de Pendências
+    def go_to_pendencies(e):
+        # Usar set_selected para atualizar o menu lateral corretamente
+        set_selected(1)(e)
+        # Definir a sub-aba de Pendências (índice 1)
+        score_tabs.selected_index = 1
+        # Atualizar a página
+        page.update()
+    
+    # Função para verificar se há pendências reais
+    def has_pending_scores():
+        try:
+            if not db_conn:
+                return False
+            
+            # Usar a função get_pending_suppliers() que já existe e verifica pendências reais
+            pending_suppliers = get_pending_suppliers()
+            
+            # Retorna True apenas se houver pendências reais que o usuário pode preencher
+            return pending_suppliers and len(pending_suppliers) > 0
+        except Exception as e:
+            print(f"Erro ao verificar pendências: {e}")
+            return False
+    
+    # Top bar - Barra superior fina e clean
+    top_bar = ft.Container(
+        content=ft.Row(
+            [
+                # Lado esquerdo - Informações do usuário
+                ft.Row([
+                    ft.Icon(
+                        ft.Icons.ACCOUNT_CIRCLE, 
+                        size=22,
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')
+                    ),
+                    ft.Column([
+                        ft.Text(
+                            f"{current_user_name} ({current_user_wwid})",
+                            size=13,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        ft.Text(
+                            current_user_privilege,
+                            size=11,
+                            opacity=0.7,
+                        ),
+                    ], spacing=0, tight=True),
+                ], spacing=8),
+                
+                # Centro - Espaço flexível
+                ft.Container(expand=True),
+                
+                # Lado direito - Ícones de ação com hover
+                ft.Row([
+                    # Ícone de pendências (apenas ícone, sem texto)
+                    ft.Container(
+                        content=ft.IconButton(
+                            icon=ft.Icons.PENDING_ACTIONS,
+                            icon_size=20,
+                            tooltip="Pendências de avaliação",
+                            icon_color="orange" if has_pending_scores() else get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
+                            on_click=go_to_pendencies,
+                            style=ft.ButtonStyle(
+                                overlay_color={
+                                    ft.ControlState.HOVERED: ft.Colors.with_opacity(0.1, get_current_theme_colors(get_theme_name_from_page(page)).get('primary'))
+                                }
+                            ),
+                        ),
+                        visible=current_user_privilege in ["Super Admin", "Admin"],
+                    ),
+                    
+                    # Ícone de configurações
+                    ft.IconButton(
+                        icon=ft.Icons.SETTINGS,
+                        icon_size=20,
+                        tooltip="Configurações",
+                        on_click=go_to_configs,
+                        icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
+                        style=ft.ButtonStyle(
+                            overlay_color={
+                                ft.ControlState.HOVERED: ft.Colors.with_opacity(0.1, get_current_theme_colors(get_theme_name_from_page(page)).get('primary'))
+                            }
+                        ),
+                    ),
+                ], spacing=5),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        height=50,
+        padding=ft.padding.symmetric(horizontal=20, vertical=8),
+        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
+        # Borda removida para visual mais clean
+    )
+
     page.add(
         ft.Container(
             content=ft.Row(
@@ -17454,9 +17510,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     rail_container,
                     ft.VerticalDivider(width=1),  # Removido color para ficar transparente
                     ft.Container( # Container principal para o conteúdo das abas
-                        content=ft.Column([home_view, score_view, timeline_view, risks_view, email_view, configs_view], expand=True),
+                        content=ft.Column([
+                            top_bar,  # Barra superior
+                            ft.Container(
+                                content=ft.Column([home_view, score_view, timeline_view, risks_view, email_view, configs_view], expand=True),
+                                expand=True,
+                                padding=ft.padding.all(20),  # Padding ao redor de todas as abas
+                            )
+                        ], spacing=0, expand=True),
                         expand=True,
-                        padding=ft.padding.all(20),  # Padding ao redor de todas as abas
                     ),
                 ],
                 expand=True,
