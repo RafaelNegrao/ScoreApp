@@ -1296,6 +1296,8 @@ def login_screen(page: ft.Page):
             page.window.min_height = 900
             page.window.resizable = True
             page.window.maximized = True
+            page.window.title_bar_hidden = True  # Remove a borda da janela padrão
+            page.window.title_bar_buttons_hidden = True  # Esconde botões padrão
             safe_page_update(page) # Aplica a maximização
 
             # Inicializar aplicação principal na mesma página
@@ -12706,11 +12708,14 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Container para resultados de pendências - usando Column com scroll
     pending_results_list = ft.Column([], spacing=16, scroll=ft.ScrollMode.AUTO, expand=True, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
     
-    # Envolver o pending_results_list em um Container com bgcolor
+    # Variável global para controlar quantos cards de pendência exibir (máximo 10)
+    MAX_PENDING_CARDS = 10
+    
+    # Envolver o pending_results_list em um Container com bgcolor que segue o tema
     pending_results_container = ft.Container(
         content=pending_results_list,
         expand=True,
-        bgcolor="#282A36",
+        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface'),
         padding=ft.padding.symmetric(horizontal=20, vertical=20)
     )
     
@@ -12875,12 +12880,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         return None
     
     def load_pending_scores():
-        """Carrega suppliers com notas pendentes do usuário"""
+        """Carrega suppliers com notas pendentes do usuário (máximo 10 por vez)"""
         try:
             pending_results_list.controls.clear()
             
             # Buscar pendências
             pending_suppliers = get_pending_suppliers()
+            
+            # Contar total de pendências
+            total_pending = len(pending_suppliers)
             
             if not pending_suppliers:
                 # Adicionar mensagem centralizada quando não há pendências
@@ -12896,8 +12904,39 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     )
                 )
             else:
-                # Criar cards de pendências
-                for pending in pending_suppliers:
+                # Adicionar header com contador se houver mais de 10 pendências
+                if total_pending > MAX_PENDING_CARDS:
+                    pending_results_list.controls.append(
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE, size=24),
+                                ft.Column([
+                                    ft.Text(
+                                        f"Mostrando {MAX_PENDING_CARDS} de {total_pending} pendências",
+                                        size=16,
+                                        weight="bold",
+                                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
+                                    ),
+                                    ft.Text(
+                                        f"Ao preencher uma avaliação, a próxima pendência será carregada automaticamente",
+                                        size=12,
+                                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
+                                        italic=True
+                                    ),
+                                ], spacing=2, expand=True),
+                            ], spacing=10),
+                            padding=ft.padding.all(15),
+                            bgcolor=ft.Colors.BLUE_50,
+                            border_radius=8,
+                            margin=ft.margin.only(bottom=10)
+                        )
+                    )
+                
+                # Limitar a MAX_PENDING_CARDS (10) cards por vez
+                limited_pending = pending_suppliers[:MAX_PENDING_CARDS]
+                
+                # Criar cards de pendências (máximo 10)
+                for pending in limited_pending:
                     # Buscar informações completas do supplier
                     supplier_query = """
                         SELECT supplier_number, bu, vendor_name, supplier_po
@@ -13113,8 +13152,94 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 print(f"✅ Total Score calculado: {total_score} para {vendor_name}")
                 show_snack_bar(f"✅ Notas salvas para {vendor_name}! (Total Score: {total_score})", False)
                 
-                # Recarregar a lista de pendências
-                load_pending_scores()
+                # Remover o card salvo e carregar o próximo dinamicamente
+                try:
+                    # Contar cards atuais (excluindo header de info se existir)
+                    current_cards = [c for c in pending_results_list.controls if isinstance(c, ft.Container) and hasattr(c, 'data')]
+                    
+                    # Remover o card que foi salvo
+                    for control in pending_results_list.controls[:]:
+                        if hasattr(control, 'data') and control.data == supplier_id:
+                            pending_results_list.controls.remove(control)
+                            print(f"🗑️ Card removido: {vendor_name}")
+                            break
+                    
+                    # Buscar todas as pendências novamente
+                    all_pending = get_pending_suppliers()
+                    
+                    # Se ainda houver pendências além das que já estão exibidas
+                    if len(all_pending) >= MAX_PENDING_CARDS:
+                        # Pegar a próxima pendência (índice = MAX_PENDING_CARDS - 1 porque acabamos de remover 1)
+                        next_pending_index = MAX_PENDING_CARDS - 1
+                        if next_pending_index < len(all_pending):
+                            next_pending = all_pending[next_pending_index]
+                            
+                            # Buscar informações completas do supplier
+                            supplier_query = """
+                                SELECT supplier_number, bu, vendor_name, supplier_po
+                                FROM supplier_database_table
+                                WHERE supplier_id = ?
+                            """
+                            supplier_info = db_manager.query_one(supplier_query, (next_pending['supplier_id'],))
+                            
+                            if supplier_info:
+                                if isinstance(supplier_info, dict):
+                                    next_supplier_number = supplier_info.get('supplier_number')
+                                    next_bu = supplier_info.get('bu')
+                                    next_vendor_name = supplier_info.get('vendor_name')
+                                    next_supplier_po = supplier_info.get('supplier_po')
+                                else:
+                                    next_supplier_number, next_bu, next_vendor_name, next_supplier_po = supplier_info
+                                
+                                # Criar e adicionar card da próxima pendência
+                                create_pending_card(
+                                    next_pending['supplier_id'],
+                                    next_vendor_name,
+                                    next_supplier_number,
+                                    next_bu,
+                                    next_supplier_po,
+                                    next_pending['pending_scores'],
+                                    next_pending['month'],
+                                    next_pending['year']
+                                )
+                                print(f"➕ Próximo card carregado: {next_vendor_name}")
+                    
+                    # Atualizar header com contador se necessário
+                    total_pending = len(all_pending)
+                    if total_pending > MAX_PENDING_CARDS:
+                        # Procurar e atualizar header existente
+                        for i, control in enumerate(pending_results_list.controls):
+                            if isinstance(control, ft.Container) and control.bgcolor == ft.Colors.BLUE_50:
+                                # Atualizar texto do header
+                                control.content.controls[1].controls[0].value = f"Mostrando {MAX_PENDING_CARDS} de {total_pending} pendências"
+                                break
+                    elif total_pending == 0:
+                        # Não há mais pendências - mostrar mensagem de sucesso
+                        pending_results_list.controls.clear()
+                        pending_results_list.controls.append(
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=80, color=ft.Colors.GREEN),
+                                    ft.Text("✅ Nenhuma pendência encontrada!", size=24, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                                    ft.Text("Todas as suas avaliações estão em dia.", size=16, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, alignment=ft.MainAxisAlignment.CENTER, expand=True),
+                                alignment=ft.alignment.center,
+                                expand=True
+                            )
+                        )
+                    else:
+                        # Menos de 10 pendências - remover header se existir
+                        for control in pending_results_list.controls[:]:
+                            if isinstance(control, ft.Container) and control.bgcolor == ft.Colors.BLUE_50:
+                                pending_results_list.controls.remove(control)
+                                break
+                    
+                    pending_results_list.update()
+                    
+                except Exception as reload_ex:
+                    print(f"⚠️ Erro ao recarregar próxima pendência: {reload_ex}")
+                    # Fallback: recarregar tudo
+                    load_pending_scores()
                 
             except Exception as ex:
                 print(f"Erro ao salvar notas pendentes: {ex}")
@@ -13204,7 +13329,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 bgcolor=Colors['card_background']  # Cor do tema
             ),
             padding=ft.padding.symmetric(horizontal=0, vertical=6),
-            expand=True  # Ocupar linha inteira
+            expand=True,  # Ocupar linha inteira
+            data=supplier_id  # Identificador para remoção dinâmica
         )
         
         pending_results_list.controls.append(card)
@@ -17432,7 +17558,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Erro ao verificar pendências: {e}")
             return False
     
-    # Top bar - Barra superior fina e clean
+    # Funções para controle da janela
+    def minimize_window(e):
+        page.window.minimized = True
+        page.update()
+    
+    def maximize_window(e):
+        page.window.maximized = not page.window.maximized
+        page.update()
+    
+    def close_window(e):
+        page.window.close()
+    
+    # Top bar - Barra superior fina e clean com controles de janela personalizados
     top_bar = ft.Container(
         content=ft.Row(
             [
@@ -17492,6 +17630,56 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             }
                         ),
                     ),
+                    
+                    # Separador visual
+                    ft.Container(
+                        width=1,
+                        height=20,
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                        margin=ft.margin.symmetric(horizontal=5),
+                    ),
+                    
+                    # Botão Minimizar
+                    ft.IconButton(
+                        icon=ft.Icons.MINIMIZE,
+                        icon_size=16,
+                        tooltip="Minimizar",
+                        on_click=minimize_window,
+                        icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
+                        style=ft.ButtonStyle(
+                            overlay_color={
+                                ft.ControlState.HOVERED: ft.Colors.with_opacity(0.1, get_current_theme_colors(get_theme_name_from_page(page)).get('primary'))
+                            }
+                        ),
+                    ),
+                    
+                    # Botão Maximizar/Restaurar
+                    ft.IconButton(
+                        icon=ft.Icons.CROP_SQUARE,
+                        icon_size=16,
+                        tooltip="Maximizar/Restaurar",
+                        on_click=maximize_window,
+                        icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
+                        style=ft.ButtonStyle(
+                            overlay_color={
+                                ft.ControlState.HOVERED: ft.Colors.with_opacity(0.1, get_current_theme_colors(get_theme_name_from_page(page)).get('primary'))
+                            }
+                        ),
+                    ),
+                    
+                    # Botão Fechar
+                    ft.IconButton(
+                        icon=ft.Icons.CLOSE,
+                        icon_size=16,
+                        tooltip="Fechar",
+                        on_click=close_window,
+                        icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
+                        style=ft.ButtonStyle(
+                            overlay_color={
+                                ft.ControlState.HOVERED: ft.Colors.with_opacity(0.2, ft.Colors.RED)
+                            }
+                        ),
+                    ),
                 ], spacing=5),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -17503,6 +17691,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         # Borda removida para visual mais clean
     )
 
+    # Envolver top_bar com WindowDragArea para permitir arrastar a janela
+    draggable_top_bar = ft.WindowDragArea(
+        content=top_bar,
+        maximizable=True,  # Permitir maximizar com duplo clique
+    )
+    
     page.add(
         ft.Container(
             content=ft.Row(
@@ -17511,7 +17705,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ft.VerticalDivider(width=1),  # Removido color para ficar transparente
                     ft.Container( # Container principal para o conteúdo das abas
                         content=ft.Column([
-                            top_bar,  # Barra superior
+                            draggable_top_bar,  # Barra superior arrastável
                             ft.Container(
                                 content=ft.Column([home_view, score_view, timeline_view, risks_view, email_view, configs_view], expand=True),
                                 expand=True,
