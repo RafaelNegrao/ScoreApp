@@ -314,7 +314,6 @@ class ResponsiveAppManager:
     def __init__(self, page: ft.Page):
         self.page = page
         self.results_container = None
-        self.score_form_container = None  # Container do formulário de pesquisa
         self.is_maximized = False
         self.current_layout = "single"  # "single" ou "double"
         self.menu_is_expanded_ref = None
@@ -327,7 +326,6 @@ class ResponsiveAppManager:
     def initialize_containers(self, results_container, score_form_container=None):
         """Inicializa as referências dos containers que serão gerenciados"""
         self.results_container = results_container
-        self.score_form_container = score_form_container
         # Layout será aplicado quando houver cards para mostrar
     
     def initialize_menu_controls(self, menu_is_expanded_ref, update_menu_func):
@@ -2449,27 +2447,27 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             e.control.bgcolor = Colors['surface_variant'] if e.data == "true" else (Colors['primary_container'] if is_selected else None)
             e.control.update()
         row_controls = [
-            ft.Icon(icon, color=Colors['primary'] if is_selected else Colors['on_surface'])
+            ft.Icon(icon, size=24, color=Colors['primary'] if is_selected else Colors['on_surface'])
         ]
         if show_text:
             row_controls.append(
                 ft.Text(
                     text,
-                    size=16,
-                    weight="bold" if is_selected else "normal",
+                    size=14,
+                    weight=ft.FontWeight.W_500 if is_selected else ft.FontWeight.W_400,
                     color=Colors['primary'] if is_selected else Colors['on_surface'],
                 )
             )
         # Corrige: passa a função handler sem executar
         return ft.Container(
-            content=ft.Row(row_controls, alignment=ft.MainAxisAlignment.CENTER if not show_text else ft.MainAxisAlignment.START, spacing=15),
-            padding=ft.padding.symmetric(horizontal=0 if not show_text else 10, vertical=10),
-            border_radius=8,
+            content=ft.Row(row_controls, alignment=ft.MainAxisAlignment.CENTER if not show_text else ft.MainAxisAlignment.START, spacing=12),
+            padding=ft.padding.symmetric(horizontal=0 if not show_text else 16, vertical=12),
+            border_radius=12,
             bgcolor=Colors['primary_container'] if is_selected else None,
             on_hover=on_hover,
             on_click=lambda e: set_selected(idx)(e),
             animate=200,
-            width=160 if show_text else 40,
+            width=200 if show_text else 48,
         )
     page.title = f"Score App v{APP_VERSION}"
     page.padding = 0
@@ -2936,13 +2934,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         """Atualiza as cores do header da aba Risks (ano e target)"""
         try:
             Colors = get_current_theme_colors(theme_name)
-            # Atualizar container principal do header (border e bgcolor)
-            if risks_header_container and risks_header_container.current:
-                try:
-                    risks_header_container.current.bgcolor = Colors.get('surface_variant')
-                    risks_header_container.current.border = None  # Remover borda
-                except Exception:
-                    pass
 
             # Atualizar dropdown e texto alvo dentro do header
             if risks_year_dropdown and risks_year_dropdown.current:
@@ -2950,22 +2941,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 risks_year_dropdown.current.color = Colors.get('on_surface')
                 risks_year_dropdown.current.border_color = Colors.get('outline')
 
-            if target_display_container and target_display_container.current:
-                # target_display_container tem borda e bgcolor especiais
-                try:
-                    target_display_container.current.border = ft.border.all(1.5, ft.Colors.AMBER_700)
-                    target_display_container.current.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.AMBER_700)
-                except Exception:
-                    pass
-
             # Atualizar cores do switch de inativos
-            if inactive_switch_container and inactive_switch_container.current:
-                try:
-                    inactive_switch_container.current.bgcolor = Colors.get('surface_variant')
-                    inactive_switch_container.current.border = ft.border.all(1, Colors.get('outline'))
-                except Exception:
-                    pass
-                    
             if include_inactive_switch and include_inactive_switch.current:
                 try:
                     include_inactive_switch.current.active_color = Colors.get('primary')
@@ -2973,25 +2949,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     include_inactive_switch.current.inactive_thumb_color = Colors.get('on_surface_variant')
                 except Exception:
                     pass
-                    
-            if inactive_switch_icon and inactive_switch_icon.current:
-                try:
-                    inactive_switch_icon.current.color = Colors.get('on_surface_variant')
-                except Exception:
-                    pass
+
 
             # Fazer update nos controles referenciados e forçar redraw da página
-            if risks_header_container and risks_header_container.current:
-                try:
-                    risks_header_container.current.update()
-                except Exception:
-                    pass
-            if target_display_container and target_display_container.current:
-                try:
-                    target_display_container.current.update()
-                except Exception:
-                    pass
-            # Atualizar dropdown do ano se existir
             if risks_year_dropdown and risks_year_dropdown.current:
                 try:
                     risks_year_dropdown.current.update()
@@ -2999,19 +2959,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     pass
                     
             # Atualizar controles do switch de inativos
-            if inactive_switch_container and inactive_switch_container.current:
-                try:
-                    inactive_switch_container.current.update()
-                except Exception:
-                    pass
             if include_inactive_switch and include_inactive_switch.current:
                 try:
                     include_inactive_switch.current.update()
-                except Exception:
-                    pass
-            if inactive_switch_icon and inactive_switch_icon.current:
-                try:
-                    inactive_switch_icon.current.update()
                 except Exception:
                     pass
             try:
@@ -3020,6 +2970,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 pass
 
         except Exception as e:
+
             print(f"Erro ao atualizar cores da aba Risks: {e}")
 
     def update_home_content():
@@ -3610,6 +3561,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     expand=True,
                     ref=month_dropdown_ref,
                     dense=True,
+                    border_radius=8,
                     color=theme_colors.get('on_surface'),
                     border_color=theme_colors.get('outline'),
                     **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
@@ -3620,6 +3572,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     expand=True,
                     ref=year_dropdown_ref,
                     dense=True,
+                    border_radius=8,
                     color=theme_colors.get('on_surface'),
                     border_color=theme_colors.get('outline'),
                     **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
@@ -3941,788 +3894,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # --- Fim: Funções para Gerar Nota Cheia ---
 
-    # --- Início: Funções para Importar/Exportar Score ---
-    
-    def import_score_dialog():
-        """Interface completa para importar scores de arquivo Excel"""
-        import datetime
-        
-        # Referencias para os componentes
-        month_dropdown_ref = ft.Ref[ft.Dropdown]()
-        year_dropdown_ref = ft.Ref[ft.Dropdown]() 
-        file_display_ref = ft.Ref[ft.Column]()
-        import_button_ref = ft.Ref[ft.ElevatedButton]()
-        validation_status_ref = ft.Ref[ft.Row]()
-        message_display_ref = ft.Ref[ft.Column]()  # Para mostrar mensagens
-        progress_bar_ref = ft.Ref[ft.ProgressBar]()  # Barra de progresso
-        progress_text_ref = ft.Ref[ft.Text]()  # Texto de progresso
-        
-        # Estado da aplicação
-        selected_file = {"path": None, "name": None, "valid": False}
-        
-        # Preparar opções de mês e ano
-        months = [
-            ft.dropdown.Option("1", "Janeiro"),
-            ft.dropdown.Option("2", "Fevereiro"), 
-            ft.dropdown.Option("3", "Março"),
-            ft.dropdown.Option("4", "Abril"),
-            ft.dropdown.Option("5", "Maio"),
-            ft.dropdown.Option("6", "Junho"),
-            ft.dropdown.Option("7", "Julho"),
-            ft.dropdown.Option("8", "Agosto"),
-            ft.dropdown.Option("9", "Setembro"),
-            ft.dropdown.Option("10", "Outubro"),
-            ft.dropdown.Option("11", "Novembro"),
-            ft.dropdown.Option("12", "Dezembro")
-        ]
-        years = [ft.dropdown.Option(str(year)) for year in range(2024, 2041)]
-        
-        def close_dialog(e):
-            page.close(dialog)
-        
-        def check_form_validity():
-            """Verifica se mês/ano estão selecionados, arquivo válido e data não é futura"""
-            month_ok = month_dropdown_ref.current.value is not None
-            year_ok = year_dropdown_ref.current.value is not None
-            file_ok = selected_file["valid"]
-            date_ok = True
-            
-            # Verificar se a data não é futura (permite mês atual)
-            if month_ok and year_ok:
-                selected_month = int(month_dropdown_ref.current.value)
-                selected_year = int(year_dropdown_ref.current.value)
-                current_date = datetime.datetime.now()
-                
-                # Comparar apenas ano/mês (não dia específico)
-                current_year = current_date.year
-                current_month = current_date.month
-                
-                # Data é futura se ano > atual OU (ano = atual E mês > atual)
-                if selected_year > current_year or (selected_year == current_year and selected_month > current_month):
-                    date_ok = False
-            
-            # Habilitar/desabilitar botão de importar
-            if import_button_ref.current:
-                import_button_ref.current.disabled = not (month_ok and year_ok and file_ok and date_ok)
-                safe_page_update(page)
-            
-            return date_ok
-        
-        def validate_excel_file(file_path):
-            """Valida se o arquivo Excel é válido (contém aba de validação)"""
-            try:
-                import openpyxl
-                import os
-                
-                if not os.path.exists(file_path):
-                    return False, "Arquivo não encontrado"
-                
-                # Abrir workbook
-                wb = openpyxl.load_workbook(file_path)
-                
-                # Verificar se existe a aba de validação oculta
-                if "ScoreApp_Validation" not in wb.sheetnames:
-                    return False, "Arquivo não foi gerado pelo ScoreApp"
-                
-                # Validar dados da aba de validação - apenas verificar o texto fixo
-                validation_ws = wb["ScoreApp_Validation"]
-                validation_text = validation_ws["A1"].value
-                
-                if validation_text != "SCOREAPP_VALIDATION_123456":
-                    return False, "Arquivo inválido - não foi gerado pelo ScoreApp"
-                
-                # Verificar se a aba "Import_score" existe
-                if "Import_score" not in wb.sheetnames:
-                    return False, "Aba 'Import_score' não encontrada"
-                
-                return True, "Arquivo válido"
-                
-            except Exception as e:
-                return False, f"Erro ao validar arquivo: {str(e)}"
-        
-        def handle_file_selection(result):
-            """Processa arquivo selecionado"""
-            if result.files:
-                file_path = result.files[0].path
-                file_name = result.files[0].name
-                
-                # Validar arquivo
-                is_valid, message = validate_excel_file(file_path)
-                
-                # Atualizar estado
-                selected_file["path"] = file_path
-                selected_file["name"] = file_name  
-                selected_file["valid"] = is_valid
-                
-                # Atualizar display do arquivo
-                if is_valid:
-                    status_color = "green"
-                    status_icon = ft.Icons.CHECK_CIRCLE
-                    status_text = "✅ Pronto para importar"
-                else:
-                    status_color = "red"
-                    status_icon = ft.Icons.ERROR
-                    status_text = f"❌ Arquivo incorreto: {message}"
-                
-                # Atualizar interface
-                file_display_ref.current.controls.clear()
-                file_display_ref.current.controls.extend([
-                    ft.Card(
-                        content=ft.Container(
-                            content=ft.Row([
-                                ft.Icon(ft.Icons.DESCRIPTION, color="blue", size=24),
-                                ft.Column([
-                                    ft.Text(file_name, weight="bold", size=14),
-                                    ft.Text(status_text, color=status_color, size=12)
-                                ], expand=True, spacing=2),
-                                ft.IconButton(
-                                    icon=ft.Icons.DELETE,
-                                    icon_color="red",
-                                    tooltip="Remover arquivo",
-                                    on_click=lambda _: remove_file()
-                                )
-                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                            padding=15
-                        ),
-                        elevation=2
-                    )
-                ])
-                
-                validation_status_ref.current.controls.clear()
-                if not is_valid:
-                    validation_status_ref.current.controls.extend([
-                        ft.Icon(status_icon, color=status_color, size=20),
-                        ft.Text(status_text, color=status_color, size=12, weight="bold")
-                    ])
-                
-                check_form_validity()
-                safe_page_update(page)
-        
-        def remove_file():
-            """Remove arquivo selecionado"""
-            selected_file["path"] = None
-            selected_file["name"] = None
-            selected_file["valid"] = False
-            
-            file_display_ref.current.controls.clear()
-            validation_status_ref.current.controls.clear()
-            
-            check_form_validity()
-            safe_page_update(page)
-        
-        def select_file(e):
-            """Abre seletor de arquivo"""
-            import_file_picker = ft.FilePicker(on_result=handle_file_selection)
-            page.overlay.append(import_file_picker)
-            safe_page_update(page)
-            
-            import_file_picker.pick_files(
-                dialog_title="Selecione o arquivo Excel para importar",
-                allowed_extensions=["xlsx"]
-            )
-        
-        def import_file(e):
-            """Executa importação do arquivo com barra de progresso"""
-            # Limpar mensagens anteriores
-            message_display_ref.current.controls.clear()
-            
-            if not selected_file["valid"]:
-                show_message("❌ Arquivo inválido para importação", "red")
-                return
-            
-            # Verificar se data não é futura
-            if not check_form_validity():
-                show_message("❌ Não é possível importar dados para datas futuras", "red")
-                return
-                
-            month = month_dropdown_ref.current.value
-            year = year_dropdown_ref.current.value
-            file_path = selected_file["path"]
-            
-            # Desabilitar botão durante importação
-            import_button_ref.current.disabled = True
-            
-            # Mostrar barra de progresso
-            progress_bar_ref.current.visible = True
-            progress_bar_ref.current.value = 0
-            progress_text_ref.current.visible = True
-            progress_text_ref.current.value = "Preparando importação..."
-            safe_page_update(page)
-            
-            def run_import():
-                try:
-                    # Executar importação com CRUD e recálculo
-                    success, message = import_scores_from_excel_with_crud_with_progress(
-                        file_path, month, year, progress_bar_ref, progress_text_ref
-                    )
-                    
-                    # Atualizar interface na thread principal
-                    def update_ui():
-                        progress_bar_ref.current.visible = False
-                        progress_text_ref.current.visible = False
-                        import_button_ref.current.disabled = False
-                        
-                        if success:
-                            show_message(f"✅ {message}", "green")
-                            # Atualizar dados na tela se necessário
-                            try:
-                                load_all_lists_data()
-                            except:
-                                pass
-                        else:
-                            show_message(f"❌ {message}", "red")
-                        
-                        # Garantir que o diálogo permaneça aberto
-                        safe_page_update(page)
-                    
-                    page.run_thread(update_ui)
-                    
-                except Exception as ex:
-                    def update_error():
-                        progress_bar_ref.current.visible = False
-                        progress_text_ref.current.visible = False
-                        import_button_ref.current.disabled = False
-                        show_message(f"❌ Erro na importação: {ex}", "red")
-                        # Garantir que o diálogo permaneça aberto
-                        safe_page_update(page)
-                    
-                    page.run_thread(update_error)
-            
-            # Executar em thread separada
-            import threading
-            threading.Thread(target=run_import, daemon=True).start()
-        
-        def show_message(text, message_type):
-            """Mostra mensagem na janela de importação"""
-            message_display_ref.current.controls.clear()
-            
-            # Definir cores baseadas no tipo de mensagem
-            if message_type == "green":
-                text_color = "green"
-                bg_color = "#e8f5e8"  # Verde claro
-                border_color = "green"
-            elif message_type == "red":
-                text_color = "red"
-                bg_color = "#fdeaea"  # Vermelho claro
-                border_color = "red"
-            elif message_type == "blue":
-                text_color = "blue"
-                bg_color = "#e3f2fd"  # Azul claro
-                border_color = "blue"
-            else:
-                text_color = "black"
-                bg_color = "#f5f5f5"  # Cinza claro
-                border_color = "grey"
-            
-            message_display_ref.current.controls.append(
-                ft.Container(
-                    content=ft.Text(text, color=text_color, size=14, weight="bold"),
-                    padding=10,
-                    bgcolor=bg_color,
-                    border_radius=8,
-                    border=ft.border.all(1, border_color)
-                )
-            )
-            safe_page_update(page)
-        
-        # Conteúdo do diálogo
-        dialog_content = ft.Column([
-            ft.Text("Importar Scores do Excel", size=18, weight="bold"),
-            ft.Divider(height=20),
-            
-            # Seleção de mês e ano
-            ft.Text("Período para Importação:", size=14, weight="bold"),
-            ft.Row([
-                ft.Dropdown(
-                    label="Mês",
-                    options=months,
-                    expand=True,
-                    ref=month_dropdown_ref,
-                    on_change=lambda _: check_form_validity()
-                ),
-                ft.Dropdown(
-                    label="Ano", 
-                    options=years,
-                    expand=True,
-                    ref=year_dropdown_ref,
-                    on_change=lambda _: check_form_validity()
-                ),
-            ], spacing=10),
-            
-            ft.Container(height=20),
-            
-            # Seleção de arquivo
-            ft.Text("Arquivo Excel:", size=14, weight="bold"),
-            ft.ElevatedButton(
-                "📁 Selecionar Arquivo Excel",
-                icon=ft.Icons.FOLDER_OPEN,
-                on_click=select_file
-            ),
-            
-            # Display do arquivo selecionado
-            ft.Column(ref=file_display_ref, spacing=10),
-            
-            # Status de validação
-            ft.Row(ref=validation_status_ref, spacing=10),
-            
-            # Barra de progresso
-            ft.Container(
-                content=ft.Column([
-                    ft.Text(
-                        "", 
-                        ref=progress_text_ref, 
-                        size=12, 
-                        visible=False,
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
-                    ),
-                    ft.ProgressBar(ref=progress_bar_ref, visible=False),
-                ], spacing=5),
-                padding=ft.padding.only(top=10)
-            ),
-            
-            # Area de mensagens
-            ft.Column(ref=message_display_ref, spacing=10),
-            
-            ft.Container(height=20),
-            ft.Divider(),
-            
-            # Botões
-            ft.Row([
-                ft.TextButton(
-                    "Fechar",
-                    on_click=close_dialog
-                ),
-                ft.ElevatedButton(
-                    "📥 Importar Arquivo",
-                    on_click=import_file,
-                    ref=import_button_ref,
-                    disabled=True,  # Inicialmente desabilitado
-                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_primary')
-                )
-            ], alignment=ft.MainAxisAlignment.END, spacing=10)
-        ], width=500, spacing=15, tight=True)
-        
-        dialog = ft.AlertDialog(
-            title=ft.Text("Importar Dados"),
-            content=dialog_content,
-            modal=True
-        )
-        
-        page.open(dialog)
-
-    def import_scores_from_excel_with_crud_with_progress(file_path, month, year, progress_bar_ref, progress_text_ref):
-        """Importa scores do Excel com CRUD e recálculo de notas"""
-        try:
-            import openpyxl
-            from datetime import datetime
-            import os
-        except ImportError:
-            return False, "Biblioteca openpyxl não encontrada"
-
-        try:
-            # Verificar se o arquivo existe
-            if not os.path.exists(file_path):
-                return False, "Arquivo não encontrado"
-
-            # Atualizar progresso
-            if progress_text_ref and progress_text_ref.current:
-                page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Abrindo arquivo Excel...'))
-                page.run_thread(lambda: safe_page_update(page))
-
-            # Abrir workbook
-            wb = openpyxl.load_workbook(file_path)
-            
-            # Verificar validação
-            if "ScoreApp_Validation" not in wb.sheetnames:
-                return False, "Arquivo não foi gerado pelo ScoreApp"
-                
-            validation_ws = wb["ScoreApp_Validation"]
-            validation_text = validation_ws["A1"].value
-            
-            if validation_text != "SCOREAPP_VALIDATION_123456":
-                return False, "Arquivo inválido"
-            
-            # Verificar aba Import_score
-            if "Import_score" not in wb.sheetnames:
-                return False, "Aba 'Import_score' não encontrada"
-                
-            ws = wb["Import_score"]
-            
-            # Ler headers para identificar as colunas
-            headers = []
-            col = 1
-            while True:
-                cell_value = ws.cell(row=1, column=col).value
-                if cell_value is None:
-                    break
-                headers.append(str(cell_value).strip())
-                col += 1
-            
-            # Mapear headers para índices
-            header_map = {header.lower(): idx for idx, header in enumerate(headers)}
-            
-            # Identificar colunas obrigatórias
-            required_cols = ["supplier id", "po", "bu", "supplier name"]
-            for req_col in required_cols:
-                if req_col not in header_map:
-                    return False, f"Coluna obrigatória '{req_col}' não encontrada"
-            
-            # Identificar colunas de notas (headers padrão do sistema) baseado nas permissões do usuário
-            score_columns = {}
-            standard_score_names = {
-                "otif": ["otif", "on time in full", "OTIF"],
-                "nil": ["nil", "zero defects", "NIL"],
-                "pickup": ["quality pickup", "pickup quality", "quality_pickup", "pickup", "Pickup"],
-                "package": ["quality package", "package quality", "quality_package", "package", "Package"]
-            }
-            
-            # Só mapear as colunas que o usuário tem permissão para acessar
-            for score_type, possible_names in standard_score_names.items():
-                # Verificar se o usuário tem permissão para esta nota
-                if current_user_permissions.get(score_type):
-                    for possible_name in possible_names:
-                        if possible_name in header_map:
-                            score_columns[score_type] = header_map[possible_name]
-                            break
-            
-            print(f"🔍 DEBUG: Colunas de notas mapeadas baseadas nas permissões: {score_columns}")
-            print(f"🔍 DEBUG: Permissões do usuário: {current_user_permissions}")
-            
-            # Verificar se o usuário tem pelo menos uma permissão de nota
-            if not score_columns:
-                return False, "Usuário não tem permissão para importar nenhuma coluna de nota"
-            
-            # Obter critérios do banco - mesmo formato da geração de notas
-            if progress_text_ref and progress_text_ref.current:
-                page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Carregando critérios...'))
-                page.run_thread(lambda: safe_page_update(page))
-            
-            criterios_raw = db_manager.query("SELECT criteria_category, value FROM criteria_table")
-            criterio_map = {}
-            for row in criterios_raw:
-                nome = str(row.get('criteria_category') if isinstance(row, dict) else row[0]).strip().lower()
-                valor = float(row.get('value') if isinstance(row, dict) else row[1])
-                if "package" in nome:
-                    criterio_map["package"] = valor
-                elif "pick" in nome:
-                    criterio_map["pickup"] = valor  
-                elif "nil" in nome:
-                    criterio_map["nil"] = valor
-                elif "otif" in nome:
-                    criterio_map["otif"] = valor
-            
-            processed_count = 0
-            updated_count = 0
-            created_count = 0
-            
-            # Calcular total de linhas para progresso
-            total_rows = ws.max_row - 1  # -1 porque linha 1 é header
-            
-            # Processar cada linha de dados
-            for row_num in range(2, ws.max_row + 1):
-                # Atualizar progresso
-                current_progress = (row_num - 2) / total_rows if total_rows > 0 else 0
-                if progress_bar_ref and progress_bar_ref.current:
-                    page.run_thread(lambda p=current_progress: setattr(progress_bar_ref.current, 'value', p))
-                if progress_text_ref and progress_text_ref.current:
-                    page.run_thread(lambda r=row_num-1, t=total_rows: setattr(progress_text_ref.current, 'value', f'Processando registro {r} de {t}...'))
-                page.run_thread(lambda: safe_page_update(page))
-                
-                try:
-                    # Ler dados básicos
-                    supplier_id_cell = ws.cell(row=row_num, column=header_map["supplier id"] + 1)
-                    po_cell = ws.cell(row=row_num, column=header_map["po"] + 1)
-                    bu_cell = ws.cell(row=row_num, column=header_map["bu"] + 1)
-                    supplier_name_cell = ws.cell(row=row_num, column=header_map["supplier name"] + 1)
-                    
-                    if not supplier_id_cell.value:
-                        continue
-                        
-                    supplier_id = str(supplier_id_cell.value).strip()
-                    po = str(po_cell.value).strip() if po_cell.value else ""
-                    bu = str(bu_cell.value).strip() if bu_cell.value else ""
-                    supplier_name = str(supplier_name_cell.value).strip() if supplier_name_cell.value else ""
-                    
-                    # Ler notas do Excel - apenas para as colunas que existem no arquivo
-                    excel_scores = {}
-                    
-                    # Só processar as colunas que realmente existem no Excel
-                    for score_type, col_idx in score_columns.items():
-                        cell_value = ws.cell(row=row_num, column=col_idx + 1).value
-                        
-                        # Se a célula tem valor ou está vazia, processar
-                        if cell_value is not None and str(cell_value).strip():
-                            try:
-                                score_value = float(cell_value)
-                                if 0.0 <= score_value <= 10.0:
-                                    excel_scores[score_type] = score_value
-                                else:
-                                    excel_scores[score_type] = None  # Valores fora do range = null
-                            except (ValueError, TypeError):
-                                excel_scores[score_type] = None  # Valores inválidos = null
-                        else:
-                            excel_scores[score_type] = None  # Células vazias = null
-                    
-                    # Verificar se existe registro no banco
-                    existing_record = db_manager.query(
-                        "SELECT * FROM supplier_score_records_table WHERE supplier_id = ? AND month = ? AND year = ?",
-                        [supplier_id, month, year]
-                    )
-                    
-                    if existing_record:
-                        # Atualizar registro existente
-                        record = existing_record[0]
-                        current_scores = {
-                            "otif": record.get('otif') if isinstance(record, dict) else record[8],
-                            "nil": record.get('nil') if isinstance(record, dict) else record[7],
-                            "pickup": record.get('quality_pickup') if isinstance(record, dict) else record[6],
-                            "package": record.get('quality_package') if isinstance(record, dict) else record[5]
-                        }
-                        
-                        # Obter registered_by atual
-                        current_registered_by = record.get('registered_by') if isinstance(record, dict) else record[12]
-                        current_registered_list = current_registered_by.split(',') if current_registered_by else []
-                        
-                        # Mesclar notas - apenas sobrescrever as que têm valor real no Excel
-                        final_scores = current_scores.copy()
-                        updated_fields = []
-                        
-                        # Só atualizar as notas que têm colunas correspondentes no Excel E têm valor não nulo
-                        for score_type, col_idx in score_columns.items():
-                            # Se a coluna existe no Excel E tem valor (não é None/vazio), usar o valor do Excel
-                            if score_type in excel_scores and excel_scores[score_type] is not None:
-                                final_scores[score_type] = excel_scores[score_type]
-                                updated_fields.append(score_type)
-                            # Se a coluna não existe no Excel OU está vazia, manter o valor atual do banco
-                        
-                        # Recalcular total_score usando TODAS as notas (atualizadas + preservadas)
-                        total_score = 0.0
-                        for score_type, score_value in final_scores.items():
-                            if score_value is not None and score_type in criterio_map:
-                                try:
-                                    score_float = float(score_value)
-                                    criterio_float = float(criterio_map[score_type])
-                                    total_score += score_float * criterio_float
-                                except (ValueError, TypeError):
-                                    print(f"⚠️ Erro ao converter valores para float: score_value={score_value}, criterio={criterio_map[score_type]}")
-                                    continue
-                        
-                        # Criar comentário específico sobre quais notas foram importadas (apenas as que realmente mudaram)
-                        import_comment_parts = []
-                        for score_type in updated_fields:
-                            score_value = excel_scores[score_type]
-                            # Como chegou até aqui, sabemos que score_value não é None
-                            import_comment_parts.append(f"{score_type.upper()} score generated by Excel import")
-                        
-                        import_comment = "; ".join(import_comment_parts) if import_comment_parts else "Updated by Excel import"
-                        
-                        # Atualizar registered_by apenas com as notas que foram importadas
-                        new_registered_list = current_registered_list.copy()
-                        score_name_map = {
-                            "otif": "OTIF",
-                            "nil": "NIL", 
-                            "pickup": "Pickup",
-                            "package": "Package"
-                        }
-                        
-                        for score_type in updated_fields:
-                            score_name = score_name_map.get(score_type, score_type.upper())
-                            if score_name not in new_registered_list:
-                                new_registered_list.append(score_name)
-                        
-                        new_registered_by = ",".join(new_registered_list) if new_registered_list else "Excel Import"
-                        
-                        # Atualizar no banco - mesma estrutura da geração de notas
-                        db_manager.execute(
-                            """UPDATE supplier_score_records_table 
-                               SET quality_package = ?, quality_pickup = ?, nil = ?, otif = ?, 
-                                   total_score = ?, comment = ?, changed_by = ?, register_date = ?, registered_by = ?
-                               WHERE supplier_id = ? AND month = ? AND year = ?""",
-                            [final_scores["package"], final_scores["pickup"], 
-                             final_scores["nil"], final_scores["otif"], total_score, 
-                             import_comment, current_user_name or "Import", datetime.now().isoformat(),
-                             new_registered_by, supplier_id, month, year]
-                        )
-                        updated_count += 1
-                        
-                    else:
-                        # Criar novo registro - apenas com as notas que têm valor no Excel
-                        final_scores = {
-                            "otif": excel_scores.get("otif") if "otif" in score_columns and excel_scores.get("otif") is not None else None,
-                            "nil": excel_scores.get("nil") if "nil" in score_columns and excel_scores.get("nil") is not None else None,
-                            "pickup": excel_scores.get("pickup") if "pickup" in score_columns and excel_scores.get("pickup") is not None else None,
-                            "package": excel_scores.get("package") if "package" in score_columns and excel_scores.get("package") is not None else None
-                        }
-                        
-                        # Calcular total_score apenas com as notas que não são None
-                        total_score = 0.0
-                        for score_type, score_value in final_scores.items():
-                            if score_value is not None and score_type in criterio_map:
-                                try:
-                                    score_float = float(score_value)
-                                    criterio_float = float(criterio_map[score_type])
-                                    total_score += score_float * criterio_float
-                                except (ValueError, TypeError):
-                                    print(f"⚠️ Erro ao converter valores para float: score_value={score_value}, criterio={criterio_map[score_type]}")
-                                    continue
-                        
-                        # Criar comentário para novo registro - apenas para notas que realmente têm valor
-                        new_import_comment_parts = []
-                        for score_type in ["otif", "nil", "pickup", "package"]:
-                            if score_type in score_columns and excel_scores.get(score_type) is not None:
-                                new_import_comment_parts.append(f"{score_type.upper()} score generated by Excel import")
-                        
-                        new_import_comment = "; ".join(new_import_comment_parts) if new_import_comment_parts else "Created by Excel import"
-                        
-                        # Criar registered_by apenas com as notas que foram importadas
-                        new_registered_list = []
-                        score_name_map = {
-                            "otif": "OTIF",
-                            "nil": "NIL",
-                            "pickup": "Pickup", 
-                            "package": "Package"
-                        }
-                        
-                        for score_type in ["otif", "nil", "pickup", "package"]:
-                            if score_type in score_columns and excel_scores.get(score_type) is not None:
-                                score_name = score_name_map.get(score_type, score_type.upper())
-                                new_registered_list.append(score_name)
-                        
-                        new_registered_by = ",".join(new_registered_list) if new_registered_list else "Excel Import"
-                        
-                        # Inserir no banco - mesma query da geração de notas
-                        query_insert = """
-                            INSERT INTO supplier_score_records_table (
-                                supplier_id, supplier_name, month, year,
-                                quality_package, quality_pickup, nil, otif,
-                                total_score, comment, register_date, changed_by, registered_by
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """
-                        
-                        params = (
-                            str(supplier_id),
-                            str(supplier_name),
-                            str(month),
-                            str(year),
-                            final_scores["package"],
-                            final_scores["pickup"],
-                            final_scores["nil"],
-                            final_scores["otif"],
-                            total_score,
-                            new_import_comment,
-                            datetime.now().isoformat(),
-                            current_user_name or "Import",
-                            new_registered_by
-                        )
-                        
-                        db_manager.execute(query_insert, params)
-                        created_count += 1
-                    
-                    processed_count += 1
-                    
-                except Exception as row_error:
-                    print(f"⚠️ Erro na linha {row_num}: {row_error}")
-                    continue
-            
-            # Finalizar progresso
-            if progress_bar_ref and progress_bar_ref.current:
-                page.run_thread(lambda: setattr(progress_bar_ref.current, 'value', 1.0))
-            if progress_text_ref and progress_text_ref.current:
-                page.run_thread(lambda: setattr(progress_text_ref.current, 'value', 'Importação concluída!'))
-            page.run_thread(lambda: safe_page_update(page))
-            
-            if processed_count == 0:
-                return False, "Nenhum dado válido encontrado no arquivo"
-            
-            message = f"Importação concluída: {processed_count} registros processados"
-            if created_count > 0:
-                message += f", {created_count} criados"
-            if updated_count > 0:
-                message += f", {updated_count} atualizados"
-                
-            return True, message
-            
-        except Exception as e:
-            return False, f"Erro durante importação: {str(e)}"
-
-    def import_scores_from_excel(file_path):
-        """Importa scores do arquivo Excel protegido"""
-        try:
-            import openpyxl
-            from datetime import datetime
-            import os
-        except ImportError:
-            show_snack_bar("❌ Biblioteca openpyxl não encontrada. Instale com: pip install openpyxl", True)
-            return
-
-        try:
-            # Verificar se o arquivo existe
-            if not os.path.exists(file_path):
-                show_snack_bar("❌ Arquivo não encontrado.", True)
-                return
-
-            # Abrir workbook
-            wb = openpyxl.load_workbook(file_path)
-            
-            # Verificar se existe a aba de validação oculta
-            if "ScoreApp_Validation" not in wb.sheetnames:
-                show_snack_bar("❌ Arquivo inválido: não foi gerado pelo ScoreApp.", True)
-                return
-                
-            # Validar dados da aba de validação - apenas verificar o texto fixo
-            validation_ws = wb["ScoreApp_Validation"]
-            try:
-                validation_text = validation_ws["A1"].value
-                
-                if validation_text != "SCOREAPP_VALIDATION_123456":
-                    show_snack_bar("❌ Arquivo inválido: não foi gerado pelo ScoreApp.", True)
-                    return
-                    
-            except Exception as e:
-                show_snack_bar("❌ Erro ao validar arquivo: dados de validação corrompidos.", True)
-                return
-            
-            # Verificar se a aba "Import_score" existe
-            if "Import_score" not in wb.sheetnames:
-                show_snack_bar("❌ Aba 'Import_score' não encontrada no arquivo.", True)
-                return
-                
-            ws = wb["Import_score"]
-            
-            # Verificar headers esperados (dinâmico baseado nas colunas)
-            expected_base_headers = ["Supplier ID", "PO", "Supplier Name"]
-            actual_headers = []
-            
-            # Ler todos os headers da primeira linha
-            col = 1
-            while True:
-                cell_value = ws.cell(row=1, column=col).value
-                if cell_value is None:
-                    break
-                actual_headers.append(cell_value)
-                col += 1
-            
-            print(f"🔍 DEBUG: Headers encontrados: {actual_headers}")
-            
-            # Verificar se pelo menos Supplier ID, PO e Supplier Name estão presentes
-            if len(actual_headers) < 3 or actual_headers[0] != "Supplier ID" or actual_headers[1] != "PO" or actual_headers[2] != "Supplier Name":
-                show_snack_bar(f"❌ Headers incorretos. Esperados pelo menos: {expected_base_headers}", True)
-                return
-            
-            # Mapear colunas de notas encontradas
-            note_columns = {}
-            for i, header in enumerate(actual_headers[3:], 4):  # Começar da coluna 4
-                if header in ["OTIF", "NIL", "Pickup", "Package"]:
-                    note_columns[header.lower()] = i
-                    
-            print(f"🔍 DEBUG: Colunas de notas mapeadas: {note_columns}")
-
-            # Solicitar mês e ano para importação
-            show_import_period_dialog(ws)
-            
-        except Exception as e:
-            show_snack_bar(f"❌ Erro ao processar arquivo Excel: {str(e)}", True)
 
     def show_import_period_dialog(worksheet):
         """Mostra diálogo para selecionar mês e ano da importação"""
@@ -4780,6 +3951,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 label="Mês",
                 options=months,
                 width=200,
+                border_radius=8,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
@@ -4790,6 +3962,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 label="Ano",
                 options=years,
                 width=200,
+                border_radius=8,
                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                 border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
@@ -5425,173 +4598,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(error_msg)
             show_snack_bar(error_msg, True, False, page)
 
-    def export_form_dialog():
-        """Abre diálogo com opção para exportar suppliers ativos com ou sem notas existentes"""
-        
-        # Referencias para os controles
-        export_with_scores_switch_ref = ft.Ref[ft.Switch]()
-        conditional_formatting_switch_ref = ft.Ref[ft.Switch]()
-        month_dropdown_ref = ft.Ref[ft.Dropdown]()
-        year_dropdown_ref = ft.Ref[ft.Dropdown]()
-        period_container_ref = ft.Ref[ft.Container]()
-        
-        # Opções de mês e ano
-        months = [
-            ft.dropdown.Option("1", "Janeiro"),
-            ft.dropdown.Option("2", "Fevereiro"),
-            ft.dropdown.Option("3", "Março"),
-            ft.dropdown.Option("4", "Abril"),
-            ft.dropdown.Option("5", "Maio"),
-            ft.dropdown.Option("6", "Junho"),
-            ft.dropdown.Option("7", "Julho"),
-            ft.dropdown.Option("8", "Agosto"),
-            ft.dropdown.Option("9", "Setembro"),
-            ft.dropdown.Option("10", "Outubro"),
-            ft.dropdown.Option("11", "Novembro"),
-            ft.dropdown.Option("12", "Dezembro")
-        ]
-        years = [ft.dropdown.Option(str(year)) for year in range(2024, 2041)]
-        
-        def on_switch_change(e):
-            """Controla a visibilidade dos campos de mês e ano"""
-            show_period = export_with_scores_switch_ref.current.value
-            period_container_ref.current.visible = show_period
-            safe_page_update(page)
-        
-        def close_dialog(e):
-            page.close(dialog)
-        
-        def export_form(e):
-            try:
-                # Verificar se deve exportar com notas
-                export_with_scores = export_with_scores_switch_ref.current.value
-                # Verificar se deve aplicar formatação condicional
-                apply_conditional_formatting = conditional_formatting_switch_ref.current.value
-                
-                if export_with_scores:
-                    # Verificar se mês e ano foram selecionados
-                    selected_month = month_dropdown_ref.current.value
-                    selected_year = year_dropdown_ref.current.value
-                    
-                    if not selected_month or not selected_year:
-                        show_snack_bar("❌ Selecione mês e ano para exportar com notas existentes", True)
-                        return
-                    
-                    export_suppliers_to_excel(with_existing_scores=True, month=selected_month, year=selected_year, conditional_formatting=apply_conditional_formatting)
-                else:
-                    export_suppliers_to_excel(with_existing_scores=False, conditional_formatting=apply_conditional_formatting)
-                    
-                close_dialog(e)
-            except Exception as ex:
-                show_snack_bar(f"❌ Erro ao exportar: {ex}", True)
-        
-        # Obter cores do tema atual
-        theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
-        
-        # Container para campos de período (inicialmente oculto)
-        period_container = ft.Container(
-            content=ft.Column([
-                ft.Text("Período das Notas:", size=14, weight="bold", color=theme_colors.get('on_surface')),
-                ft.Row([
-                    ft.Dropdown(
-                        label="Mês",
-                        options=months,
-                        expand=True,
-                        ref=month_dropdown_ref,
-                        color=theme_colors.get('on_surface'),
-                        border_color=theme_colors.get('outline'),
-                        **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
-                    ),
-                    ft.Dropdown(
-                        label="Ano",
-                        options=years,
-                        expand=True,
-                        ref=year_dropdown_ref,
-                        color=theme_colors.get('on_surface'),
-                        border_color=theme_colors.get('outline'),
-                        **({'bgcolor': theme_colors.get('field_background')} if theme_colors.get('field_background') else {})
-                    ),
-                ], spacing=10),
-            ], spacing=10),
-            visible=False,
-            ref=period_container_ref,
-            padding=ft.padding.symmetric(vertical=10)
-        )
-        
-        # Conteúdo do diálogo
-        dialog_content = ft.Column([
-            ft.Text("Exportar Suppliers para Excel", size=18, weight="bold", color=theme_colors.get('on_surface')),
-            ft.Container(height=20),
-            ft.Text("Esta operação irá exportar todos os suppliers ativos em um arquivo Excel protegido.", 
-                   size=14, color=theme_colors.get('on_surface')),
-            ft.Text("• Colunas Supplier ID, PO, BU e Supplier Name: bloqueadas", size=12, color="orange"),
-            ft.Text("• Colunas de notas: abertas para preenchimento", size=12, color="green"),
-            
-            ft.Container(height=20),
-            ft.Divider(color=theme_colors.get('outline')),
-            
-            # Switch para exportar com notas existentes
-            ft.Row([
-                ft.Switch(
-                    ref=export_with_scores_switch_ref,
-                    value=False,
-                    active_color=theme_colors.get('primary'),
-                    on_change=on_switch_change
-                ),
-                ft.Text("Exportar com notas existentes", size=14, weight="bold", color=theme_colors.get('on_surface'))
-            ], spacing=10),
-            
-            # Switch para formatação condicional
-            ft.Row([
-                ft.Switch(
-                    ref=conditional_formatting_switch_ref,
-                    value=True,
-                    active_color=theme_colors.get('primary')
-                ),
-                ft.Column([
-                    ft.Text("Formatação condicional nas notas", size=14, weight="bold", color=theme_colors.get('on_surface')),
-                    ft.Text("Cores de 0 (vermelho) a 10 (verde)", size=12, color=theme_colors.get('on_surface_variant'))
-                ], spacing=2)
-            ], spacing=10),
-            
-            # Container para campos de período
-            period_container,
-            
-            ft.Container(height=20),
-            ft.Divider(color=theme_colors.get('outline')),
-            
-            ft.Row([
-                ft.ElevatedButton(
-                    "Fechar",
-                    on_click=close_dialog,
-                    icon=ft.Icons.CANCEL,
-                    style=ft.ButtonStyle(
-                        bgcolor=theme_colors.get('error'),
-                        color=theme_colors.get('on_error')
-                    )
-                ),
-                ft.Container(width=10),
-                ft.ElevatedButton(
-                    "📊 Exportar Excel",
-                    on_click=export_form,
-                    icon=ft.Icons.DOWNLOAD,
-                    style=ft.ButtonStyle(
-                        bgcolor=theme_colors.get('primary'),
-                        color=theme_colors.get('on_primary')
-                    )
-                )
-            ], alignment=ft.MainAxisAlignment.END)
-        ], width=450, spacing=15, tight=True)
-        
-        # Criar e exibir diálogo
-        dialog = ft.AlertDialog(
-            title=ft.Text("Exportar Dados", color=theme_colors.get('on_surface')),
-            content=dialog_content,
-            modal=True
-        )
-        
-        page.open(dialog)
-    
     # --- Fim: Funções para Importar/Exportar Score ---
 
     def theme_changed(e):
@@ -5618,8 +4624,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
 
         # --- Containers principais ---
-        score_form_container.bgcolor = theme_colors.get('field_background')
-        score_form_container.update()
 
         users_form_container.bgcolor = theme_colors.get('field_background')
         users_form_container.border = ft.border.all(1, theme_colors.get('outline'))
@@ -5807,17 +4811,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             target_risks_text.current.update()
                     except Exception as _ex:
                         print(f"Aviso ao atualizar Target na aba Risks: {_ex}")
-                    # Ao entrar na página de Risks, buscar por Todo Período por padrão
+                    # Ao entrar na página de Risks, buscar pelo ano atual por padrão
                     try:
                         if risks_year_dropdown and risks_year_dropdown.current:
-                            # '' corresponde à opção 'Todo Período'
-                            risks_year_dropdown.current.value = ""
+                            # Definir o ano atual
+                            risks_year_dropdown.current.value = str(datetime.datetime.now().year)
                             try:
                                 risks_year_dropdown.current.update()
                             except Exception:
                                 pass
                     except Exception as _ex2:
-                        print(f"Aviso ao setar filtro 'Todo Período' na aba Risks: {_ex2}")
+                        print(f"Aviso ao setar filtro de ano na aba Risks: {_ex2}")
                     generate_risk_cards()
             except Exception as ex:
                 print(f"Erro ao gerar cards ao abrir aba Risks: {ex}")
@@ -8431,8 +7435,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # --- Fim: Busca Unificada em Tempo Real ---
 
-    # --- Fim: Lógica do Banco de Dados e Pesquisa ---
-
     # --- Início: Lógica e Controles da Aba Score ---
 
     # Mudança: usar Column sem scroll para permitir header/footer fixos na tabela
@@ -8466,6 +7468,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         width=150,  # Largura fixa para não diminuir
         value="", # Não pré-selecionar mês (iniciar vazio)
         on_change=on_month_year_change,
+        border_radius=8,
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
@@ -8478,6 +7481,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         width=120,  # Largura fixa para não diminuir
         value=None,  # Não pré-selecionar ano
         on_change=on_month_year_change,
+        border_radius=8,
         bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
         color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
@@ -8510,6 +7514,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Conteúdo da aba Score
     score_form = ft.Column(
         controls=[
+            # Espaçamento no topo
+            ft.Container(height=15),
             # Linha unificada de filtros: Busca, Mês, Ano, Opções
             ft.Row(
                 controls=[
@@ -8524,6 +7530,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                                 prefix_icon=ft.Icons.SEARCH,  # Ícone de lupa à esquerda
                                 on_change=update_search_suffix,  # Atualiza sufixo e busca
+                                width=400,  # Largura reduzida do campo de pesquisa
                             ),
                             ft.Container(
                                 content=ft.IconButton(
@@ -8539,7 +7546,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 bottom=0,
                             ),
                         ],
-                        expand=True,
                     ),
                     month_dropdown,
                     year_dropdown,
@@ -8557,32 +7563,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     ),
                                 ], tight=True),
                             ),
+                            ft.PopupMenuItem(
+                                text="Gerar nota cheia",
+                                icon=ft.Icons.STAR,
+                                on_click=lambda _: generate_full_score_dialog()
+                            ),
                         ],
                     ),
                 ],
                 spacing=10,
-                alignment=ft.MainAxisAlignment.START,
+                alignment=ft.MainAxisAlignment.CENTER,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         ],
         spacing=16,
     )
 
-    score_form_container = ft.Container(
-        content=score_form, 
-        padding=25,  # Padding aumentado para melhor espaçamento
-        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background'),
-        border_radius=8,
-        width=1200,  # Largura aumentada para acomodar campo de busca maior
-    )
-
     # Container responsivo - largura fixa de 700px para os filtros
-    score_view_content = ft.Card(
-        content=score_form_container,
-        elevation=2,
-    )
-
-    # --- Fim: Lógica e Controles da Aba Score ---
+    score_view_content = score_form    # --- Fim: Lógica e Controles da Aba Score ---
 
     # --- Início: Lógica e Controles da Aba Configs ---
 
@@ -10509,11 +9507,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ft.Stack(
                     controls=[
                         ft.TextField(
-                            label="Buscar Supplier (Nome, ID, PO ou BU)",
-                            hint_text="Digite para buscar...",
+                            hint_text="Buscar Supplier (Nome, ID, PO ou BU)",
                             prefix_icon=ft.Icons.SEARCH,
                             ref=suppliers_search_field_ref,
                             on_change=lambda e: [update_suppliers_search_suffix(), search_suppliers_config_debounced()],
+                            border_radius=8,
                             bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                             color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                             border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
@@ -13443,43 +12441,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         # Header com botão de menu - FIXO no topo
         ft.Container(
             content=ft.Row([
-                ft.PopupMenuButton(
-                    icon=ft.Icons.MORE_HORIZ,
-                    items=[
-                        ft.PopupMenuItem(
-                            text="Gerar nota cheia",
-                            icon=ft.Icons.STAR,
-                            on_click=lambda _: generate_full_score_dialog()
-                        ),
-                        ft.PopupMenuItem(
-                            text="Importar Score",
-                            icon=ft.Icons.FILE_UPLOAD,
-                            on_click=lambda _: import_score_dialog()
-                        ),
-                        ft.PopupMenuItem(
-                            text="Exportar form",
-                            icon=ft.Icons.FILE_DOWNLOAD,
-                            on_click=lambda _: export_form_dialog()
-                        )
-                    ],
-                    tooltip="Opções",
-                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
-                    shape=ft.RoundedRectangleBorder(radius=8)
-                ),
                 # Formulário de pesquisa centralizado e responsivo
                 ft.Container(
                     content=score_view_content,
                     expand=True,
                     alignment=ft.alignment.center,
                 ),
-            ], 
-            alignment=ft.MainAxisAlignment.CENTER, 
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
             vertical_alignment=ft.CrossAxisAlignment.START,
             ),
             padding=ft.padding.only(left=10, right=10, top=10, bottom=10)
         ),
-        ft.Divider(),
         # Área de resultados com scroll independente - sem padding para tabela ocupar toda largura
         ft.Container(
             content=results_list,
@@ -13717,7 +12690,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     timeline_clear_button_ref = ft.Ref[ft.IconButton]()
 
     def clear_timeline_search_field(e=None):
-        """Limpa o campo visual de fornecedor na Timeline"""
+        """Limpa o campo visual de fornecedor na Timeline e reseta todos os gráficos e cards"""
         if timeline_vendor_search_field.current:
             timeline_vendor_search_field.current.value = ""
             # esconder botão
@@ -13728,8 +12701,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # resetar selection dropdown
             if timeline_vendor_dropdown.current:
                 timeline_vendor_dropdown.current.value = None
-            # atualizar timeline
-            update_timeline_metrics()
+            
+            # Limpar todos os cards, gráficos e visualizações
+            clear_timeline_vendor(e)
 
     def update_timeline_search_suffix(e=None):
         """Atualiza a visibilidade do botão limpar na Timeline"""
@@ -13771,13 +12745,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     risks_cards_container = ft.Ref[ft.Container]()
     target_risks_text = ft.Ref[ft.Text]()
     include_inactive_switch = ft.Ref[ft.Switch]()
-    inactive_switch_container = ft.Ref[ft.Container]()
-    inactive_switch_icon = ft.Ref[ft.Icon]()
-    # Ref para o container que agrupa ano e target (para atualização de tema)
-    risks_header_container = ft.Ref[ft.Container]()
     # Ref para o container do display de Target (borda/背景 especial)
-    target_display_container = ft.Ref[ft.Container]()
-    
     # Container para o gráfico e tabela
     timeline_chart_container = ft.Ref[ft.Container]()
     timeline_individual_charts_container = ft.Ref[ft.Container]()
@@ -13788,7 +12756,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     timeline_tabs = ft.Ref[ft.Tabs]()
     
     # Referência para a linha que contém os cards de métricas
-    timeline_metrics_row = ft.Ref[ft.Row]()
+    timeline_metrics_row = ft.Ref[ft.Container]()
+    timeline_metrics_empty_message = ft.Ref[ft.Container]()
 
     # Dicionário de referências para os componentes dos cards de métricas
     timeline_cards_refs = {
@@ -13994,6 +12963,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
         
         if not vendor_id:
+            # Ocultar cards de métricas e mostrar mensagem
+            if timeline_metrics_row.current:
+                timeline_metrics_row.current.visible = False
+            if timeline_metrics_empty_message.current:
+                timeline_metrics_empty_message.current.visible = True
+            
             # Limpar todos os cards
             overall_avg_card.current.value = "--"
             twelve_month_avg_card.current.value = "--"
@@ -14017,6 +12992,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             safe_page_update(page)
             return
+        
+        # Mostrar os cards de métricas e ocultar mensagem quando há supplier selecionado
+        if timeline_metrics_row.current:
+            timeline_metrics_row.current.visible = True
+        if timeline_metrics_empty_message.current:
+            timeline_metrics_empty_message.current.visible = False
         
         # Atualizar informações do fornecedor
         update_supplier_info(vendor_id)
@@ -14452,7 +13433,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 return
                 
             cursor = db_conn.cursor()
-            current_year = int(year) if year and year.strip() else datetime.date.today().year
+            # Verificar se é "Todo Período" (ALL) ou um ano específico
+            if year == "ALL":
+                current_year = datetime.date.today().year
+            else:
+                current_year = int(year)
             previous_year = current_year - 1
             
             # Definir meses de cada trimestre como lista ordenada
@@ -15027,6 +14012,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def update_timeline_chart(vendor_id, year=None):
         """Atualiza o gráfico de linha baseado no vendor, ano e métricas selecionadas."""
         try:
+            # Verificar se o container existe
+            if not timeline_chart_container or not timeline_chart_container.current:
+                print("⚠️ Container de chart não disponível")
+                return
+                
             if not db_conn or not vendor_id:
                 timeline_chart_container.current.content = ft.Container(
                     content=ft.Column([
@@ -15050,7 +14040,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Para ALL: usar lista simples, cada item é um mês em ordem cronológica
                 monthly_data = []
             else:
-                analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
+                analysis_year = int(year)
                 query = "SELECT month, total_score, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
                 results = db_manager.query(query, (vendor_id, analysis_year))
                 monthly_data = {m: {} for m in range(1, 13)}
@@ -15289,6 +14279,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def update_timeline_individual_charts(vendor_id, year=None):
         """Atualiza a aba de gráficos individuais com 4 gráficos (OTIF, NIL, Pickup, Package) em 2x2"""
         try:
+            # Verificar se o container existe
+            if not timeline_individual_charts_container or not timeline_individual_charts_container.current:
+                print("⚠️ Container de gráficos individuais não disponível")
+                return
+                
             if not db_conn or not vendor_id:
                 timeline_individual_charts_container.current.content = ft.Container(
                     content=ft.Column([
@@ -15313,7 +14308,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Para ALL: usar lista simples
                 monthly_data = []
             else:
-                analysis_year = int(year) if year and year.strip() else datetime.datetime.now().year
+                analysis_year = int(year)
                 query = "SELECT month, otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE supplier_id = ? AND year = ?"
                 results = db_manager.query(query, (vendor_id, analysis_year))
                 monthly_data = {m: {} for m in range(1, 13)}
@@ -15920,6 +14915,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     def update_timeline_analytics(vendor_id, year=None):
         """Atualiza a aba de Analytics com análises de tendência para todas as métricas"""
         try:
+            # Verificar se o container existe
+            if not timeline_analytics_container or not timeline_analytics_container.current:
+                print("⚠️ Container de analytics não disponível")
+                return
+                
             if not db_conn or not vendor_id:
                 timeline_analytics_container.current.content = ft.Container(
                     content=ft.Column([
@@ -16260,16 +15260,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             print(f"Erro ao atualizar analytics: {e}")
             import traceback
             traceback.print_exc()
-            timeline_analytics_container.current.content = ft.Container(
-                content=ft.Column([
-                    ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ft.Colors.RED_400),
-                    ft.Container(height=10),
-                    ft.Text(f"Erro ao gerar análises: {e}", size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_600),
+            
+            # Verificar se o container existe antes de atualizar
+            if timeline_analytics_container and timeline_analytics_container.current:
+                timeline_analytics_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ft.Colors.RED_400),
+                        ft.Container(height=10),
+                        ft.Text(f"Erro ao gerar análises: {e}", size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_600),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
                 alignment=ft.alignment.center,
                 expand=True,
             )
-            timeline_analytics_container.current.update()
+                timeline_analytics_container.current.update()
             
     def show_timeline_snackbar(message):
         """Mostra snackbar na timeline"""
@@ -16593,18 +15596,26 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
     def on_timeline_vendor_change(e):
         """Callback quando o vendor é alterado"""
-        update_timeline_metrics()
-        # Como não há mais abas, sempre atualizar a tabela quando há mudança
         vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
         year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
+        
+        # Atualizar todas as visualizações
+        update_timeline_metrics()
+        update_timeline_chart(vendor_id, year)
+        update_timeline_individual_charts(vendor_id, year)
+        update_timeline_analytics(vendor_id, year)
         update_timeline_table(vendor_id, year)
             
     def on_timeline_year_change(e):
         """Callback quando o ano é alterado"""
-        update_timeline_metrics()
-        # Como não há mais abas, apenas atualizar os dados diretamente
         vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
         year = timeline_year_dropdown.current.value if timeline_year_dropdown.current else None
+        
+        # Atualizar todas as visualizações
+        update_timeline_metrics()
+        update_timeline_chart(vendor_id, year)
+        update_timeline_individual_charts(vendor_id, year)
+        update_timeline_analytics(vendor_id, year)
         update_timeline_table(vendor_id, year)
 
     def clear_timeline_vendor(e):
@@ -16615,6 +15626,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Limpar o dropdown
             if timeline_vendor_dropdown.current:
                 timeline_vendor_dropdown.current.value = None
+            
+            # Ocultar cards de métricas e mostrar mensagem
+            if timeline_metrics_row.current:
+                timeline_metrics_row.current.visible = False
+            if timeline_metrics_empty_message.current:
+                timeline_metrics_empty_message.current.visible = True
             
             # Resetar todos os cards de métricas para "--"
             metric_cards = [
@@ -16730,18 +15747,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     controls=[
                         ft.Container(
                             content=ft.TextField(
-                                label="Fornecedor",
                                 hint_text="Clique para selecionar...",
                                 ref=timeline_vendor_search_field,
                                 read_only=True,
                                 on_click=open_vendor_selection_dialog,
                                 prefix_icon=ft.Icons.SEARCH,  # Lupa à esquerda
+                                border_radius=8,  # Arredondamento igual à aba Score
                                 bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                                 border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                                 text_size=14,
                             ),
-                            expand=True,
                             padding=ft.padding.all(5)
                         ),
                         ft.Container(
@@ -16758,7 +15774,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             bottom=6,
                         ),
                     ],
-                    expand=True,
+                    width=500,  # Largura aumentada
                 ),
                 # Dropdown oculto para manter compatibilidade
                 ft.Container(
@@ -16783,15 +15799,16 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ref=timeline_year_dropdown,
                     on_change=on_timeline_year_change,
                     options=[
-                        ft.dropdown.Option("ALL", "📊 Todo o Período")
+                        ft.dropdown.Option("ALL", "Todo o Período")
                     ] + [ft.dropdown.Option(str(y)) for y in range(2024, 2041)],
-                    value="",
+                    value=str(datetime.datetime.now().year),
                     width=180,
+                    border_radius=8,
                     bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
                     color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                     border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
-            ], spacing=15, ref=timeline_search_container),
+            ], spacing=8, alignment=ft.MainAxisAlignment.CENTER, ref=timeline_search_container),
             
             ft.Container(height=20),
             
@@ -16807,12 +15824,30 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         ft.Tab(
                             text="Métricas",
                             icon=ft.Icons.DASHBOARD,
-                            content=ft.Container(
-                                content=ft.Column([
-                                    # Título da seção
+                            content=ft.Stack(
+                                controls=[
+                                    # Mensagem quando não há supplier selecionado
                                     ft.Container(
-                                        content=ft.Row([
-                                            ft.Icon(ft.Icons.ANALYTICS, size=32, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                                        ref=timeline_metrics_empty_message,
+                                        visible=True,  # Inicialmente visível
+                                        content=ft.Column([
+                                            ft.Icon(ft.Icons.DASHBOARD_OUTLINED, size=48, color=ft.Colors.GREY_400),
+                                            ft.Container(height=10),
+                                            ft.Text("Selecione um fornecedor para visualizar as métricas", 
+                                                   size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                        alignment=ft.alignment.center,
+                                        expand=True,
+                                    ),
+                                    # Cards de métricas
+                                    ft.Container(
+                                        ref=timeline_metrics_row,
+                                        visible=False,  # Inicialmente oculto até selecionar um supplier
+                                        content=ft.Column([
+                                            # Título da seção
+                                            ft.Container(
+                                                content=ft.Row([
+                                                    ft.Icon(ft.Icons.ANALYTICS, size=32, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
                                             ft.Text("Visão Geral das Métricas", size=24, weight="bold"),
                                         ], spacing=12),
                                         margin=ft.margin.only(bottom=20),
@@ -16917,7 +15952,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                             ft.Container(height=15),
                                             # Container para cards trimestrais (Q1-Q4)
                                             ft.Container(
-                                                ref=timeline_metrics_row,
                                                 content=ft.Row(
                                                     ref=quarterly_cards_container,
                                                     controls=[
@@ -17046,7 +16080,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 padding=ft.padding.all(20),
                                 expand=True,
                             ),
-                        ),
+                                ],  # Fim dos controls do Stack
+                            ),  # Fim do Stack (content da Tab)
+                        ),  # Fim da Tab de Métricas
                         # Tab do Gráfico
                         ft.Tab(
                             text="Performance Chart",
@@ -17642,6 +16678,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             # 1. Definir supplier no filtro da Timeline
                             if timeline_vendor_dropdown and timeline_vendor_dropdown.current:
                                 timeline_vendor_dropdown.current.value = sid
+                            
+                            # 1.5. Preencher o campo de pesquisa visual com o nome do supplier
+                            if timeline_vendor_search_field and timeline_vendor_search_field.current:
+                                # Buscar o nome do supplier usando o ID
+                                supplier_name = vendor_name  # vendor_name já está disponível no escopo
+                                timeline_vendor_search_field.current.value = supplier_name
+                                # Mostrar o botão X
+                                if timeline_clear_button_ref and timeline_clear_button_ref.current:
+                                    timeline_clear_button_ref.current.visible = True
 
                             # 2. Transferir o ano do filtro de Risks para o de Timeline
                             if risks_year_dropdown and risks_year_dropdown.current and risks_year_dropdown.current.value:
@@ -17796,77 +16841,53 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ft.Text("Gestão de Riscos", size=24, weight="bold"),
             ], alignment=ft.MainAxisAlignment.START),
             ft.Divider(),
-            # Campos ano e meta agrupados em container com cor do tema
-            ft.Container(
-                        content=ft.Row(
-                    [
-                        ft.Dropdown(
-                            ref=risks_year_dropdown,
-                            width=220,
-                            value="",
-                            on_change=generate_risk_cards,
-                            options=[ft.dropdown.Option("", "Todo Período")] 
-                                    + [ft.dropdown.Option(str(y), str(y)) for y in range(2024, 2041)],
-                            hint_text="Ano",
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-                        ),
-                        ft.Container(width=20),
-                        ft.Container(
-                            ref=target_display_container,
-                            content=ft.Row(
-                                [
-                                    ft.Icon(ft.Icons.FLAG_CIRCLE_OUTLINED, color=ft.Colors.AMBER_700, size=20),
-                                    ft.Text("Meta:", weight=ft.FontWeight.BOLD, size=14),
-                                    ft.Text("", ref=target_risks_text, weight=ft.FontWeight.BOLD, size=16, color=ft.Colors.AMBER_700),
-                                ],
-                                spacing=5,
-                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                tight=True,
-                            ),
-                            padding=ft.padding.symmetric(horizontal=12, vertical=6),
-                            border=ft.border.all(1.5, ft.Colors.AMBER_700),
-                            border_radius=30,
-                            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER_700),
-                        ),
-                        ft.Container(width=20),
-                        ft.Container(
-                            ref=inactive_switch_container,
-                            content=ft.Row(
-                                [
-                                    ft.Icon(ft.Icons.VISIBILITY, ref=inactive_switch_icon, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'), size=20),
-                                    ft.Text("Incluir Inativos:", weight=ft.FontWeight.BOLD, size=14),
+            # Campos ano e opções
+            ft.Row(
+                [
+                    ft.Dropdown(
+                        ref=risks_year_dropdown,
+                        width=220,
+                        value=str(datetime.datetime.now().year),
+                        on_change=generate_risk_cards,
+                        options=[ft.dropdown.Option("ALL", "Todo o Período")] 
+                                + [ft.dropdown.Option(str(y), str(y)) for y in range(2024, 2041)],
+                        hint_text="Ano",
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                    ),
+                    ft.PopupMenuButton(
+                        icon=ft.Icons.MORE_VERT,
+                        tooltip="Mais opções",
+                        items=[
+                            ft.PopupMenuItem(
+                                content=ft.Row([
                                     ft.Switch(
                                         ref=include_inactive_switch,
                                         value=False,
                                         on_change=generate_risk_cards,
                                         active_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                                        inactive_thumb_color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
+                                        label="Incluir Inativos",
                                     ),
-                                ],
-                                spacing=8,
-                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                tight=True,
+                                ], tight=True),
                             ),
-                            padding=ft.padding.symmetric(horizontal=12, vertical=6),
-                            border=ft.border.all(1.5, get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
-                            border_radius=30,
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.START,
-                    spacing=12,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    tight=True,  # <--- IMPORTANTE
-                ),
-                padding=ft.padding.symmetric(horizontal=16, vertical=16),
-                margin=ft.margin.only(bottom=6),
-                ref=risks_header_container,
-                border=None,  # Remover borda inicial
-                border_radius=12,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
-                expand=False,  # <--- NÃO DEIXAR EXPANDIR
+                        ],
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.START,
+                spacing=12,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            ft.Container(height=8),
+            # Exibição do Target em linha separada
+            ft.Row(
+                [
+                    ft.Icon(ft.Icons.FLAG_CIRCLE_OUTLINED, color=ft.Colors.AMBER_700, size=22),
+                    ft.Text("Meta:", weight=ft.FontWeight.BOLD, size=15, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
+                    ft.Text("", ref=target_risks_text, weight=ft.FontWeight.BOLD, size=18, color=ft.Colors.AMBER_700),
+                ],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             ft.Container(height=12),
             ft.Container(ref=risks_cards_container, content=ft.Text("Nenhum risco pesquisado"), expand=True)
