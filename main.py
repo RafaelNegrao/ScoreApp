@@ -139,6 +139,174 @@ def format_display_value(value):
     return str(value)
 
 
+# ===== CLASSE DE CAMPO DE EMAIL COM CHIPS =====
+class EmailChipField:
+    """Campo de email com chips removíveis (estilo Gmail)"""
+    
+    def __init__(self, label="Email", initial_value="", theme_colors=None, on_change=None):
+        self.label = label
+        self.emails = []
+        self.theme_colors = theme_colors or {}
+        self.on_change_callback = on_change
+        self.input_field = None
+        self.chips_container = None
+        self.main_container = None
+        
+        # Parse initial value
+        if initial_value:
+            self.emails = [e.strip() for e in str(initial_value).split(';') if e.strip()]
+    
+    def get_value(self):
+        """Retorna os emails como string separada por ;"""
+        return '; '.join(self.emails)
+    
+    def set_value(self, value):
+        """Define os emails a partir de uma string"""
+        if value:
+            self.emails = [e.strip() for e in str(value).split(';') if e.strip()]
+        else:
+            self.emails = []
+        if self.chips_container:
+            self.update_chips()
+    
+    def add_email(self, email):
+        """Adiciona um email à lista"""
+        email = email.strip()
+        if email and email not in self.emails:
+            self.emails.append(email)
+            self.update_chips()
+            if self.on_change_callback:
+                self.on_change_callback(None)
+    
+    def remove_email(self, email):
+        """Remove um email da lista"""
+        if email in self.emails:
+            self.emails.remove(email)
+            self.update_chips()
+            if self.on_change_callback:
+                self.on_change_callback(None)
+    
+    def update_chips(self):
+        """Atualiza a visualização dos chips"""
+        if not self.chips_container:
+            return
+        
+        self.chips_container.controls.clear()
+        
+        for email in self.emails:
+            chip = ft.Container(
+                content=ft.Row([
+                    ft.Text(email, size=13, color=self.theme_colors.get('on_primary', 'white')),
+                    ft.IconButton(
+                        icon=ft.Icons.CLOSE,
+                        icon_size=16,
+                        icon_color=self.theme_colors.get('on_primary', 'white'),
+                        on_click=lambda e, em=email: self.remove_email(em),
+                        padding=0,
+                        width=24,
+                        height=24,
+                    ),
+                ], spacing=5, tight=True),
+                bgcolor=self.theme_colors.get('primary', '#0066CC'),
+                border_radius=16,
+                padding=ft.padding.only(left=12, right=4, top=4, bottom=4),
+                margin=ft.margin.only(right=5, bottom=5),
+            )
+            self.chips_container.controls.append(chip)
+        
+        try:
+            self.chips_container.update()
+        except:
+            pass  # Pode falhar se ainda não estiver adicionado à página
+    
+    def on_input_submit(self, e):
+        """Quando o usuário pressiona Enter ou ;"""
+        if not self.input_field:
+            return
+            
+        text = self.input_field.value.strip() if self.input_field.value else ""
+        if text:
+            # Separar por ; se houver múltiplos
+            parts = [p.strip() for p in text.split(';') if p.strip()]
+            for part in parts:
+                self.add_email(part)
+            
+        # Sempre limpar o campo após processar
+        self.input_field.value = ""
+        try:
+            self.input_field.update()
+        except:
+            pass
+    
+    def on_input_change(self, e):
+        """Quando o texto muda, verificar se há ;"""
+        if not self.input_field:
+            return
+            
+        text = self.input_field.value
+        if text and ';' in text:
+            # Processar os emails antes do ;
+            parts = text.split(';')
+            # Adicionar todos os emails exceto o último (que está sendo digitado)
+            for part in parts[:-1]:
+                part = part.strip()
+                if part:
+                    self.add_email(part)
+            
+            # Manter apenas o texto após o último ; (se houver)
+            remaining = parts[-1].strip()
+            self.input_field.value = remaining
+            try:
+                self.input_field.update()
+            except:
+                pass
+    
+    def build(self):
+        """Constrói e retorna o controle visual"""
+        self.chips_container = ft.Row(
+            controls=[],
+            wrap=True,
+            spacing=0,
+            run_spacing=0,
+        )
+        
+        self.input_field = ft.TextField(
+            label=f"{self.label} (pressione Enter ou ; para adicionar)",
+            hint_text="exemplo@email.com",
+            expand=True,
+            on_submit=self.on_input_submit,
+            on_change=self.on_input_change,
+            bgcolor=self.theme_colors.get('field_background'),
+            color=self.theme_colors.get('on_surface'),
+            border_color=self.theme_colors.get('outline'),
+        )
+        
+        # Inicializar chips
+        self.update_chips()
+        
+        self.main_container = ft.Column([
+            ft.Container(
+                content=self.chips_container,
+                padding=ft.padding.only(bottom=10) if self.emails else 0,
+            ),
+            self.input_field,
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=self.theme_colors.get('on_surface_variant', 'grey')),
+                    ft.Text(
+                        "Separe múltiplos emails com ; ou pressione Enter",
+                        size=12,
+                        color=self.theme_colors.get('on_surface_variant', 'grey'),
+                        italic=True
+                    ),
+                ], spacing=5),
+                padding=ft.padding.only(top=5),
+            ),
+        ], spacing=5)
+        
+        return self.main_container
+
+
 # ===== CLASSE DE GERENCIAMENTO RESPONSIVO =====
 class ResponsiveAppManager:
     """Classe para gerenciar o comportamento responsivo da aplicação"""
@@ -1560,7 +1728,7 @@ class AddSupplierDialog(ft.AlertDialog):
             
             # Informações de Contato
             "supplier_email": ft.TextField(
-                label="Email (separar múltiplos emails com ;)", 
+                label="Email (pressione Enter ou ; para separar)", 
                 multiline=True,
                 min_lines=4,
                 max_lines=6,
@@ -2333,16 +2501,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
         action_btn_ctrl = resolve_control(users_controls.get('action_btn'))
 
+        # Controlar visibilidade baseado em privilégio
+        is_super_admin = current_user_privilege == "Super Admin"
+        
         if wwid and check_user_exists(wwid):
             # Usuário existe - botão Update
             if action_btn_ctrl:
                 action_btn_ctrl.text = "Update"
                 action_btn_ctrl.icon = ft.Icons.EDIT
+                # Mostrar para Super Admin ou se for o próprio usuário editando sua senha
+                action_btn_ctrl.visible = is_super_admin or (wwid.upper() == current_user_wwid.upper())
         else:
-            # Usuário não existe - botão Add User
+            # Usuário não existe - botão Add User (apenas Super Admin)
             if action_btn_ctrl:
                 action_btn_ctrl.text = "Add User"
                 action_btn_ctrl.icon = ft.Icons.PERSON_ADD
+                action_btn_ctrl.visible = is_super_admin
 
         if action_btn_ctrl and hasattr(action_btn_ctrl, 'update'):
             try:
@@ -3970,9 +4144,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             # Mostrar barra de progresso
             progress_bar_ref.current.visible = True
+            progress_bar_ref.current.value = 0
             progress_text_ref.current.visible = True
             progress_text_ref.current.value = "Preparando importação..."
-            progress_bar_ref.current.value = 0
             safe_page_update(page)
             
             def run_import():
@@ -3997,6 +4171,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 pass
                         else:
                             show_message(f"❌ {message}", "red")
+                        
+                        # Garantir que o diálogo permaneça aberto
+                        safe_page_update(page)
                     
                     page.run_thread(update_ui)
                     
@@ -4006,6 +4183,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         progress_text_ref.current.visible = False
                         import_button_ref.current.disabled = False
                         show_message(f"❌ Erro na importação: {ex}", "red")
+                        # Garantir que o diálogo permaneça aberto
+                        safe_page_update(page)
                     
                     page.run_thread(update_error)
             
@@ -8005,7 +8184,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ft.Icon(ft.Icons.SEARCH, size=40, color="gray"),
                     ft.Text("Digite no campo de busca para encontrar fornecedores", italic=True, size=16, text_align=ft.TextAlign.CENTER),
                     ft.Text("A busca inicia automaticamente após digitar 3 ou mais caracteres", 
-                           size=12, text_align=ft.TextAlign.CENTER, color="gray")
+                           size=12, text_align=ft.TextAlign.CENTER, color="gray"),
+                    ft.Container(height=10),
+                    ft.Row([
+                        ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=16, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                        ft.Text("Dica: Digite %% para buscar todos os fornecedores", 
+                               size=12, italic=True, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                    ], alignment=ft.MainAxisAlignment.CENTER),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
                 alignment=ft.alignment.center,
                 padding=40
@@ -8260,7 +8445,13 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ft.Icon(ft.Icons.SEARCH, size=40, color="gray"),
                 ft.Text("Digite no campo de busca para encontrar fornecedores", italic=True, size=16, text_align=ft.TextAlign.CENTER),
                 ft.Text("A busca inicia automaticamente após digitar 3 ou mais caracteres", 
-                       size=12, text_align=ft.TextAlign.CENTER, color="gray")
+                       size=12, text_align=ft.TextAlign.CENTER, color="gray"),
+                ft.Container(height=10),
+                ft.Row([
+                    ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=16, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
+                    ft.Text("Dica: Digite %% para buscar todos os fornecedores", 
+                           size=12, italic=True, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                ], alignment=ft.MainAxisAlignment.CENTER),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
             alignment=ft.alignment.center,
             padding=40
@@ -8292,21 +8483,63 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
     )
 
+    # Criar referência para o botão de limpar
+    clear_button_ref = ft.Ref[ft.IconButton]()
+    
+    # Função para limpar o campo de busca
+    def clear_search_field(e):
+        if search_field_ref.current:
+            search_field_ref.current.value = ""
+            # Esconder o botão
+            if clear_button_ref.current:
+                clear_button_ref.current.visible = False
+                clear_button_ref.current.update()
+            search_field_ref.current.update()
+            # Trigger a busca para limpar resultados
+            unified_search_on_change(None)
+    
+    # Função para atualizar o sufixo do campo de busca
+    def update_search_suffix(e):
+        if search_field_ref.current and clear_button_ref.current:
+            # Mostrar/esconder X baseado se há texto
+            clear_button_ref.current.visible = bool(search_field_ref.current.value)
+            clear_button_ref.current.update()
+        # Continuar com a busca normal
+        unified_search_on_change(e)
+
     # Conteúdo da aba Score
     score_form = ft.Column(
         controls=[
             # Linha unificada de filtros: Busca, Mês, Ano, Opções
             ft.Row(
                 controls=[
-                    ft.TextField(
-                        hint_text="Buscar por Nome, ID, PO ou BU...",
-                        border_radius=8,
-                        ref=search_field_ref,
-                        bgcolor=None,
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
-                        expand=True,  # Campo de busca ocupa o espaço restante
-                        on_change=unified_search_on_change,  # Busca em tempo real após 3+ caracteres
+                    ft.Stack(
+                        controls=[
+                            ft.TextField(
+                                hint_text="Buscar por Nome, ID, PO ou BU...",
+                                border_radius=8,
+                                ref=search_field_ref,
+                                bgcolor=None,
+                                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                                prefix_icon=ft.Icons.SEARCH,  # Ícone de lupa à esquerda
+                                on_change=update_search_suffix,  # Atualiza sufixo e busca
+                            ),
+                            ft.Container(
+                                content=ft.IconButton(
+                                    icon=ft.Icons.CLOSE,
+                                    icon_size=20,
+                                    tooltip="Limpar busca",
+                                    on_click=clear_search_field,
+                                    ref=clear_button_ref,
+                                    visible=False,  # Inicialmente invisível
+                                ),
+                                right=0,
+                                top=0,
+                                bottom=0,
+                            ),
+                        ],
+                        expand=True,
                     ),
                     month_dropdown,
                     year_dropdown,
@@ -8325,15 +8558,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ], tight=True),
                             ),
                         ],
-                    ),
-                    ft.ElevatedButton(
-                        "Limpar Filtros",
-                        icon=ft.Icons.CLEAR_ALL,
-                        on_click=clear_score_filters,
-                        style=ft.ButtonStyle(
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary_container'),
-                            color=ft.Colors.WHITE,
-                        )
                     ),
                 ],
                 spacing=10,
@@ -8391,7 +8615,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             lists_content.visible = idx == 4
             log_content.visible = idx == 5
             info_content.visible = idx == 6
-            data_content.visible = idx == 7
             # Ao abrir a aba Log, garantir que os dados sejam carregados
             if idx == 5:
                 try:
@@ -8427,7 +8650,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             (ft.Icons.PEOPLE, "Users", 3),
             (ft.Icons.LIST, "Lists", 4),
             (ft.Icons.HISTORY, "Log", 5),
-            (ft.Icons.STORAGE, "Data", 7),
             (ft.Icons.INFO_OUTLINED, "Info", 6),
         ]
         
@@ -8435,11 +8657,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Super Admin pode acessar tudo
             return all_tabs
         elif privilege == "Admin":
-            # Admin pode: Themes, Lists, Info (sem Users, Criteria, Log, Suppliers, Data)
-            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 4, 6]]
+            # Admin pode: Themes, Users, Lists, Info
+            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 3, 4, 6]]
         else:  # User
-            # User pode: Themes e Info
-            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 6]]
+            # User pode: Themes, Users e Info
+            return [(icon, name, idx) for icon, name, idx in all_tabs if idx in [0, 3, 6]]
 
     def update_config_tabs():
         # Filtrar abas baseado no privilégio do usuário
@@ -9442,444 +9664,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     # Lógica para gerenciamento de suppliers
     suppliers_search_field_ref = ft.Ref()
-    global suppliers_results_list
-    suppliers_results_list = ft.Column(spacing=10)  # Removido scroll - será aplicado no Container pai
+    global suppliers_results_list, suppliers_header_container
+    
+    # Container para o header do supplier (inicialmente vazio)
+    suppliers_header_container = ft.Container()
+    
+    # Inicializar com mensagem padrão
+    theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+    initial_message = ft.Container(
+        content=ft.Column([
+            ft.Icon(ft.Icons.SEARCH, size=64, color=theme_colors.get('on_surface_variant')),
+            ft.Text("Digite no campo de busca", size=18, weight="bold", color=theme_colors.get('on_surface')),
+            ft.Text("Procure por nome, ID, PO ou BU", size=14, color=theme_colors.get('on_surface_variant')),
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
+        alignment=ft.alignment.center,
+        expand=True
+    )
+    
+    suppliers_results_list = ft.Column([initial_message], spacing=10)  # Removido scroll - será aplicado no Container pai
 
-    def create_supplier_card(record, page):
-        """Cria um card editável para um supplier."""
-        supplier_id = record.get('supplier_id', '')
-        vendor_name = record.get('vendor_name', '')
-        supplier_category = record.get('supplier_category', '')
-        bu = record.get('bu', '')
-        supplier_name = record.get('supplier_name', '')
-        supplier_email = record.get('supplier_email', '')
-        supplier_number = record.get('supplier_number', '')
-        supplier_po = record.get('supplier_po', '')
-        supplier_status = record.get('supplier_status', '')
-        planner = record.get('planner', '')
-        continuity = record.get('continuity', '')
-        sourcing = record.get('sourcing', '')
-        sqie = record.get('sqie', '')
-
-        print(f"Criando card de supplier para: {vendor_name} (ID: {supplier_id})")
-
-        def update_status_color(e):
-            """Atualiza a cor do texto do dropdown de status baseado no valor selecionado"""
-            status_value = e.control.value
-            if status_value == "Active":
-                e.control.color = "green"
-            elif status_value == "Inactive":
-                e.control.color = "red"
-            else:
-                e.control.color = get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
-            safe_page_update(page)
-
-        # Campos editáveis
-        fields = {
-            "vendor_name": ft.TextField(
-                label="Vendor Name",
-                value=vendor_name,  # Preencher com valor do banco
-                filled=False,
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "supplier_category": ft.Dropdown(
-                label="Category",
-                value=supplier_category,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in load_list_options('categories_table','category')],
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "bu": ft.Dropdown(
-                label="BU (Business Unit)",
-                value=bu,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in load_list_options('business_unit_table','bu')],
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "supplier_origin": ft.Dropdown(
-                label="Origem",
-                value=supplier_name if supplier_name in ['Nacional', 'Importado'] else '',  # Preencher com valor do banco quando aplicável
-                options=[ft.dropdown.Option(v) for v in ["Nacional", "Importado"]],
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "supplier_email": ft.TextField(
-                label="Email",
-                value=supplier_email,  # Preencher com valor do banco
-                filled=False,
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "supplier_number": ft.TextField(
-                label="SSID",
-                value=format_po_ssid(supplier_number),  # Formatar sem decimais
-                filled=False,
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "supplier_po": ft.TextField(
-                label="PO",
-                value=format_po_ssid(supplier_po),  # Formatar sem decimais
-                filled=False,
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "supplier_status": ft.Dropdown(
-                label="Status",
-                value=supplier_status,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in ["Active", "Inactive"]],
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color="green" if supplier_status == "Active" else "red" if supplier_status == "Inactive" else get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),  # Cor baseada no status
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
-                on_change=update_status_color
-            ),
-            "planner": ft.Dropdown(
-                label="Planner",
-                value=planner,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in load_list_options('planner_table','name')],
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "continuity": ft.Dropdown(
-                label="Continuity",
-                value=continuity,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in load_list_options('continuity_table','name')],
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "sourcing": ft.Dropdown(
-                label="Sourcing",
-                value=sourcing,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in load_list_options('sourcing_table','name')],
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-            "sqie": ft.Dropdown(
-                label="SQIE",
-                value=sqie,  # Preencher com valor do banco
-                options=[ft.dropdown.Option(v) for v in load_list_options('sqie_table','name')],
-                expand=True,
-                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
-            ),
-        }
-
-        def save_supplier(e):
-            """Salva ou atualiza dados do supplier no banco de dados."""
-            nonlocal supplier_id
-            print(f"🔧 DEBUG: save_supplier chamada para supplier ID: {supplier_id}")
-            
-            # Verificar permissão - apenas Super Admin
-            if current_user_privilege != "Super Admin":
-                show_snack_bar("❌ Acesso negado. Apenas Super Admin pode gerenciar suppliers.", True, page)
-                return
-            
-            if not db_conn:
-                show_snack_bar("❌ Erro: Banco de dados não conectado.", True, page)
-                return
-
-            # Função auxiliar para tratar valores
-            def safe_strip(value):
-                if value is None:
-                    return ""
-                return str(value).strip()
-
-            # Validações básicas
-            if not safe_strip(fields["vendor_name"].value):
-                show_snack_bar("❌ Campo Vendor Name é obrigatório!", True, page)
-                return
-            
-            if not safe_strip(fields["supplier_origin"].value):
-                show_snack_bar("❌ Campo Origem é obrigatório!", True, page)
-                return
-
-            try:
-                print(f"🔧 DEBUG: Iniciando salvamento...")
-                e.control.disabled = True
-                e.control.text = "Salvando..."
-                safe_page_update(page)
-
-                cursor = db_conn.cursor()
-                print(f"🔧 DEBUG: Cursor criado")
-                
-                # Verificar se o supplier existe
-                check_query = "SELECT COUNT(*) FROM supplier_database_table WHERE supplier_id = ?"
-                result = db_manager.query_one(check_query, (supplier_id,))
-                exists = result["COUNT(*)"] > 0
-                print(f"🔧 DEBUG: Supplier exists: {exists}")
-                
-                # ===== VALIDAÇÃO DE UNICIDADE =====
-                supplier_number_value = format_po_ssid_for_save(fields["supplier_number"].value)
-                supplier_po_value = format_po_ssid_for_save(fields["supplier_po"].value)
-                
-                # Verificar se SSID já existe em OUTRO supplier (se fornecido e não vazio)
-                if supplier_number_value and supplier_number_value.strip():
-                    check_ssid_query = "SELECT supplier_id, vendor_name FROM supplier_database_table WHERE supplier_number = ? AND supplier_id != ?"
-                    existing_ssid = db_manager.query(check_ssid_query, (supplier_number_value.strip(), supplier_id))
-                    if existing_ssid:
-                        existing_supplier = existing_ssid[0]
-                        show_snack_bar(f"❌ SSID '{supplier_number_value}' já está cadastrado para o supplier '{existing_supplier[1]}' (ID: {existing_supplier[0]})", True, page)
-                        e.control.disabled = False
-                        e.control.text = "Update"
-                        safe_page_update(page)
-                        return
-                
-                # Verificar se PO já existe em OUTRO supplier (se fornecido e não vazio)
-                if supplier_po_value and supplier_po_value.strip():
-                    check_po_query = "SELECT supplier_id, vendor_name FROM supplier_database_table WHERE supplier_po = ? AND supplier_id != ?"
-                    existing_po = db_manager.query(check_po_query, (supplier_po_value.strip(), supplier_id))
-                    if existing_po:
-                        existing_supplier = existing_po[0]
-                        show_snack_bar(f"❌ PO '{supplier_po_value}' já está cadastrado para o supplier '{existing_supplier[1]}' (ID: {existing_supplier[0]})", True, page)
-                        e.control.disabled = False
-                        e.control.text = "Update"
-                        safe_page_update(page)
-                        return
-                # ===== FIM DA VALIDAÇÃO =====
-                
-                if exists:
-                    # Atualizar registro existente
-                    update_query = """
-                        UPDATE supplier_database_table 
-                        SET vendor_name = ?, supplier_category = ?, bu = ?, supplier_name = ?,
-                            supplier_email = ?, supplier_number = ?, supplier_po = ?, supplier_status = ?,
-                            planner = ?, continuity = ?, sourcing = ?, sqie = ?
-                        WHERE supplier_id = ?
-                    """
-                    db_manager.execute(update_query, (
-                        safe_strip(fields["vendor_name"].value),
-                        safe_strip(fields["supplier_category"].value),
-                        safe_strip(fields["bu"].value),
-                        safe_strip(fields["supplier_origin"].value),
-                        safe_strip(fields["supplier_email"].value),
-                        supplier_number_value,
-                        supplier_po_value,
-                        safe_strip(fields["supplier_status"].value),
-                        safe_strip(fields["planner"].value),
-                        safe_strip(fields["continuity"].value),
-                        safe_strip(fields["sourcing"].value),
-                        safe_strip(fields["sqie"].value),
-                        supplier_id
-                    ))
-                    action = "atualizado"
-                else:
-                    # Inserir novo registro
-                    insert_query = """
-                        INSERT INTO supplier_database_table 
-                        (vendor_name, supplier_category, bu, supplier_name,
-                         supplier_email, supplier_number, supplier_po, supplier_status, planner, 
-                         continuity, sourcing, sqie)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """
-                    db_manager.execute(insert_query, (
-                        safe_strip(fields["vendor_name"].value),
-                        safe_strip(fields["supplier_category"].value),
-                        safe_strip(fields["bu"].value),
-                        safe_strip(fields["supplier_origin"].value),
-                        safe_strip(fields["supplier_email"].value),
-                        supplier_number_value,
-                        supplier_po_value,
-                        safe_strip(fields["supplier_status"].value),
-                        safe_strip(fields["planner"].value),
-                        safe_strip(fields["continuity"].value),
-                        safe_strip(fields["sourcing"].value),
-                        safe_strip(fields["sqie"].value)
-                    ))
-                    # Pegar o supplier_id gerado
-                    supplier_id = cursor.lastrowid
-                    action = "criado"
-                    # Atualizar o data do card com o novo ID
-                    if card.data:
-                        card.data['supplier_id'] = supplier_id
-                
-                db_conn.commit()
-                print(f"🔧 DEBUG: Dados commitados no banco")
-                
-                # Atualizar supplier_name em supplier_score_records_table usando vendor_name
-                try:
-                    update_score_query = "UPDATE supplier_score_records_table SET supplier_name = ? WHERE supplier_id = ?"
-                    db_manager.execute(update_score_query, (safe_strip(fields["vendor_name"].value), supplier_id))
-                    print(f"🔧 DEBUG: Supplier name atualizado em supplier_score_records_table para vendor_name '{safe_strip(fields['vendor_name'].value)}'")
-                except Exception as ex_upd:
-                    print(f"🔧 WARN: falha ao atualizar supplier_score_records_table: {ex_upd}")
-                
-                # Atualizar listas
-                # load_scores()  # REMOVIDO - Cards obsoletos, apenas tabela é usada
-                load_suppliers_for_timeline()
-
-                # Atualizar dropdowns da aba Timeline, se referenciados
-                try:
-                    if 'timeline_vendor_dropdown' in globals() and timeline_vendor_dropdown.current:
-                        timeline_vendor_dropdown.current.options = load_suppliers_for_timeline()
-                    if 'timeline_bu_dropdown' in globals() and timeline_bu_dropdown.current:
-                        timeline_bu_dropdown.current.options = load_business_units_for_timeline()
-                    # Atualizar visualmente
-                    try:
-                        if timeline_vendor_dropdown.current:
-                            timeline_vendor_dropdown.current.update()
-                    except Exception:
-                        pass
-                    try:
-                        if timeline_bu_dropdown.current:
-                            timeline_bu_dropdown.current.update()
-                    except Exception:
-                        pass
-                    safe_page_update(page)
-                except Exception as upd_ex:
-                    print(f"🔧 WARN: falha ao atualizar dropdowns da Timeline: {upd_ex}")
-
-                show_snack_bar(f"✅ Supplier {safe_strip(fields['vendor_name'].value)} {action} com sucesso!", is_error=False, is_warning=False, page=page)
-                print(f"Supplier {supplier_id} {action}")
-
-            except Exception as ex:
-                show_snack_bar(f"❌ Erro ao salvar: {str(ex)}", is_error=True, page=page)
-                print(f"Erro ao salvar supplier: {ex}")
-            finally:
-                e.control.disabled = False
-                e.control.text = "Update"
-                safe_page_update(page)
-
-        def delete_supplier(e):
-            """Deleta supplier após confirmação com código de 5 letras."""
-            print(f"🗑️ DEBUG: delete_supplier chamada para supplier ID: {supplier_id}")
-            
-            # Verificar permissão - apenas Super Admin
-            if current_user_privilege != "Super Admin":
-                show_snack_bar("❌ Acesso negado. Apenas Super Admin pode deletar suppliers.", True)
-                return
-            
-            def handle_confirm(e):
-                """Callback para confirmar a exclusão"""
-                try:
-                    if not db_conn:
-                        show_snack_bar("❌ Erro: Banco de dados não conectado.", True)
-                        return
-                    cursor = db_conn.cursor()
-                    db_manager.execute("DELETE FROM supplier_score_records_table WHERE supplier_id = ?", (supplier_id,))
-                    db_manager.execute("DELETE FROM favorites_table WHERE supplier_id = ?", (supplier_id,))
-                    db_manager.execute("DELETE FROM supplier_database_table WHERE supplier_id = ?", (supplier_id,))
-                    if card in suppliers_results_list.controls:
-                        suppliers_results_list.controls.remove(card)
-                    show_snack_bar(f"✅ Supplier {vendor_name} deletado com sucesso!")
-                    print(f"Supplier {supplier_id} deletado com sucesso")
-                except Exception as ex:
-                    show_snack_bar(f"❌ Erro ao deletar: {str(ex)}", True)
-                    print(f"Erro ao deletar supplier: {ex}")
-                page.close(delete_dialog)
-            
-            def handle_cancel(e):
-                """Callback para cancelar a exclusão"""
-                page.close(delete_dialog)
-            
-            # Criar o diálogo personalizado
-            delete_dialog = DeleteSupplierConfirmationDialog(
-                supplier_name=vendor_name,
-                supplier_id=supplier_id,
-                on_confirm=handle_confirm,
-                on_cancel=handle_cancel
-            )
-            
-            print(f"🗑️ DEBUG: Abrindo dialog de confirmação...")
-            page.open(delete_dialog)
-            print(f"🗑️ DEBUG: Dialog de confirmação aberto!")
-
-
-        # Criar botões APÓS definir as funções
-        actions_row = ft.Row([
-            ft.ElevatedButton("Update", on_click=save_supplier, icon=ft.Icons.SAVE),
-            ft.ElevatedButton("Excluir", on_click=delete_supplier, icon=ft.Icons.DELETE, color="red"),
-        ], alignment=ft.MainAxisAlignment.END, spacing=10)
-
-        # Layout do card com responsividade
-        def should_use_single_column_layout():
-            """Determina se deve usar layout de uma coluna baseado no tamanho da janela"""
-            window_width = page.window.width or 1200
-            return window_width < 1000  # Se menor que 1000px, usar uma coluna
-
-        def create_card_layout(use_single_column=None):
-            """Cria o layout do card baseado na decisão de usar uma ou duas colunas"""
-            if use_single_column is None:
-                use_single_column = should_use_single_column_layout()
-            
-            left_column = ft.Column([
-                ft.Text(f"ID: {supplier_id}", size=12, weight="bold", color="primary"),
-                ft.Row([fields["vendor_name"], fields["supplier_category"]], spacing=10),
-                ft.Row([fields["bu"], fields["supplier_origin"]], spacing=10),
-                ft.Row([fields["supplier_status"], fields["supplier_email"]], spacing=10),
-            ], spacing=10, expand=True)
-
-            right_column = ft.Column([
-                ft.Text("Configurações", size=12, weight="bold", color="primary"),
-                ft.Row([fields["planner"], fields["continuity"]], spacing=10),
-                ft.Row([fields["sourcing"], fields["sqie"]], spacing=10),
-                ft.Row([fields["supplier_po"], fields["supplier_number"]], spacing=10),
-            ], spacing=10, expand=True)
-
-            # Aplicar layout responsivo
-            if use_single_column:
-                # Layout de uma coluna - configurações abaixo das informações principais
-                return ft.Column([
-                    left_column,
-                    ft.Divider(),
-                    right_column,
-                    ft.Divider(),
-                    actions_row
-                ], spacing=15)
-            else:
-                # Layout de duas colunas - configurações ao lado das informações principais
-                return ft.Column([
-                    ft.Row([left_column, ft.VerticalDivider(), right_column], expand=True),
-                    ft.Divider(),
-                    actions_row
-                ], spacing=15)
-        
-        # Criar layout inicial
-        card_content = create_card_layout()
-
-        card = ft.Card(
-            content=ft.Container(
-                content=card_content,
-                padding=20
-            ),
-            elevation=2,
-            margin=ft.margin.symmetric(vertical=5),
-            color=get_current_theme_colors(get_theme_name_from_page(page)).get('card_background', 'surface_variant')
-        )
-        
-        # Guardar referências dos campos e função de layout para facilitar re-tematização e responsividade
-        try:
-            card.data = { 
-                'fields': fields,
-                'create_layout': create_card_layout,
-                'supplier_id': supplier_id
-            }
-        except Exception:
-            pass
-
-        return card
 
     def add_new_supplier(e):
         """Abre dialog para adicionar um novo supplier."""
@@ -9946,7 +9749,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     existing_ssid = db_manager.query(check_ssid_query, (supplier_number.strip(),))
                     if existing_ssid:
                         existing_supplier = existing_ssid[0]
-                        show_snack_bar(f"❌ SSID '{supplier_number}' já está cadastrado para o supplier '{existing_supplier[1]}' (ID: {existing_supplier[0]})", True)
+                        show_snack_bar(f"❌ SSID '{supplier_number}' já está cadastrado para o supplier '{existing_supplier['vendor_name']}' (ID: {existing_supplier['supplier_id']})", True)
                         return
                 
                 # Verificar se PO já existe (se fornecido e não vazio)
@@ -9955,7 +9758,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     existing_po = db_manager.query(check_po_query, (supplier_po.strip(),))
                     if existing_po:
                         existing_supplier = existing_po[0]
-                        show_snack_bar(f"❌ PO '{supplier_po}' já está cadastrado para o supplier '{existing_supplier[1]}' (ID: {existing_supplier[0]})", True)
+                        show_snack_bar(f"❌ PO '{supplier_po}' já está cadastrado para o supplier '{existing_supplier['vendor_name']}' (ID: {existing_supplier['supplier_id']})", True)
                         return
                 # ===== FIM DA VALIDAÇÃO =====
                 
@@ -10036,15 +9839,22 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         page.open(add_dialog)
         print("➕ DEBUG: Dialog para adicionar supplier aberto!")
 
-    # Variáveis globais para debounce de suppliers
-    global suppliers_search_timer, suppliers_search_lock
+    # Variáveis globais para debounce de suppliers e paginação
+    global suppliers_search_timer, suppliers_search_lock, suppliers_current_page, suppliers_total_pages, suppliers_per_page
     suppliers_search_timer = None
     suppliers_search_lock = False
-
-    # Sistema de debounce para busca de suppliers na aba Suppliers
-    suppliers_search_timer = None
-    suppliers_search_lock = False
+    suppliers_current_page = 1
+    suppliers_total_pages = 1
+    suppliers_per_page = 20  # Número de suppliers por página
     
+    # Refs para paginação
+    suppliers_page_info = ft.Ref[ft.Text]()
+    suppliers_first_button = ft.Ref[ft.IconButton]()
+    suppliers_prev_button = ft.Ref[ft.IconButton]()
+    suppliers_next_button = ft.Ref[ft.IconButton]()
+    suppliers_last_button = ft.Ref[ft.IconButton]()
+    suppliers_pagination_container = ft.Ref[ft.Container]()
+
     def search_suppliers_config_debounced():
         """Executa a busca de suppliers com debounce para evitar conflitos SQLite."""
         global suppliers_search_timer, suppliers_search_lock
@@ -10059,17 +9869,21 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         
         # Criar novo timer para executar a busca após 300ms de inatividade
         import threading
-        suppliers_search_timer = threading.Timer(0.3, search_suppliers_config)
+        suppliers_search_timer = threading.Timer(0.3, lambda: search_suppliers_config(reset_page=True))
         suppliers_search_timer.start()
 
-    def search_suppliers_config():
-        """Busca suppliers para edição na aba de configurações com proteção contra queries simultâneas."""
-        global suppliers_search_lock
+    def search_suppliers_config(reset_page=False):
+        """Busca suppliers para edição na aba de configurações com paginação (1 por página)."""
+        global suppliers_search_lock, suppliers_current_page, suppliers_total_pages
         
         # Evitar múltiplas execuções simultâneas
         if suppliers_search_lock:
             return
         suppliers_search_lock = True
+        
+        # Reset para primeira página ao fazer nova busca
+        if reset_page:
+            suppliers_current_page = 1
         
         try:
             if not suppliers_search_field_ref.current:
@@ -10077,80 +9891,604 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
             search_term = suppliers_search_field_ref.current.value.strip()
             
-            print(f"Buscando suppliers para edição: '{search_term}'")
+            print(f"Buscando suppliers (Página {suppliers_current_page}): '{search_term}'")
 
             suppliers_results_list.controls.clear()
-            safe_page_update(page)
+            
+            # Se não há termo de busca ou tem menos de 3 caracteres, apenas limpar e mostrar mensagem
+            if not search_term or len(search_term) < 3:
+                theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+                message_text = "Digite no campo de busca" if not search_term else "Digite pelo menos 3 caracteres para buscar"
+                suppliers_results_list.controls.append(
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Container(height=100),  # Espaço no topo
+                            ft.Icon(ft.Icons.SEARCH, size=64, color=theme_colors.get('on_surface_variant')),
+                            ft.Text(message_text, size=18, weight="bold", color=theme_colors.get('on_surface')),
+                            ft.Text("Procure por nome, ID, PO ou BU", size=14, color=theme_colors.get('on_surface_variant')),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
+                        alignment=ft.alignment.center,
+                        expand=True
+                    )
+                )
+                
+                # Esconde o header (nome do supplier)
+                suppliers_header_container.content = None
+                suppliers_header_container.update()
+                
+                # Atualizar informações de paginação
+                if suppliers_page_info.current:
+                    suppliers_page_info.current.value = "Página 1 de 1 (0 registros)"
+                    suppliers_page_info.current.update()
+                
+                # Desabilitar todos os botões de navegação
+                if suppliers_first_button.current:
+                    suppliers_first_button.current.disabled = True
+                    suppliers_first_button.current.update()
+                
+                if suppliers_prev_button.current:
+                    suppliers_prev_button.current.disabled = True
+                    suppliers_prev_button.current.update()
+                
+                if suppliers_next_button.current:
+                    suppliers_next_button.current.disabled = True
+                    suppliers_next_button.current.update()
+                
+                if suppliers_last_button.current:
+                    suppliers_last_button.current.disabled = True
+                    suppliers_last_button.current.update()
+                
+                # Esconde os controles de paginação
+                if suppliers_pagination_container.current:
+                    suppliers_pagination_container.current.visible = False
+                    suppliers_pagination_container.current.update()
+                
+                safe_page_update(page)
+                return
+            
+            if not db_conn:
+                suppliers_results_list.controls.append(
+                    ft.Container(
+                        ft.Text("Erro: Não foi possível conectar ao banco de dados.", color="red"),
+                        padding=20
+                    )
+                )
+                safe_page_update(page)
+                return
+
+            try:
+                # Contar total de registros
+                if search_term:
+                    count_query = """
+                        SELECT COUNT(*) as total
+                        FROM supplier_database_table
+                        WHERE (vendor_name LIKE ? OR supplier_id LIKE ? OR supplier_po LIKE ? OR bu LIKE ?)
+                    """
+                    params = [f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"]
+                else:
+                    count_query = "SELECT COUNT(*) as total FROM supplier_database_table"
+                    params = []
+                
+                count_result = db_manager.query_one(count_query, params)
+                total_records = count_result['total']
+                suppliers_total_pages = total_records  # 1 supplier por página
+                
+                # Garantir que a página atual está no intervalo válido
+                if suppliers_current_page > suppliers_total_pages:
+                    suppliers_current_page = suppliers_total_pages
+                if suppliers_current_page < 1:
+                    suppliers_current_page = 1
+                
+                # Calcular offset (1 por página)
+                offset = suppliers_current_page - 1
+                
+                # Buscar apenas 1 supplier da página atual
+                if search_term:
+                    query = """
+                        SELECT supplier_id, vendor_name, supplier_category, bu, supplier_name,
+                               supplier_email, supplier_number, supplier_po, supplier_status, planner, 
+                               continuity, sourcing, sqie
+                        FROM supplier_database_table
+                        WHERE (vendor_name LIKE ? OR supplier_id LIKE ? OR supplier_po LIKE ? OR bu LIKE ?)
+                        ORDER BY vendor_name
+                        LIMIT 1 OFFSET ?
+                    """
+                    params.append(offset)
+                else:
+                    query = """
+                        SELECT supplier_id, vendor_name, supplier_category, bu, supplier_name,
+                               supplier_email, supplier_number, supplier_po, supplier_status, planner, 
+                               continuity, sourcing, sqie
+                        FROM supplier_database_table
+                        ORDER BY vendor_name
+                        LIMIT 1 OFFSET ?
+                    """
+                    params = [offset]
+
+                records = db_manager.query(query, params)
+                
+                print(f"Supplier {suppliers_current_page}/{suppliers_total_pages} (total: {total_records})")
+                
+                if not records:
+                    theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+                    suppliers_results_list.controls.append(
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Icon(ft.Icons.SEARCH_OFF, size=64, color=theme_colors.get('on_surface_variant')),
+                                ft.Text("Nenhum supplier encontrado", size=18, weight="bold", color=theme_colors.get('on_surface')),
+                                ft.Text("Digite no campo de busca para encontrar suppliers", size=14, color=theme_colors.get('on_surface_variant')),
+                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
+                            alignment=ft.alignment.center,
+                            expand=True
+                        )
+                    )
+                else:
+                    # Exibir o supplier
+                    supplier_parts = create_supplier_display(records[0], page)
+                    # Atualizar header
+                    suppliers_header_container.content = supplier_parts["header"]
+                    suppliers_header_container.update()
+                    # Atualizar conteúdo
+                    suppliers_results_list.controls.append(supplier_parts["content"])
+                
+                # Atualizar informações de paginação
+                if suppliers_page_info.current:
+                    if total_records > 0:
+                        suppliers_page_info.current.value = f"Página {suppliers_current_page} de {suppliers_total_pages} ({total_records} registros)"
+                    else:
+                        suppliers_page_info.current.value = "Página 1 de 1 (0 registros)"
+                    suppliers_page_info.current.update()
+                
+                # Atualizar estado dos botões de navegação
+                at_first = (suppliers_current_page <= 1)
+                at_last = (suppliers_current_page >= suppliers_total_pages)
+                
+                if suppliers_first_button.current:
+                    suppliers_first_button.current.disabled = at_first
+                    suppliers_first_button.current.update()
+                
+                if suppliers_prev_button.current:
+                    suppliers_prev_button.current.disabled = at_first
+                    suppliers_prev_button.current.update()
+                
+                if suppliers_next_button.current:
+                    suppliers_next_button.current.disabled = at_last
+                    suppliers_next_button.current.update()
+                
+                if suppliers_last_button.current:
+                    suppliers_last_button.current.disabled = at_last
+                    suppliers_last_button.current.update()
+                
+                # Mostrar controles de paginação se houver resultados
+                if suppliers_pagination_container.current:
+                    suppliers_pagination_container.current.visible = (total_records > 0)
+                    suppliers_pagination_container.current.update()
+                
+            except sqlite3.Error as db_error:
+                error_msg = f"Erro no banco de dados: {db_error}"
+                print(error_msg)
+                suppliers_results_list.controls.append(
+                    ft.Container(
+                        ft.Text(error_msg, color="red"),
+                        padding=20
+                    )
+                )
+
+            try:
+                safe_page_update(page)
+            except Exception as update_error:
+                print(f"Erro ao atualizar página: {update_error}")
+                
         finally:
             suppliers_search_lock = False
 
-        # Se o campo de pesquisa estiver vazio, limpar todos os cards e retornar
-        if not search_term:
-            print("Campo de pesquisa vazio, limpando todos os cards")
-            safe_page_update(page)
-            return
-
-        if not db_conn:
-            suppliers_results_list.controls.append(
-                ft.Container(
-                    ft.Text("Erro: Não foi possível conectar ao banco de dados.", color="red"),
-                    padding=20
-                )
-            )
-            safe_page_update(page)
-            return
-
-        try:
-            cursor = db_conn.cursor()
-
-            query = """
-                SELECT supplier_id, vendor_name, supplier_category, bu, supplier_name,
-                       supplier_email, supplier_number, supplier_po, supplier_status, planner, 
-                       continuity, sourcing, sqie
-                FROM supplier_database_table
-                WHERE (vendor_name LIKE ? OR supplier_id LIKE ? OR supplier_name LIKE ?)
-                ORDER BY vendor_name LIMIT 10
-            """
-            params = [f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"]
-
-            print(f"Executando query: {query}")
-            print(f"Params: {params}")
-            records = db_manager.query(query, params)
+    def go_to_first_page():
+        """Navega para a primeira página"""
+        global suppliers_current_page
+        if suppliers_current_page > 1:
+            suppliers_current_page = 1
+            search_suppliers_config(reset_page=False)
+    
+    def go_to_last_page():
+        """Navega para a última página"""
+        global suppliers_current_page
+        if suppliers_current_page < suppliers_total_pages:
+            suppliers_current_page = suppliers_total_pages
+            search_suppliers_config(reset_page=False)
+    
+    def go_to_previous_page(e):
+        """Navega para a página anterior"""
+        global suppliers_current_page
+        if suppliers_current_page > 1:
+            suppliers_current_page -= 1
+            search_suppliers_config(reset_page=False)
+    
+    def go_to_next_page(e):
+        """Navega para a próxima página"""
+        global suppliers_current_page
+        if suppliers_current_page < suppliers_total_pages:
+            suppliers_current_page += 1
+            search_suppliers_config(reset_page=False)
+    
+    def create_supplier_display(record, page):
+        """Cria o display completo de um supplier (1 por página) com campos editáveis"""
+        Colors = get_current_theme_colors(get_theme_name_from_page(page))
+        
+        supplier_id = record.get('supplier_id', '')
+        vendor_name = record.get('vendor_name', '')
+        supplier_category = record.get('supplier_category', '')
+        bu = record.get('bu', '')
+        supplier_name = record.get('supplier_name', '')
+        supplier_email = record.get('supplier_email', '')
+        supplier_number = record.get('supplier_number', '')
+        supplier_po = record.get('supplier_po', '')
+        supplier_status = record.get('supplier_status', '')
+        planner = record.get('planner', '')
+        continuity = record.get('continuity', '')
+        sourcing = record.get('sourcing', '')
+        sqie = record.get('sqie', '')
+        
+        # Criar campos editáveis (vendor_name fica de fora, será exibido no topo)
+        
+        def on_field_change(e):
+            """Handler para quando um campo é alterado - limpa se vazio"""
+            if e.control.value is None or str(e.control.value).strip() == "":
+                e.control.value = ""
+                e.control.error_text = None
+                safe_page_update(page)
+        
+        fields = {
+            "supplier_category": ft.Dropdown(
+                label="Category",
+                value=supplier_category,
+                options=[ft.dropdown.Option(v) for v in load_list_options('categories_table','category')],
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline')
+            ),
+            "bu": ft.Dropdown(
+                label="BU (Business Unit)",
+                value=bu,
+                options=[ft.dropdown.Option(v) for v in load_list_options('business_unit_table','bu')],
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline')
+            ),
+            "supplier_origin": ft.Dropdown(
+                label="Origem",
+                value=supplier_name if supplier_name in ['Nacional', 'Importado'] else '',
+                options=[ft.dropdown.Option(v) for v in ["Nacional", "Importado"]],
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline')
+            ),
+        }
+        
+        # Criar campo de email separado usando EmailChipField
+        email_field = EmailChipField(
+            label="Email",
+            initial_value=supplier_email,
+            theme_colors=Colors,
+            on_change=on_field_change
+        )
+        fields["supplier_email"] = email_field
+        
+        fields.update({
+            "supplier_number": ft.TextField(
+                label="SSID",
+                value=format_po_ssid(supplier_number),
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline'),
+                on_change=on_field_change
+            ),
+            "supplier_po": ft.TextField(
+                label="PO",
+                value=format_po_ssid(supplier_po),
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline'),
+                on_change=on_field_change
+            ),
+            "supplier_status": ft.Dropdown(
+                label="Status",
+                value=supplier_status,
+                options=[ft.dropdown.Option(v) for v in ["Active", "Inactive"]],
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color="green" if supplier_status == "Active" else "red",
+                border_color=Colors.get('outline')
+            ),
+            "planner": ft.Dropdown(
+                label="Planner",
+                value=planner,
+                options=[ft.dropdown.Option(v) for v in load_list_options('planner_table','name')],
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline')
+            ),
+            "continuity": ft.Dropdown(
+                label="Continuity",
+                value=continuity,
+                options=[ft.dropdown.Option(v) for v in load_list_options('continuity_table','name')],
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline')
+            ),
+            "sourcing": ft.Dropdown(
+                label="Sourcing",
+                value=sourcing,
+                options=[ft.dropdown.Option(v) for v in load_list_options('sourcing_table','name')],
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline')
+            ),
+            "sqie": ft.Dropdown(
+                label="SQIE",
+                value=sqie,
+                options=[ft.dropdown.Option(v) for v in load_list_options('sqie_table','name')],
+                expand=True,
+                bgcolor=Colors.get('field_background'),
+                color=Colors.get('on_surface'),
+                border_color=Colors.get('outline')
+            ),
+        })
+        
+        def save_supplier(e):
+            """Salva as alterações do supplier"""
+            # Verificar permissão
+            if current_user_privilege != "Super Admin":
+                show_snack_bar("❌ Acesso negado. Apenas Super Admin pode editar suppliers.", True)
+                return
             
-            print(f"Encontrados {len(records)} suppliers")
+            # Função auxiliar para tratar valores (permite vazio)
+            def safe_strip(value):
+                if value is None:
+                    return ""
+                return str(value).strip()
             
-            if not records:
-                suppliers_results_list.controls.append(
-                    ft.Container(
-                        ft.Text("Nenhum supplier encontrado.", italic=True, size=16),
-                        alignment=ft.alignment.center,
-                        padding=40
+            # Validações básicas (apenas origem é obrigatória)
+            if not safe_strip(fields["supplier_origin"].value):
+                show_snack_bar("❌ Campo Origem é obrigatório!", True)
+                return
+            
+            try:
+                e.control.disabled = True
+                e.control.text = "Salvando..."
+                safe_page_update(page)
+                
+                # Processar valores dos campos (permite vazios)
+                # EmailChipField usa get_value() em vez de .value
+                email_value = fields["supplier_email"].get_value() if hasattr(fields["supplier_email"], 'get_value') else safe_strip(fields["supplier_email"].value)
+                po_value = safe_strip(fields["supplier_po"].value)
+                ssid_value = safe_strip(fields["supplier_number"].value)
+                
+                # Log de debug
+                print(f"💾 Salvando supplier {supplier_id}:")
+                print(f"   Email: '{email_value}' (vazio: {not email_value})")
+                print(f"   PO: '{po_value}' (vazio: {not po_value})")
+                print(f"   SSID: '{ssid_value}' (vazio: {not ssid_value})")
+                
+                # ===== VALIDAÇÃO DE UNICIDADE =====
+                # Verificar se SSID já existe em outro supplier (se fornecido e não vazio)
+                if ssid_value and ssid_value.strip():
+                    check_ssid_query = "SELECT supplier_id, vendor_name FROM supplier_database_table WHERE supplier_number = ? AND supplier_id != ?"
+                    existing_ssid = db_manager.query(check_ssid_query, (ssid_value.strip(), supplier_id))
+                    if existing_ssid:
+                        existing_supplier = existing_ssid[0]
+                        show_snack_bar(f"❌ SSID '{ssid_value}' já está cadastrado para o supplier '{existing_supplier['vendor_name']}' (ID: {existing_supplier['supplier_id']})", True)
+                        e.control.disabled = False
+                        e.control.text = "Salvar"
+                        safe_page_update(page)
+                        return
+                
+                # Verificar se PO já existe em outro supplier (se fornecido e não vazio)
+                if po_value and po_value.strip():
+                    check_po_query = "SELECT supplier_id, vendor_name FROM supplier_database_table WHERE supplier_po = ? AND supplier_id != ?"
+                    existing_po = db_manager.query(check_po_query, (po_value.strip(), supplier_id))
+                    if existing_po:
+                        existing_supplier = existing_po[0]
+                        show_snack_bar(f"❌ PO '{po_value}' já está cadastrado para o supplier '{existing_supplier['vendor_name']}' (ID: {existing_supplier['supplier_id']})", True)
+                        e.control.disabled = False
+                        e.control.text = "Salvar"
+                        safe_page_update(page)
+                        return
+                # ===== FIM DA VALIDAÇÃO =====
+                
+                # Atualizar registro (vendor_name não é editável, mantém o valor original)
+                update_query = """
+                    UPDATE supplier_database_table 
+                    SET supplier_category = ?, bu = ?, supplier_name = ?,
+                        supplier_email = ?, supplier_number = ?, supplier_po = ?, supplier_status = ?,
+                        planner = ?, continuity = ?, sourcing = ?, sqie = ?
+                    WHERE supplier_id = ?
+                """
+                db_manager.execute(update_query, (
+                    safe_strip(fields["supplier_category"].value),
+                    safe_strip(fields["bu"].value),
+                    safe_strip(fields["supplier_origin"].value),
+                    email_value,  # Permite vazio
+                    ssid_value,   # Permite vazio
+                    po_value,     # Permite vazio
+                    safe_strip(fields["supplier_status"].value),
+                    safe_strip(fields["planner"].value),
+                    safe_strip(fields["continuity"].value),
+                    safe_strip(fields["sourcing"].value),
+                    safe_strip(fields["sqie"].value),
+                    supplier_id
+                ))
+                
+                show_snack_bar(f"✅ Supplier {vendor_name} atualizado com sucesso!")
+                print(f"✅ Supplier {supplier_id} atualizado no banco de dados")
+                
+                # Recarregar a página atual
+                search_suppliers_config(None)
+                
+            except Exception as ex:
+                show_snack_bar(f"❌ Erro ao salvar: {str(ex)}", True)
+                print(f"Erro ao salvar supplier: {ex}")
+            finally:
+                e.control.disabled = False
+                e.control.text = "Salvar"
+                safe_page_update(page)
+        
+        # Criar header separado do conteúdo para permitir layout fixo
+        header = ft.Container(
+            content=ft.Row([
+                ft.Column([
+                    ft.Text(
+                        vendor_name or "Nome não disponível",
+                        size=28,
+                        weight="bold",
+                        color=Colors.get('primary')
+                    ),
+                    ft.Text(
+                        f"ID: {supplier_id}",
+                        size=14,
+                        color=Colors.get('on_surface_variant')
+                    ),
+                ], spacing=5, expand=True),
+                ft.ElevatedButton(
+                    "Salvar Alterações",
+                    icon=ft.Icons.SAVE,
+                    on_click=save_supplier,
+                    style=ft.ButtonStyle(
+                        padding=ft.padding.symmetric(horizontal=30, vertical=15)
                     )
-                )
-            else:
-                for i, record in enumerate(records):
-                    print(f"Criando card {i+1}/{len(records)}: {record.get('vendor_name', 'Unknown')}")
-                    try:
-                        card = create_supplier_card(record, page)
-                        suppliers_results_list.controls.append(card)
-                    except Exception as card_error:
-                        print(f"Erro ao criar card para {record.get('vendor_name', 'Unknown')}: {card_error}")
-                        continue
-            
-        except sqlite3.Error as db_error:
-            error_msg = f"Erro no banco de dados: {db_error}"
-            print(error_msg)
-            suppliers_results_list.controls.append(
+                ),
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=ft.padding.all(20),
+            bgcolor=Colors.get('surface_variant'),
+            border=ft.border.only(bottom=ft.BorderSide(1, Colors.get('outline_variant'))),
+        )
+        
+        # Conteúdo rolável
+        content = ft.Column([
+            # Seção 1: Categoria e Localização
+            ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.CATEGORY, size=20, color=Colors.get('primary')),
+                            ft.Text("Categoria e Localização", size=16, weight="bold", color=Colors.get('on_surface')),
+                        ], spacing=8),
+                        ft.Container(height=15),
+                        ft.Row([
+                            fields["supplier_category"],
+                            fields["bu"],
+                            fields["supplier_origin"],
+                        ], spacing=20),
+                    ]),
+                    padding=ft.padding.all(20),
+                    bgcolor=Colors.get('surface_variant'),
+                    border_radius=8,
+                ),
+                
+                ft.Container(height=20),
+                
+                # Seção 2: Identificação
                 ft.Container(
-                    ft.Text(error_msg, color="red"),
-                    padding=20
-                )
-            )
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.BADGE, size=20, color=Colors.get('primary')),
+                            ft.Text("Identificação", size=16, weight="bold", color=Colors.get('on_surface')),
+                        ], spacing=8),
+                        ft.Container(height=15),
+                        ft.Row([
+                            fields["supplier_po"],
+                            fields["supplier_number"],
+                            fields["supplier_status"],
+                        ], spacing=20),
+                    ]),
+                    padding=ft.padding.all(20),
+                    bgcolor=Colors.get('surface_variant'),
+                    border_radius=8,
+                ),
+                
+                ft.Container(height=20),
+                
+                # Seção 3: Contato
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.EMAIL, size=20, color=Colors.get('primary')),
+                            ft.Text("Contato", size=16, weight="bold", color=Colors.get('on_surface')),
+                        ], spacing=8),
+                        ft.Container(height=15),
+                        email_field.build(),  # Usar .build() para obter o controle visual
+                    ]),
+                    padding=ft.padding.all(20),
+                    bgcolor=Colors.get('surface_variant'),
+                    border_radius=8,
+                ),
+                
+                ft.Container(height=20),
+                
+                # Seção 4: Equipe Responsável
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.GROUP, size=20, color=Colors.get('primary')),
+                            ft.Text("Equipe Responsável", size=16, weight="bold", color=Colors.get('on_surface')),
+                        ], spacing=8),
+                        ft.Container(height=15),
+                        ft.Row([
+                            # Coluna Esquerda
+                            ft.Column([
+                                fields["planner"],
+                                fields["continuity"],
+                            ], spacing=15, expand=1),
+                            
+                            # Coluna Direita
+                            ft.Column([
+                                fields["sourcing"],
+                                fields["sqie"],
+                            ], spacing=15, expand=1),
+                        ], spacing=25),
+                    ]),
+                    padding=ft.padding.all(20),
+                    bgcolor=Colors.get('surface_variant'),
+                    border_radius=8,
+                ),
+                
+        ], spacing=20)
+        
+        # Retornar dicionário com header e content separados
+        return {"header": header, "content": content}
+    
+    def open_edit_supplier_dialog(record, page):
+        """Abre diálogo para editar um supplier"""
+        # Por enquanto, mostrar mensagem
+        show_snack_bar(f"Editar supplier: {record.get('vendor_name', 'Unknown')}", False, page)
 
-        try:
-            safe_page_update(page)
-        except Exception as update_error:
-            print(f"Erro ao atualizar página: {update_error}")
+    # Referência para o botão de limpar da aba Suppliers
+    suppliers_clear_button_ref = ft.Ref[ft.IconButton]()
+    
+    # Função para limpar o campo de busca da aba Suppliers
+    def clear_suppliers_search_field():
+        if suppliers_search_field_ref.current:
+            suppliers_search_field_ref.current.value = ""
+            # Esconder o botão
+            if suppliers_clear_button_ref.current:
+                suppliers_clear_button_ref.current.visible = False
+                suppliers_clear_button_ref.current.update()
+            suppliers_search_field_ref.current.update()
+            # Trigger a busca para limpar resultados
+            search_suppliers_config_debounced()
+    
+    # Função para atualizar visibilidade do botão X
+    def update_suppliers_search_suffix():
+        if suppliers_search_field_ref.current and suppliers_clear_button_ref.current:
+            # Mostrar/esconder X baseado se há texto
+            suppliers_clear_button_ref.current.visible = bool(suppliers_search_field_ref.current.value)
+            suppliers_clear_button_ref.current.update()
 
     # Conteúdo da sub-aba Suppliers
     suppliers_content = ft.Container(
@@ -10161,31 +10499,110 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     ft.Icon(ft.Icons.BUSINESS, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
                     ft.Column([
                         ft.Text("Gerenciamento de Fornecedores", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
-                        ft.Text("Adicione, edite e gerencie fornecedores", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
+                        ft.Text("Navegue pelos fornecedores cadastrados", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
                     ], spacing=2, expand=True),
                 ], spacing=12),
                 margin=ft.margin.only(bottom=15),
             ),
-            # Barra de pesquisa fixo
+            # Barra de pesquisa e botão novo
             ft.Row([
-                ft.TextField(
-                    label="Buscar Supplier (Nome, ID ou Supplier Name)",
-                    hint_text="Digite para buscar...",
-                    prefix_icon=ft.Icons.SEARCH,
+                ft.Stack(
+                    controls=[
+                        ft.TextField(
+                            label="Buscar Supplier (Nome, ID, PO ou BU)",
+                            hint_text="Digite para buscar...",
+                            prefix_icon=ft.Icons.SEARCH,
+                            ref=suppliers_search_field_ref,
+                            on_change=lambda e: [update_suppliers_search_suffix(), search_suppliers_config_debounced()],
+                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                            border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
+                        ),
+                        ft.Container(
+                            content=ft.IconButton(
+                                icon=ft.Icons.CLOSE,
+                                icon_size=20,
+                                tooltip="Limpar busca",
+                                on_click=lambda e: clear_suppliers_search_field(),
+                                ref=suppliers_clear_button_ref,
+                                visible=False,
+                            ),
+                            right=0,
+                            top=0,
+                            bottom=0,
+                        ),
+                    ],
                     expand=True,
-                    ref=suppliers_search_field_ref,
-                    on_change=lambda e: search_suppliers_config_debounced(),
-                    bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                    border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
                 ft.ElevatedButton("Novo Supplier", icon=ft.Icons.ADD_BUSINESS, on_click=add_new_supplier),
             ], spacing=10),
-            # Lista de resultados com scroll - expande para ocupar espaço restante
+            
+            ft.Container(height=10),
+            
+            # Container grande que ocupa toda a área disponível
             ft.Container(
-                content=ft.Column([suppliers_results_list], scroll=ft.ScrollMode.AUTO),
+                content=ft.Column([
+                    # Header fixo do supplier (fica no topo)
+                    suppliers_header_container,
+                    
+                    # Área de conteúdo (dados do supplier) - expande com scroll
+                    ft.Container(
+                        content=ft.Column([suppliers_results_list], scroll=ft.ScrollMode.AUTO, expand=True),
+                        expand=True,
+                    ),
+                    
+                    ft.Container(height=10),
+                    
+                    # Controles de paginação fixos na parte inferior
+                    ft.Container(
+                        content=ft.Row([
+                            ft.IconButton(
+                                icon=ft.Icons.FIRST_PAGE,
+                                tooltip="Primeiro supplier",
+                                on_click=lambda e: go_to_first_page(),
+                                ref=suppliers_first_button,
+                                icon_size=20
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CHEVRON_LEFT,
+                                tooltip="Supplier anterior",
+                                on_click=go_to_previous_page,
+                                ref=suppliers_prev_button,
+                                icon_size=20
+                            ),
+                            ft.Container(
+                                content=ft.Text(
+                                    "Página 1 de 1 (0 registros)",
+                                    size=13,
+                                    ref=suppliers_page_info,
+                                    text_align=ft.TextAlign.CENTER,
+                                    color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')
+                                ),
+                                padding=ft.padding.symmetric(horizontal=20),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CHEVRON_RIGHT,
+                                tooltip="Próximo supplier",
+                                on_click=go_to_next_page,
+                                ref=suppliers_next_button,
+                                icon_size=20
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.LAST_PAGE,
+                                tooltip="Último supplier",
+                                on_click=lambda e: go_to_last_page(),
+                                ref=suppliers_last_button,
+                                icon_size=20
+                            ),
+                        ], alignment=ft.MainAxisAlignment.CENTER, spacing=5),
+                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('surface_variant'),
+                        padding=ft.padding.symmetric(horizontal=10, vertical=8),
+                        border_radius=8,
+                        ref=suppliers_pagination_container,
+                        visible=False,  # Inicialmente invisível
+                    ),
+                ], spacing=0),
                 expand=True,
-                margin=ft.margin.only(top=10),
             ),
         ], spacing=0, expand=True),
         padding=20,
@@ -10296,7 +10713,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     nil_text = ft.Text("0.20", size=12, width=60)
     nil_slider = ft.Slider(
         min=0, max=1, divisions=100, value=0.2,
-        on_change=lambda e: update_criteria_text("NIL", e.control.value, nil_text)
+        on_change=lambda e: update_criteria_text("NIL", e.control.value, nil_text),
+        overlay_color=ft.Colors.TRANSPARENT,
     )
     
     otif_text = ft.Text("0.20", size=12, width=60)
@@ -10308,13 +10726,15 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     pickup_text = ft.Text("0.20", size=12, width=60)
     pickup_slider = ft.Slider(
         min=0, max=1, divisions=100, value=0.2,
-        on_change=lambda e: update_criteria_text("Quality of Pick Up", e.control.value, pickup_text)
+        on_change=lambda e: update_criteria_text("Quality of Pick Up", e.control.value, pickup_text),
+        overlay_color=ft.Colors.TRANSPARENT,
     )
     
     package_text = ft.Text("0.20", size=12, width=60)
     package_slider = ft.Slider(
         min=0, max=1, divisions=100, value=0.2,
-        on_change=lambda e: update_criteria_text("Quality-Supplier Package", e.control.value, package_text)
+        on_change=lambda e: update_criteria_text("Quality-Supplier Package", e.control.value, package_text),
+        overlay_color=ft.Colors.TRANSPARENT,
     )
     
     target_text = ft.Text("5.00", size=12, width=60)
@@ -10408,7 +10828,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 # Sliders para cada critério com nomes corretos
                 ft.Row([
                     ft.Text("NIL:", size=14, weight="bold", width=220),
-                    ft.Container(content=nil_slider, expand=True),
+                    ft.Container(content=nil_slider, expand=True, bgcolor=None),
                     nil_text
                 ], alignment=ft.MainAxisAlignment.START),
                 ft.Row([
@@ -10418,12 +10838,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ], alignment=ft.MainAxisAlignment.START),
                 ft.Row([
                     ft.Text("Quality of Pick Up:", size=14, weight="bold", width=220),
-                    ft.Container(content=pickup_slider, expand=True),
+                    ft.Container(content=pickup_slider, expand=True, bgcolor=None),
                     pickup_text
                 ], alignment=ft.MainAxisAlignment.START),
                 ft.Row([
                     ft.Text("Quality-Supplier Package:", size=14, weight="bold", width=220),
-                    ft.Container(content=package_slider, expand=True),
+                    ft.Container(content=package_slider, expand=True, bgcolor=None),
                     package_text
                 ], alignment=ft.MainAxisAlignment.START),
                 ft.Row([
@@ -10626,6 +11046,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         "Add User", 
                         icon=ft.Icons.PERSON_ADD,
                         ref=action_btn_ref,
+                        visible=False,  # Será controlado via update_action_button()
                     ),
                     ft.ElevatedButton(
                         "Limpar Campos", 
@@ -10731,12 +11152,23 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             return []
         try:
             print("📋 Lista sendo atualizada...")
-            rows = db_manager.query("""
-                SELECT user_wwid, user_name, user_password, user_privilege, 
-                       otif, nil, pickup, package 
-                FROM users_table 
-                ORDER BY user_wwid
-            """)
+            
+            # Se não for Super Admin, mostrar apenas o próprio usuário
+            if current_user_privilege != "Super Admin":
+                rows = db_manager.query("""
+                    SELECT user_wwid, user_name, user_password, user_privilege, 
+                           otif, nil, pickup, package 
+                    FROM users_table 
+                    WHERE UPPER(user_wwid) = ?
+                    ORDER BY user_wwid
+                """, (current_user_wwid.upper() if current_user_wwid else "",))
+            else:
+                rows = db_manager.query("""
+                    SELECT user_wwid, user_name, user_password, user_privilege, 
+                           otif, nil, pickup, package 
+                    FROM users_table 
+                    ORDER BY user_wwid
+                """)
             users = []
             for row in rows:
                 wwid = row['user_wwid']
@@ -10865,7 +11297,8 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         "Apagar",
                         icon=ft.Icons.DELETE,
                         style=ft.ButtonStyle(color="red"),
-                        on_click=_delete_from_card
+                        on_click=_delete_from_card,
+                        visible=(current_user_privilege == "Super Admin")  # Apenas Super Admin pode apagar
                     )
 
                     header_row = ft.Row([
@@ -10879,13 +11312,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             expand=True
                         )
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                    
+                    # Criar lista de botões baseado em permissões
+                    action_buttons = [edit_btn]
+                    if current_user_privilege == "Super Admin":
+                        action_buttons.append(delete_btn)
 
                     content_column = ft.Column([
                         header_row,
                         ft.Text(f"Privilégio: {privilege}", size=12, color="outline"),
                         ft.Text(f"Permissões: {permissions_str}", size=12, color="outline"),
                         ft.Divider(),
-                        ft.Row([edit_btn, delete_btn], alignment=ft.MainAxisAlignment.END, spacing=10)
+                        ft.Row(action_buttons, alignment=ft.MainAxisAlignment.END, spacing=10)
                     ], spacing=6)
 
                     card_container = ft.Container(
@@ -10949,6 +11387,17 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 users_controls['package_check'].value = int(package) == 1
                 
                 print(f"Checkboxes definidos: OTIF={users_controls['otif_check'].value}, NIL={users_controls['nil_check'].value}, Pickup={users_controls['pickup_check'].value}, Package={users_controls['package_check'].value}")
+                
+                # Se não for Super Admin, bloquear campos (exceto senha)
+                is_super_admin = current_user_privilege == "Super Admin"
+                users_controls['wwid'].disabled = not is_super_admin
+                users_controls['name'].disabled = not is_super_admin
+                users_controls['privilege'].disabled = not is_super_admin
+                users_controls['otif_check'].disabled = not is_super_admin
+                users_controls['nil_check'].disabled = not is_super_admin
+                users_controls['pickup_check'].disabled = not is_super_admin
+                users_controls['package_check'].disabled = not is_super_admin
+                users_controls['password'].disabled = False  # Senha sempre editável
                 
                 # Atualizar todos os controles
                 for control in users_controls.values():
@@ -11033,6 +11482,20 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             # Limpar seleção global
             global selected_user
             selected_user = None
+            
+            # Reabilitar campos se for Super Admin (após limpar)
+            is_super_admin = current_user_privilege == "Super Admin"
+            try:
+                users_controls['wwid'].disabled = not is_super_admin
+                users_controls['name'].disabled = not is_super_admin
+                users_controls['privilege'].disabled = not is_super_admin
+                users_controls['otif_check'].disabled = not is_super_admin
+                users_controls['nil_check'].disabled = not is_super_admin
+                users_controls['pickup_check'].disabled = not is_super_admin
+                users_controls['package_check'].disabled = not is_super_admin
+                users_controls['password'].disabled = False
+            except Exception as e:
+                print(f"Erro ao configurar estado dos campos: {e}")
 
             # Atualizar botão de ação e lista visual
             try:
@@ -11079,6 +11542,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             name = users_controls['name'].value.strip() if users_controls['name'].value else ""
             password = users_controls['password'].value.strip() if users_controls['password'].value else ""
             privilege = users_controls['privilege'].value if users_controls['privilege'].value else ""
+            
+            # Verificar permissões: Admin e User só podem editar sua própria senha
+            if current_user_privilege != "Super Admin":
+                if wwid.upper() != current_user_wwid.upper():
+                    show_snack_bar("❌ Você só pode editar seus próprios dados", True)
+                    if save_button:
+                        save_button._is_processing = False
+                        save_button.disabled = False
+                        save_button.update()
+                    return
+                # Admin e User só podem atualizar senha
+                if not selected_user:
+                    show_snack_bar("❌ Você não tem permissão para criar novos usuários", True)
+                    if save_button:
+                        save_button._is_processing = False
+                        save_button.disabled = False
+                        save_button.update()
+                    return
             
             otif = 1 if users_controls['otif_check'].value else 0
             nil = 1 if users_controls['nil_check'].value else 0
@@ -11427,474 +11908,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         expand=True,
     )
 
-    # --- Conteúdo da aba Data (Importar/Exportar banco de dados) ---
-    def export_database_to_excel(e):
-        """Exporta todo o banco de dados para um arquivo Excel"""
-        # Verificar permissão - apenas Super Admin
-        if current_user_privilege != "Super Admin":
-            show_snack_bar("❌ Acesso negado. Apenas Super Admin pode exportar o banco de dados.", True)
-            return
-            
-        try:
-            import pandas as pd
-            from datetime import datetime
-            from tkinter import Tk, filedialog
-            import os
-            
-            # Mostrar progresso
-            show_snack_bar("Exportando banco de dados...", False)
-            
-            # Abrir diálogo para selecionar local de salvamento
-            root = Tk()
-            root.withdraw()
-            root.attributes('-topmost', True)
-            
-            # Nome padrão do arquivo com timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            default_filename = f"database_export_{timestamp}.xlsx"
-            
-            filepath = filedialog.asksaveasfilename(
-                title="Salvar banco de dados exportado",
-                defaultextension=".xlsx",
-                initialfile=default_filename,
-                filetypes=[("Excel files", "*.xlsx")]
-            )
-            
-            root.destroy()
-            
-            if not filepath:
-                show_snack_bar("Exportação cancelada")
-                return
-            
-            # Obter todas as tabelas do banco
-            tables_query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-            tables = db_manager.query(tables_query)
-            
-            if not tables:
-                show_snack_bar("Nenhuma tabela encontrada no banco de dados", True)
-                return
-            
-            # Criar escritor Excel
-            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
-                for table_row in tables:
-                    table_name = table_row['name'] if isinstance(table_row, dict) else table_row[0]
-                    
-                    # Ler dados da tabela
-                    query = f"SELECT * FROM {table_name}"
-                    data = db_manager.query(query)
-                    
-                    if data:
-                        # Converter para DataFrame
-                        df = pd.DataFrame(data)
-                        # Escrever no Excel (nome da aba limitado a 31 caracteres)
-                        sheet_name = table_name[:31]
-                        df.to_excel(writer, sheet_name=sheet_name, index=False)
-            
-            filename = os.path.basename(filepath)
-            show_snack_bar(f"✅ Banco de dados exportado: {filename}")
-            
-        except ImportError:
-            show_snack_bar("❌ Erro: pandas ou openpyxl não instalados", True)
-        except Exception as ex:
-            show_snack_bar(f"❌ Erro ao exportar: {str(ex)}", ft.Colors.RED)
-            print(f"Erro detalhado: {ex}")
-            import traceback
-            traceback.print_exc()
+    # --- Aba Data removida (import/export) ---
 
-    def import_database_from_excel(e):
-        """Importa dados de um arquivo Excel para o banco de dados com opção de modo"""
-        # Verificar permissão - apenas Super Admin
-        if current_user_privilege != "Super Admin":
-            show_snack_bar("❌ Acesso negado. Apenas Super Admin pode importar o banco de dados.", True)
-            return
-        
-        # Criar diálogo de confirmação com opções de modo
-        def show_import_mode_dialog():
-            import_mode_ref = ft.Ref[ft.RadioGroup]()
-            
-            def confirm_import(e):
-                selected_mode = import_mode_ref.current.value
-                page.close(mode_dialog)
-                start_import(selected_mode)
-            
-            def cancel_import(e):
-                page.close(mode_dialog)
-            
-            theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
-            
-            mode_dialog = ft.AlertDialog(
-                title=ft.Text("Modo de Importação", color=theme_colors.get('on_surface')),
-                content=ft.Container(
-                    content=ft.Column([
-                        ft.Text(
-                            "Escolha o modo de importação:",
-                            size=16,
-                            weight="bold",
-                            color=theme_colors.get('on_surface')
-                        ),
-                        ft.Container(height=10),
-                        ft.RadioGroup(
-                            ref=import_mode_ref,
-                            value="merge",
-                            content=ft.Column([
-                                ft.Radio(
-                                    value="merge",
-                                    label="MERGE (Recomendado)",
-                                    fill_color=theme_colors.get('primary')
-                                ),
-                                ft.Text(
-                                    "• Atualiza registros existentes\n"
-                                    "• Adiciona novos registros\n"
-                                    "• Mantém dados não presentes no Excel",
-                                    size=12,
-                                    color=theme_colors.get('on_surface_variant'),
-                                    italic=True
-                                ),
-                                ft.Container(height=10),
-                                ft.Radio(
-                                    value="replace",
-                                    label="REPLACE (Substituição Completa)",
-                                    fill_color=ft.Colors.ORANGE
-                                ),
-                                ft.Text(
-                                    "⚠️ ATENÇÃO: Esta opção irá:\n"
-                                    "• Deletar TODOS os dados das tabelas\n"
-                                    "• Substituir completamente pelos dados do Excel\n"
-                                    "• Dados não presentes no Excel serão PERDIDOS",
-                                    size=12,
-                                    color=ft.Colors.ORANGE,
-                                    weight="bold"
-                                ),
-                            ], spacing=5)
-                        ),
-                    ], tight=True, spacing=10),
-                    width=500
-                ),
-                actions=[
-                    ft.TextButton("Cancelar", on_click=cancel_import),
-                    ft.ElevatedButton(
-                        "Continuar",
-                        on_click=confirm_import,
-                        bgcolor=theme_colors.get('primary'),
-                        color=theme_colors.get('on_primary')
-                    )
-                ],
-                modal=True
-            )
-            
-            page.open(mode_dialog)
-        
-        def start_import(import_mode):
-            """Inicia o processo de importação com o modo selecionado"""
-            try:
-                import pandas as pd
-                from tkinter import Tk, filedialog
-                
-                # Abrir diálogo para selecionar arquivo
-                root = Tk()
-                root.withdraw()
-                root.attributes('-topmost', True)
-                
-                filepath = filedialog.askopenfilename(
-                    title="Selecione o arquivo Excel para importar",
-                    filetypes=[("Excel files", "*.xlsx *.xls")]
-                )
-                
-                root.destroy()
-                
-                if not filepath:
-                    return
-                
-                show_snack_bar(f"Importando banco de dados (modo: {import_mode.upper()})...", False)
-                
-                # Ler o arquivo Excel
-                excel_file = pd.ExcelFile(filepath)
-                
-                # Iniciar transação para garantir atomicidade
-                if db_conn:
-                    db_conn.execute("BEGIN TRANSACTION")
-                
-                imported_tables = 0
-                updated_records = 0
-                inserted_records = 0
-                errors = []
-                
-                try:
-                    for sheet_name in excel_file.sheet_names:
-                        try:
-                            # Ler a planilha
-                            df = pd.read_excel(filepath, sheet_name=sheet_name)
-                            
-                            if df.empty:
-                                print(f"⚠️ Planilha {sheet_name} está vazia, pulando...")
-                                continue
-                            
-                            # Verificar se a tabela existe no banco
-                            check_table = db_manager.query_one(
-                                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                                (sheet_name,)
-                            )
-                            
-                            if not check_table:
-                                print(f"⚠️ Tabela {sheet_name} não existe no banco, pulando...")
-                                continue
-                            
-                            columns = df.columns.tolist()
-                            
-                            # Obter colunas da tabela no banco
-                            table_info = db_manager.query(f"PRAGMA table_info({sheet_name})")
-                            db_columns = {col['name'] for col in table_info}
-                            
-                            # Validar que as colunas do Excel existem na tabela
-                            missing_columns = set(columns) - db_columns
-                            if missing_columns:
-                                error_msg = f"Colunas não encontradas na tabela {sheet_name}: {missing_columns}"
-                                print(f"❌ {error_msg}")
-                                errors.append(error_msg)
-                                continue
-                            
-                            # Identificar coluna primária e colunas NOT NULL
-                            primary_key = None
-                            not_null_columns = {}
-                            for col in table_info:
-                                if col['pk'] == 1:  # É chave primária
-                                    primary_key = col['name']
-                                if col['notnull'] == 1:  # É NOT NULL
-                                    not_null_columns[col['name']] = col
-                            
-                            # Se não encontrou PK, usar primeira coluna
-                            if not primary_key and columns:
-                                primary_key = columns[0]
-                            
-                            # Função auxiliar para garantir valores válidos em campos NOT NULL
-                            def validate_not_null_value(col_name, value):
-                                """Retorna um valor padrão se o campo for NOT NULL e o valor for None"""
-                                if col_name in not_null_columns and (value is None or (isinstance(value, str) and value.strip() == '')):
-                                    col_info = not_null_columns[col_name]
-                                    col_type = col_info['type'].upper()
-                                    
-                                    # Valores padrão baseados no tipo
-                                    if 'INT' in col_type:
-                                        return 0
-                                    elif 'REAL' in col_type or 'FLOAT' in col_type or 'DOUBLE' in col_type:
-                                        return 0.0
-                                    elif 'TEXT' in col_type or 'CHAR' in col_type or 'VARCHAR' in col_type:
-                                        return ''  # String vazia para campos de texto NOT NULL
-                                    else:
-                                        return ''  # Padrão genérico
-                                return value
-                            
-                            if import_mode == "replace":
-                                # Modo REPLACE: deletar todos os dados da tabela
-                                db_manager.execute(f"DELETE FROM {sheet_name}")
-                                print(f"🗑️ Tabela {sheet_name} limpa (modo REPLACE)")
-                                
-                                # Inserir todos os dados
-                                placeholders = ','.join(['?' for _ in columns])
-                                insert_query = f"INSERT INTO {sheet_name} ({','.join(columns)}) VALUES ({placeholders})"
-                                
-                                for _, row in df.iterrows():
-                                    # Converter NaN para None e validar campos NOT NULL
-                                    values = tuple(
-                                        validate_not_null_value(col, None if pd.isna(row[col]) else row[col]) 
-                                        for col in columns
-                                    )
-                                    db_manager.execute(insert_query, values)
-                                    inserted_records += 1
-                                
-                            else:  # import_mode == "merge"
-                                # Modo MERGE: atualizar ou inserir
-                                for _, row in df.iterrows():
-                                    # Converter NaN para None e validar campos NOT NULL
-                                    values = {
-                                        col: validate_not_null_value(col, None if pd.isna(row[col]) else row[col]) 
-                                        for col in columns
-                                    }
-                                    
-                                    if primary_key and primary_key in values:
-                                        # Verificar se o registro já existe
-                                        pk_value = values[primary_key]
-                                        existing = db_manager.query_one(
-                                            f"SELECT COUNT(*) as count FROM {sheet_name} WHERE {primary_key} = ?",
-                                            (pk_value,)
-                                        )
-                                        
-                                        if existing and existing['count'] > 0:
-                                            # UPDATE: registro existe
-                                            set_clauses = [f"{col} = ?" for col in columns if col != primary_key]
-                                            update_values = [values[col] for col in columns if col != primary_key]
-                                            update_values.append(pk_value)
-                                            
-                                            update_query = f"UPDATE {sheet_name} SET {', '.join(set_clauses)} WHERE {primary_key} = ?"
-                                            db_manager.execute(update_query, update_values)
-                                            updated_records += 1
-                                        else:
-                                            # INSERT: registro não existe
-                                            placeholders = ','.join(['?' for _ in columns])
-                                            insert_query = f"INSERT INTO {sheet_name} ({','.join(columns)}) VALUES ({placeholders})"
-                                            insert_values = [values[col] for col in columns]
-                                            db_manager.execute(insert_query, insert_values)
-                                            inserted_records += 1
-                                    else:
-                                        # Sem chave primária, apenas inserir
-                                        placeholders = ','.join(['?' for _ in columns])
-                                        insert_query = f"INSERT INTO {sheet_name} ({','.join(columns)}) VALUES ({placeholders})"
-                                        insert_values = [values[col] for col in columns]
-                                        db_manager.execute(insert_query, insert_values)
-                                        inserted_records += 1
-                            
-                            imported_tables += 1
-                            print(f"✅ Tabela {sheet_name} importada com sucesso")
-                            
-                        except Exception as table_ex:
-                            error_msg = f"Erro ao importar tabela {sheet_name}: {str(table_ex)}"
-                            print(f"❌ {error_msg}")
-                            errors.append(error_msg)
-                            import traceback
-                            traceback.print_exc()
-                            continue
-                    
-                    # Commit da transação se tudo correu bem
-                    if db_conn:
-                        db_conn.commit()
-                    
-                    # Montar mensagem de sucesso
-                    if imported_tables > 0:
-                        success_msg = f"✅ Importação concluída!\n"
-                        success_msg += f"• {imported_tables} tabelas processadas\n"
-                        if import_mode == "merge":
-                            success_msg += f"• {updated_records} registros atualizados\n"
-                            success_msg += f"• {inserted_records} registros inseridos"
-                        else:
-                            success_msg += f"• {inserted_records} registros inseridos (replace)"
-                        
-                        if errors:
-                            success_msg += f"\n⚠️ {len(errors)} erro(s) encontrado(s) - verifique o console"
-                        
-                        show_snack_bar(success_msg, False)
-                        
-                        # Recarregar dados na interface
-                        try:
-                            if hasattr(page, 'views') and page.views:
-                                search_suppliers_config()
-                        except Exception as reload_ex:
-                            print(f"Aviso ao recarregar interface: {reload_ex}")
-                    else:
-                        show_snack_bar("⚠️ Nenhuma tabela foi importada", False)
-                        
-                except Exception as import_ex:
-                    # Rollback em caso de erro
-                    if db_conn:
-                        db_conn.rollback()
-                    raise import_ex
-                
-            except ImportError:
-                show_snack_bar("❌ Erro: pandas ou openpyxl não instalados", True)
-            except Exception as ex:
-                if db_conn:
-                    db_conn.rollback()
-                show_snack_bar(f"❌ Erro ao importar: {str(ex)}", True)
-                print(f"Erro detalhado: {ex}")
-                import traceback
-                traceback.print_exc()
-        
-        # Mostrar diálogo de seleção de modo
-        show_import_mode_dialog()
+    # Variável global para controlar paginação do log
+    log_pagination = {
+        'current_offset': 0,
+        'page_size': 200,
+        'loading': False,
+        'has_more': True,
+        'current_filter': None
+    }
 
-    data_content = ft.Container(
-        content=ft.Column([
-            # Header fixo
-            ft.Container(
-                content=ft.Row([
-                    ft.Icon(ft.Icons.STORAGE, size=28, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary')),
-                    ft.Column([
-                        ft.Text("Gerenciamento de Dados", size=22, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
-                        ft.Text("Importe e exporte o banco de dados completo", size=13, color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant')),
-                    ], spacing=2, expand=True),
-                ], spacing=12),
-                margin=ft.margin.only(bottom=15),
-            ),
-            ft.Divider(height=1, color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')),
-            
-            # Card de Exportar
-            ft.Card(
-                content=ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Icon(ft.Icons.UPLOAD_FILE, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=20),
-                            ft.Text("Exportar Banco de Dados", size=18, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
-                        ], spacing=10),
-                        ft.Container(height=10),
-                        ft.Text(
-                            "Exporta todas as tabelas do banco de dados para um arquivo Excel. "
-                            "Cada tabela será exportada como uma planilha separada.",
-                            size=14,
-                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        ),
-                        ft.Container(height=15),
-                        ft.ElevatedButton(
-                            "Exportar para Excel",
-                            icon=ft.Icons.DOWNLOAD,
-                            on_click=export_database_to_excel,
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                            color=ft.Colors.WHITE,
-                        ),
-                    ]),
-                    padding=20,
-                ),
-                elevation=2,
-                margin=ft.margin.only(bottom=20),
-            ),
-            
-            # Card de Importar
-            ft.Card(
-                content=ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Icon(ft.Icons.DOWNLOAD, color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'), size=20),
-                            ft.Text("Importar Banco de Dados", size=18, weight="bold", color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
-                        ], spacing=10),
-                        ft.Container(height=10),
-                        ft.Text(
-                            "Importa dados de um arquivo Excel para o banco de dados.",
-                            size=14,
-                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        ),
-                        ft.Container(height=5),
-                        ft.Text(
-                            "📋 Modos disponíveis:",
-                            size=13,
-                            weight="bold",
-                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        ),
-                        ft.Text(
-                            "• MERGE (Recomendado): Atualiza registros existentes e adiciona novos, mantém dados não presentes no Excel",
-                            size=12,
-                            color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface_variant'),
-                        ),
-                        ft.Text(
-                            "• REPLACE: Substitui completamente os dados das tabelas",
-                            size=12,
-                            color=ft.Colors.ORANGE,
-                        ),
-                        ft.Container(height=15),
-                        ft.ElevatedButton(
-                            "Importar do Excel",
-                            icon=ft.Icons.UPLOAD,
-                            on_click=import_database_from_excel,
-                            bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                            color=ft.Colors.WHITE,
-                        ),
-                    ]),
-                    padding=20,
-                ),
-                elevation=2,
-            ),
-        ], spacing=10, scroll=ft.ScrollMode.AUTO, expand=True),
-        padding=20,
-        visible=False,
-        expand=True,
-    )
+    # Funções de import/export removidas - aba Data foi removida
 
     # Variável global para controlar paginação do log
     log_pagination = {
@@ -12221,8 +12246,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 users_content,
                 lists_content,
                 log_content,
-                info_content,
-                data_content
+                info_content
             ]),
             expand=True
         )
@@ -12833,7 +12857,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 max=10,
                 divisions=100,
                 value=norm_value if norm_value is not None else 0,
-                width=200,
+                width=350,
                 active_color=Colors['primary'],
                 inactive_color=Colors['surface_variant'],
                 disabled=not has_permission
@@ -12854,7 +12878,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 ft.Container(
                     content=score_text,
                     alignment=ft.alignment.center,
-                    width=200,
+                    width=350,
                     margin=ft.margin.only(top=-15)
                 )
             ], spacing=0, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
@@ -13527,7 +13551,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     ft.Row([ft.Icon(ft.Icons.CANCEL, color=ft.Colors.RED, size=18), ft.Text("Mais de 1 problema", size=15, weight="bold"), ft.Text("→", size=15), ft.Text("Nota 0", size=15, weight="bold", color=ft.Colors.RED)], spacing=8),
                                 ], spacing=8),
                                 padding=15,
-                                bgcolor=ft.Colors.with_opacity(0.05, get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
                                 border_radius=8,
                             ),
                         ]),
@@ -13553,7 +13576,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     ft.Row([ft.Icon(ft.Icons.CANCEL, color=ft.Colors.RED, size=18), ft.Text("Mais de 1 problema", size=15, weight="bold"), ft.Text("→", size=15), ft.Text("Nota 0", size=15, weight="bold", color=ft.Colors.RED)], spacing=8),
                                 ], spacing=8),
                                 padding=15,
-                                bgcolor=ft.Colors.with_opacity(0.05, get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
                                 border_radius=8,
                             ),
                         ]),
@@ -13579,7 +13601,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     ft.Row([ft.Icon(ft.Icons.CANCEL, color=ft.Colors.RED, size=18), ft.Text("Mais de 1 problema", size=15, weight="bold"), ft.Text("→", size=15), ft.Text("Nota 0", size=15, weight="bold", color=ft.Colors.RED)], spacing=8),
                                 ], spacing=8),
                                 padding=15,
-                                bgcolor=ft.Colors.with_opacity(0.05, get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface')),
                                 border_radius=8,
                             ),
                         ]),
@@ -13692,6 +13713,29 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     
     # Referência para o container dos campos de pesquisa
     timeline_search_container = ft.Ref[ft.Container]()
+    # Referência para o botão de limpar da aba Timeline
+    timeline_clear_button_ref = ft.Ref[ft.IconButton]()
+
+    def clear_timeline_search_field(e=None):
+        """Limpa o campo visual de fornecedor na Timeline"""
+        if timeline_vendor_search_field.current:
+            timeline_vendor_search_field.current.value = ""
+            # esconder botão
+            if timeline_clear_button_ref.current:
+                timeline_clear_button_ref.current.visible = False
+                timeline_clear_button_ref.current.update()
+            timeline_vendor_search_field.current.update()
+            # resetar selection dropdown
+            if timeline_vendor_dropdown.current:
+                timeline_vendor_dropdown.current.value = None
+            # atualizar timeline
+            update_timeline_metrics()
+
+    def update_timeline_search_suffix(e=None):
+        """Atualiza a visibilidade do botão limpar na Timeline"""
+        if timeline_vendor_search_field.current and timeline_clear_button_ref.current:
+            timeline_clear_button_ref.current.visible = bool(timeline_vendor_search_field.current.value)
+            timeline_clear_button_ref.current.update()
     
     # Refs for additional score checkboxes
     timeline_otif_check = ft.Ref[ft.Checkbox]()
@@ -13819,6 +13863,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                             
                             # Chamar a função de mudança
                             on_timeline_vendor_change(None)
+                            # Atualizar a visibilidade do botão de limpar
+                            try:
+                                update_timeline_search_suffix()
+                            except Exception:
+                                pass
                         return handler
                     
                     items.append(
@@ -16677,21 +16726,39 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             
             # Campos de seleção - mais clean e minimalista
             ft.Row([
-                ft.Container(
-                    content=ft.TextField(
-                        label="Fornecedor",
-                        hint_text="Clique para selecionar...",
-                        ref=timeline_vendor_search_field,
-                        read_only=True,
-                        on_click=open_vendor_selection_dialog,
-                        suffix_icon=ft.Icons.SEARCH,
-                        bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
-                        color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
-                        border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
-                        text_size=14,
-                    ),
+                ft.Stack(
+                    controls=[
+                        ft.Container(
+                            content=ft.TextField(
+                                label="Fornecedor",
+                                hint_text="Clique para selecionar...",
+                                ref=timeline_vendor_search_field,
+                                read_only=True,
+                                on_click=open_vendor_selection_dialog,
+                                prefix_icon=ft.Icons.SEARCH,  # Lupa à esquerda
+                                bgcolor=get_current_theme_colors(get_theme_name_from_page(page)).get('field_background'),
+                                color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
+                                border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
+                                text_size=14,
+                            ),
+                            expand=True,
+                            padding=ft.padding.all(5)
+                        ),
+                        ft.Container(
+                            content=ft.IconButton(
+                                icon=ft.Icons.CLOSE,
+                                icon_size=20,
+                                tooltip="Limpar fornecedor",
+                                on_click=clear_timeline_search_field,
+                                ref=timeline_clear_button_ref,
+                                visible=False,
+                            ),
+                            right=6,
+                            top=6,
+                            bottom=6,
+                        ),
+                    ],
                     expand=True,
-                    padding=ft.padding.all(5)
                 ),
                 # Dropdown oculto para manter compatibilidade
                 ft.Container(
@@ -16710,13 +16777,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
                     icon_size=20,
                 ),
-                ft.IconButton(
-                    icon=ft.Icons.CLEAR,
-                    tooltip="Limpar fornecedor",
-                    on_click=clear_timeline_vendor,
-                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                    icon_size=20,
-                ),
+                # o botão de limpar fornecedor foi substituído pelo botão flutuante dentro do campo
                 ft.Dropdown(
                     label="Ano",
                     ref=timeline_year_dropdown,
