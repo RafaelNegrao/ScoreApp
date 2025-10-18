@@ -1563,7 +1563,6 @@ def login_screen(page: ft.Page):
         width=420,
         height=None,  # Altura automática para evitar overflow
         margin=ft.margin.all(20),  # Margem para garantir que fique dentro da tela
-        animate_opacity=300
     )
     
     # Usar Container com scroll para garantir que caiba na tela
@@ -7499,8 +7498,24 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 clear_button_ref.current.visible = False
                 clear_button_ref.current.update()
             search_field_ref.current.update()
-            # Trigger a busca para limpar resultados
-            unified_search_on_change(None)
+            
+            # Limpar a tabela/resultados
+            print("🗑️ Limpando tabela da aba Score...")
+            try:
+                # Limpar via responsive_app_manager
+                if responsive_app_manager and responsive_app_manager.results_container:
+                    responsive_app_manager.clear_results()
+                    print("✅ Tabela limpa via responsive_app_manager")
+                else:
+                    # Fallback: limpar diretamente
+                    if results_list and hasattr(results_list, 'controls'):
+                        results_list.controls.clear()
+                        print("✅ Tabela limpa via results_list")
+            except Exception as clear_ex:
+                print(f"⚠️ Erro ao limpar tabela: {clear_ex}")
+            
+            # Mostrar mensagem inicial
+            show_favorites_only()
     
     # Função para atualizar o sufixo do campo de busca
     def update_search_suffix(e):
@@ -7531,6 +7546,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 prefix_icon=ft.Icons.SEARCH,  # Ícone de lupa à esquerda
                                 on_change=update_search_suffix,  # Atualiza sufixo e busca
                                 width=400,  # Largura reduzida do campo de pesquisa
+                                content_padding=ft.padding.only(left=10, right=45, top=10, bottom=10),  # Reservar espaço à direita para o X
                             ),
                             ft.Container(
                                 content=ft.IconButton(
@@ -7541,9 +7557,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                     ref=clear_button_ref,
                                     visible=False,  # Inicialmente invisível
                                 ),
-                                right=0,
-                                top=0,
-                                bottom=0,
+                                right=6,
+                                top=6,
+                                bottom=6,
                             ),
                         ],
                     ),
@@ -10386,10 +10402,12 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 
                 print(f"Checkboxes definidos: OTIF={users_controls['otif_check'].value}, NIL={users_controls['nil_check'].value}, Pickup={users_controls['pickup_check'].value}, Package={users_controls['package_check'].value}")
                 
-                # Se não for Super Admin, bloquear campos (exceto senha)
+                # Se não for Super Admin, bloquear campos (exceto senha e nome do próprio usuário)
                 is_super_admin = current_user_privilege == "Super Admin"
+                is_own_profile = wwid_val.upper() == current_user_wwid.upper()
+                
                 users_controls['wwid'].disabled = not is_super_admin
-                users_controls['name'].disabled = not is_super_admin
+                users_controls['name'].disabled = not (is_super_admin or is_own_profile)  # Nome editável se for próprio perfil
                 users_controls['privilege'].disabled = not is_super_admin
                 users_controls['otif_check'].disabled = not is_super_admin
                 users_controls['nil_check'].disabled = not is_super_admin
@@ -10482,10 +10500,11 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             selected_user = None
             
             # Reabilitar campos se for Super Admin (após limpar)
+            # Ou habilitar nome se não for Super Admin (para permitir edição do próprio nome ao criar/buscar próprio usuário)
             is_super_admin = current_user_privilege == "Super Admin"
             try:
                 users_controls['wwid'].disabled = not is_super_admin
-                users_controls['name'].disabled = not is_super_admin
+                users_controls['name'].disabled = False  # Nome sempre habilitado ao limpar (verificação será feita no save)
                 users_controls['privilege'].disabled = not is_super_admin
                 users_controls['otif_check'].disabled = not is_super_admin
                 users_controls['nil_check'].disabled = not is_super_admin
@@ -10541,7 +10560,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             password = users_controls['password'].value.strip() if users_controls['password'].value else ""
             privilege = users_controls['privilege'].value if users_controls['privilege'].value else ""
             
-            # Verificar permissões: Admin e User só podem editar sua própria senha
+            # Verificar permissões: Admin e User só podem editar seus próprios dados (nome e senha)
             if current_user_privilege != "Super Admin":
                 if wwid.upper() != current_user_wwid.upper():
                     show_snack_bar("❌ Você só pode editar seus próprios dados", True)
@@ -10550,7 +10569,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                         save_button.disabled = False
                         save_button.update()
                     return
-                # Admin e User só podem atualizar senha
+                # Admin e User não podem criar novos usuários
                 if not selected_user:
                     show_snack_bar("❌ Você não tem permissão para criar novos usuários", True)
                     if save_button:
@@ -12758,6 +12777,9 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
     # Referência para a linha que contém os cards de métricas
     timeline_metrics_row = ft.Ref[ft.Container]()
     timeline_metrics_empty_message = ft.Ref[ft.Container]()
+    
+    # Referência para a aba de sazonalidade
+    timeline_seasonality_container = ft.Ref[ft.Container]()
 
     # Dicionário de referências para os componentes dos cards de métricas
     timeline_cards_refs = {
@@ -13090,6 +13112,23 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             primary_color = theme_colors.get('primary', ft.Colors.BLUE)
             text_color = theme_colors.get('on_surface', ft.Colors.BLACK)
             
+            # Estado de edição
+            is_editing = [False]  # Usar lista para permitir modificação em closures
+            
+            # Refs para campos editáveis
+            vendor_name_field = ft.Ref[ft.TextField]()
+            supplier_category_field = ft.Ref[ft.TextField]()
+            bu_field = ft.Ref[ft.TextField]()
+            supplier_name_field = ft.Ref[ft.TextField]()
+            supplier_email_field = ft.Ref[ft.TextField]()
+            supplier_number_field = ft.Ref[ft.TextField]()
+            supplier_po_field = ft.Ref[ft.TextField]()
+            supplier_status_field = ft.Ref[ft.Dropdown]()
+            planner_field = ft.Ref[ft.Dropdown]()
+            continuity_field = ft.Ref[ft.Dropdown]()
+            sourcing_field = ft.Ref[ft.Dropdown]()
+            sqie_field = ft.Ref[ft.Dropdown]()
+            
             # Buscar dados completos dos responsáveis
             responsible_data = {}
             responsible_types = [
@@ -13314,13 +13353,25 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             )
             
             # Criar e abrir diálogo
+            # Criar lista de ações baseado no privilégio do usuário
+            dialog_actions = []
+            
+            # Botão Editar - ocultar apenas para User
+            if current_user_privilege != "User":
+                dialog_actions.append(
+                    ft.TextButton("Editar", icon=ft.Icons.EDIT, on_click=lambda e: open_edit_supplier_from_info(supplier.get('supplier_id'), dialog))
+                )
+            
+            # Botão Fechar - sempre disponível
+            dialog_actions.append(
+                ft.TextButton("Fechar", on_click=lambda e: page.close(dialog))
+            )
+            
             dialog = ft.AlertDialog(
                 title=ft.Text(""),  # Título vazio pois está no content
                 content=dialog_content,
-                actions=[
-                    ft.TextButton("Fechar", on_click=lambda e: page.close(dialog))
-                ],
-                actions_alignment=ft.MainAxisAlignment.END,
+                actions=dialog_actions,
+                actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             )
             
             page.open(dialog)
@@ -13330,6 +13381,314 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             import traceback
             traceback.print_exc()
             show_snack_bar(f"Erro ao carregar informações: {str(e)}", True)
+    
+    def open_edit_supplier_from_info(supplier_id, info_dialog):
+        """Abre diálogo de edição do supplier a partir do diálogo de informações"""
+        try:
+            # Fechar o diálogo de informações primeiro
+            page.close(info_dialog)
+            
+            # Buscar dados completos do supplier
+            query = """SELECT * FROM supplier_database_table WHERE supplier_id = ?"""
+            supplier = db_manager.query_one(query, (supplier_id,))
+            
+            if not supplier:
+                show_snack_bar("Fornecedor não encontrado", True)
+                return
+            
+            # Criar diálogo de edição (será implementado abaixo)
+            show_edit_supplier_dialog(supplier)
+            
+        except Exception as e:
+            print(f"Erro ao abrir edição: {e}")
+            show_snack_bar(f"Erro: {str(e)}", True)
+    
+    def show_edit_supplier_dialog(supplier):
+        """Mostra diálogo para editar dados do supplier"""
+        try:
+            theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+            
+            # Criar campos editáveis seguindo a mesma estrutura da aba Suppliers
+            # Vendor Name - NÃO EDITÁVEL
+            vendor_name_field = ft.TextField(
+                label="Vendor Name * (Não editável)",
+                value=supplier.get('vendor_name', ''),
+                expand=True,
+                border_radius=8,
+                bgcolor=ft.Colors.with_opacity(0.3, theme_colors.get('field_background')),
+                color=ft.Colors.GREY_600,
+                border_color=theme_colors.get('outline'),
+                read_only=True,
+                disabled=True,
+            )
+            
+            supplier_category_dropdown = ft.Dropdown(
+                label="Category",
+                value=supplier.get('supplier_category', ''),
+                options=[ft.dropdown.Option(v) for v in load_list_options('categories_table','category')],
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            bu_dropdown = ft.Dropdown(
+                label="BU (Business Unit)",
+                value=supplier.get('bu', ''),
+                options=[ft.dropdown.Option(v) for v in load_list_options('business_unit_table','bu')],
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            # Origem - Dropdown EDITÁVEL (OBRIGATÓRIO)
+            supplier_origin_dropdown = ft.Dropdown(
+                label="Origem *",
+                value=supplier.get('supplier_name', '') if supplier.get('supplier_name', '') in ['Nacional', 'Importado'] else None,
+                options=[ft.dropdown.Option(v) for v in ["Nacional", "Importado"]],
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            supplier_email_field = ft.TextField(
+                label="Email",
+                value=supplier.get('supplier_email', ''),
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+                multiline=True,
+                min_lines=1,
+                max_lines=3,
+            )
+            
+            supplier_number_field = ft.TextField(
+                label="SSID (Único)",
+                value=format_po_ssid(supplier.get('supplier_number', '')),
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            supplier_po_field = ft.TextField(
+                label="PO (Único)",
+                value=format_po_ssid(supplier.get('supplier_po', '')),
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            supplier_status_dropdown = ft.Dropdown(
+                label="Status",
+                value=supplier.get('supplier_status', 'Active'),
+                options=[ft.dropdown.Option("Active"), ft.dropdown.Option("Inactive")],
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color="green" if supplier.get('supplier_status') == "Active" else "red",
+                border_color=theme_colors.get('outline'),
+            )
+            
+            planner_dropdown = ft.Dropdown(
+                label="Planner",
+                value=supplier.get('planner', ''),
+                options=[ft.dropdown.Option(v) for v in load_list_options('planner_table','name')],
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            continuity_dropdown = ft.Dropdown(
+                label="Continuity",
+                value=supplier.get('continuity', ''),
+                options=[ft.dropdown.Option(v) for v in load_list_options('continuity_table','name')],
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            sourcing_dropdown = ft.Dropdown(
+                label="Sourcing",
+                value=supplier.get('sourcing', ''),
+                options=[ft.dropdown.Option(v) for v in load_list_options('sourcing_table','name')],
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            sqie_dropdown = ft.Dropdown(
+                label="SQIE",
+                value=supplier.get('sqie', ''),
+                options=[ft.dropdown.Option(v) for v in load_list_options('sqie_table','name')],
+                expand=True,
+                border_radius=8,
+                bgcolor=theme_colors.get('field_background'),
+                color=theme_colors.get('on_surface'),
+                border_color=theme_colors.get('outline'),
+            )
+            
+            error_text = ft.Text("", color="red", size=12, visible=False)
+            
+            def save_changes(e):
+                """Salva as alterações do supplier"""
+                try:
+                    # Validar campos obrigatórios
+                    if not supplier_origin_dropdown.value:
+                        show_snack_bar("❌ Origem é obrigatória", True)
+                        return
+                    
+                    # Processar valores dos campos (permite vazios)
+                    email_value = supplier_email_field.value.strip() if supplier_email_field.value else ''
+                    po_value = supplier_po_field.value.strip() if supplier_po_field.value else ''
+                    ssid_value = supplier_number_field.value.strip() if supplier_number_field.value else ''
+                    
+                    # ===== VALIDAÇÃO DE UNICIDADE =====
+                    # Verificar se SSID já existe em outro supplier (se fornecido e não vazio)
+                    if ssid_value:
+                        check_ssid_query = "SELECT supplier_id, vendor_name FROM supplier_database_table WHERE supplier_number = ? AND supplier_id != ?"
+                        existing_ssid = db_manager.query(check_ssid_query, (ssid_value, supplier.get('supplier_id')))
+                        if existing_ssid:
+                            existing_supplier = existing_ssid[0]
+                            show_snack_bar(f"❌ SSID '{ssid_value}' já está cadastrado para o supplier '{existing_supplier['vendor_name']}' (ID: {existing_supplier['supplier_id']})", True)
+                            return
+                    
+                    # Verificar se PO já existe em outro supplier (se fornecido e não vazio)
+                    if po_value:
+                        check_po_query = "SELECT supplier_id, vendor_name FROM supplier_database_table WHERE supplier_po = ? AND supplier_id != ?"
+                        existing_po = db_manager.query(check_po_query, (po_value, supplier.get('supplier_id')))
+                        if existing_po:
+                            existing_supplier = existing_po[0]
+                            show_snack_bar(f"❌ PO '{po_value}' já está cadastrado para o supplier '{existing_supplier['vendor_name']}' (ID: {existing_supplier['supplier_id']})", True)
+                            return
+                    # ===== FIM DA VALIDAÇÃO =====
+                    
+                    # Atualizar registro (vendor_name não é editável, mantém o valor original)
+                    # Mesma lógica da aba Suppliers
+                    update_query = """
+                        UPDATE supplier_database_table 
+                        SET supplier_category = ?, bu = ?, supplier_name = ?,
+                            supplier_email = ?, supplier_number = ?, supplier_po = ?, supplier_status = ?,
+                            planner = ?, continuity = ?, sourcing = ?, sqie = ?
+                        WHERE supplier_id = ?
+                    """
+                    db_manager.execute(update_query, (
+                        supplier_category_dropdown.value.strip() if supplier_category_dropdown.value else '',
+                        bu_dropdown.value.strip() if bu_dropdown.value else '',
+                        supplier_origin_dropdown.value.strip() if supplier_origin_dropdown.value else '',
+                        email_value,  # Permite vazio
+                        ssid_value,   # Permite vazio
+                        po_value,     # Permite vazio
+                        supplier_status_dropdown.value,
+                        planner_dropdown.value.strip() if planner_dropdown.value else '',
+                        continuity_dropdown.value.strip() if continuity_dropdown.value else '',
+                        sourcing_dropdown.value.strip() if sourcing_dropdown.value else '',
+                        sqie_dropdown.value.strip() if sqie_dropdown.value else '',
+                        supplier.get('supplier_id')
+                    ))
+                    
+                    show_snack_bar(f"✅ Supplier '{vendor_name_field.value}' atualizado com sucesso!", False)
+                    page.close(edit_dialog)
+                    
+                except Exception as ex:
+                    print(f"Erro ao salvar alterações: {ex}")
+                    import traceback
+                    traceback.print_exc()
+                    show_snack_bar(f"❌ Erro ao salvar: {str(ex)}", True)
+            
+            # Criar conteúdo do diálogo - Organizado em seções
+            dialog_content = ft.Container(
+                content=ft.Column([
+                    # Título
+                    ft.Row([
+                        ft.Icon(ft.Icons.EDIT, size=24, color=theme_colors.get('primary')),
+                        ft.Text("Editar Supplier", 
+                               size=16, weight="bold", color=theme_colors.get('primary')),
+                    ], spacing=10),
+                    
+                    ft.Divider(height=1, thickness=2),
+                    
+                    # SEÇÃO: Informações Básicas
+                    ft.Row([
+                        ft.Icon(ft.Icons.INFO_OUTLINED, size=18, color=theme_colors.get('primary')),
+                        ft.Text("Informações Básicas", size=14, weight="bold", color=theme_colors.get('primary')),
+                    ], spacing=8),
+                    vendor_name_field,
+                    ft.Row([supplier_category_dropdown, bu_dropdown], spacing=15),
+                    supplier_origin_dropdown,
+                    
+                    ft.Container(height=10),  # Espaçamento
+                    
+                    # SEÇÃO: Contato
+                    ft.Row([
+                        ft.Icon(ft.Icons.EMAIL_OUTLINED, size=18, color=theme_colors.get('primary')),
+                        ft.Text("Contato", size=14, weight="bold", color=theme_colors.get('primary')),
+                    ], spacing=8),
+                    supplier_email_field,
+                    
+                    ft.Container(height=10),  # Espaçamento
+                    
+                    # SEÇÃO: Identificação
+                    ft.Row([
+                        ft.Icon(ft.Icons.TAG, size=18, color=theme_colors.get('primary')),
+                        ft.Text("Identificação", size=14, weight="bold", color=theme_colors.get('primary')),
+                    ], spacing=8),
+                    ft.Row([supplier_number_field, supplier_po_field], spacing=15),
+                    supplier_status_dropdown,
+                    
+                    ft.Container(height=10),  # Espaçamento
+                    ft.Divider(height=1),
+                    
+                    # SEÇÃO: Responsáveis
+                    ft.Row([
+                        ft.Icon(ft.Icons.PEOPLE_OUTLINED, size=18, color=theme_colors.get('primary')),
+                        ft.Text("Responsáveis", size=14, weight="bold", color=theme_colors.get('primary')),
+                    ], spacing=8),
+                    ft.Row([planner_dropdown, continuity_dropdown], spacing=15),
+                    ft.Row([sourcing_dropdown, sqie_dropdown], spacing=15),
+                    
+                    ft.Container(height=10),  # Espaçamento
+                    error_text,
+                ], spacing=12, scroll=ft.ScrollMode.AUTO),
+                padding=20,
+                width=700,  # Mesma largura do diálogo de informações
+                height=550,  # Altura ajustada para acomodar as seções
+            )
+            
+            # Criar e abrir diálogo
+            edit_dialog = ft.AlertDialog(
+                title=ft.Text(""),
+                content=dialog_content,
+                actions=[
+                    ft.TextButton("Cancelar", on_click=lambda e: page.close(edit_dialog)),
+                    ft.FilledButton("Salvar", icon=ft.Icons.SAVE, on_click=save_changes),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            
+            page.open(edit_dialog)
+            
+        except Exception as e:
+            print(f"Erro ao abrir diálogo de edição: {e}")
+            import traceback
+            traceback.print_exc()
+            show_snack_bar(f"Erro: {str(e)}", True)
     
     def update_supplier_info(vendor_id):
         """Atualiza as informações do fornecedor selecionado (mantido para compatibilidade)"""
@@ -15594,6 +15953,387 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
             )
             timeline_table_container.current.update()
             
+    def update_timeline_seasonality():
+        """Analisa e exibe padrões de sazonalidade nos últimos 5 anos"""
+        try:
+            import datetime
+            
+            if not timeline_seasonality_container or not timeline_seasonality_container.current:
+                return
+            
+            vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
+            
+            # Se não houver supplier selecionado, mostrar mensagem
+            if not vendor_id:
+                timeline_seasonality_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.CALENDAR_MONTH, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar análise de sazonalidade", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+                timeline_seasonality_container.current.update()
+                return
+            
+            # Buscar dados dos últimos 5 anos
+            current_year = datetime.datetime.now().year
+            start_year = current_year - 4  # 5 anos: atual e 4 anteriores
+            
+            query = """
+                SELECT year, month, total_score
+                FROM supplier_score_records_table
+                WHERE supplier_id = ? AND year >= ? AND year <= ?
+                ORDER BY year, month
+            """
+            
+            scores = db_manager.query(query, (vendor_id, start_year, current_year))
+            
+            if not scores:
+                timeline_seasonality_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.INFO_OUTLINE, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Não há dados suficientes para análise de sazonalidade", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+                timeline_seasonality_container.current.update()
+                return
+            
+            # Organizar dados por mês (agregando diferentes anos)
+            monthly_data = {}
+            for month_num in range(1, 13):
+                monthly_data[month_num] = {'total': [], 'years': []}
+            
+            for score in scores:
+                month = int(score['month'])  # Converter para inteiro
+                if score['total_score'] is not None:
+                    monthly_data[month]['total'].append(float(score['total_score']))
+                    monthly_data[month]['years'].append(score['year'])
+            
+            # Obter valor do target
+            target_value = target_slider.value if target_slider and target_slider.value is not None else 5.0
+            
+            # Calcular médias mensais e identificar sazonalidades
+            month_names = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+            monthly_avgs = []
+            monthly_info = []
+            
+            for month_num in range(1, 13):
+                data = monthly_data[month_num]
+                if data['total']:
+                    avg = sum(data['total']) / len(data['total'])
+                    monthly_avgs.append(avg)
+                    monthly_info.append({
+                        'month_num': month_num,
+                        'month': month_names[month_num - 1],
+                        'avg': avg,
+                        'years_count': len(data['total']),
+                        'scores': data['total']
+                    })
+                else:
+                    monthly_avgs.append(None)
+            
+            # Calcular média geral (excluindo None)
+            valid_avgs = [avg for avg in monthly_avgs if avg is not None]
+            general_avg = sum(valid_avgs) / len(valid_avgs) if valid_avgs else 0
+            
+            # Identificar os 3 PIORES meses (menores médias) que têm pelo menos 2 anos de dados
+            seasonality_insights = []
+            if monthly_info:
+                # Filtrar meses com pelo menos 2 anos de dados
+                months_with_data = [m for m in monthly_info if m['years_count'] >= 2]
+                
+                if months_with_data:
+                    # Ordenar por média (menor para maior) e pegar os 3 piores
+                    sorted_months = sorted(months_with_data, key=lambda x: x['avg'])
+                    worst_months = sorted_months[:3]  # Top 3 piores
+                    
+                    for month_data in worst_months:
+                        diff = general_avg - month_data['avg']
+                        seasonality_insights.append({
+                            'month': month_data['month'],
+                            'avg': month_data['avg'],
+                            'diff': diff,
+                            'years_count': month_data['years_count'],
+                            'general_avg': general_avg,
+                        })
+            
+            # Criar gráfico com uma linha mostrando evolução temporal
+            theme_colors = get_current_theme_colors(get_theme_name_from_page(page))
+            
+            # Organizar dados cronologicamente (ano-mês em sequência)
+            current_year = datetime.datetime.now().year
+            
+            # Criar lista de pontos em ordem cronológica
+            data_points = []
+            x_labels = []
+            x_index = 0
+            
+            for year in range(start_year, current_year + 1):
+                for month in range(1, 13):
+                    # Buscar score para este ano-mês
+                    score_value = None
+                    for score in scores:
+                        if int(score['year']) == year and int(score['month']) == month:
+                            if score['total_score'] is not None:
+                                score_value = float(score['total_score'])
+                            break
+                    
+                    # Adicionar ponto se tiver dado
+                    if score_value is not None:
+                        # Criar tooltip com informações do mês e ano
+                        tooltip_text = f"{month_names[month-1]} {year}\nScore: {score_value:.2f}"
+                        
+                        data_points.append(
+                            ft.LineChartDataPoint(
+                                x_index,
+                                score_value,
+                                tooltip=tooltip_text,
+                            )
+                        )
+                    
+                    # Adicionar label (mostrar apenas alguns para não poluir)
+                    if month == 1 or month == 7:  # Janeiro e Julho de cada ano
+                        x_labels.append((x_index, f"{month_names[month-1]}/{str(year)[2:]}"))
+                    
+                    x_index += 1
+            
+            if not data_points:
+                timeline_seasonality_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.INFO_OUTLINE, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Não há dados suficientes para análise de sazonalidade", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+                timeline_seasonality_container.current.update()
+                return
+            
+            # Criar linha do target (referência horizontal)
+            target_points = [
+                ft.LineChartDataPoint(0, target_value),
+                ft.LineChartDataPoint(x_index - 1, target_value),
+            ]
+            
+            # Criar série de dados
+            data_series = [
+                # Linha principal (total_score)
+                ft.LineChartData(
+                    data_points=data_points,
+                    color=ft.Colors.BLUE_400,
+                    stroke_width=3,
+                    curved=True,
+                    prevent_curve_over_shooting=True,
+                ),
+                # Linha do target (referência) - linha mais fina e diferente cor
+                ft.LineChartData(
+                    data_points=target_points,
+                    color=ft.Colors.RED_300,
+                    stroke_width=1.5,
+                    curved=False,
+                ),
+            ]
+            
+            # Criar gráfico
+            chart = ft.LineChart(
+                data_series=data_series,
+                border=ft.border.all(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                horizontal_grid_lines=ft.ChartGridLines(
+                    interval=1,
+                    color=ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE),
+                    width=1,
+                ),
+                vertical_grid_lines=ft.ChartGridLines(
+                    interval=12,  # Grid a cada ano (12 meses)
+                    color=ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE),
+                    width=1,
+                ),
+                left_axis=ft.ChartAxis(
+                    labels=[
+                        ft.ChartAxisLabel(value=i, label=ft.Text(str(i), size=12))
+                        for i in range(0, 11, 2)
+                    ],
+                    labels_size=50,
+                ),
+                bottom_axis=ft.ChartAxis(
+                    labels=[
+                        ft.ChartAxisLabel(
+                            value=x_pos, 
+                            label=ft.Text(
+                                x_label, 
+                                size=11, 
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.WHITE
+                            )
+                        )
+                        for x_pos, x_label in x_labels
+                    ],
+                    labels_size=60,
+                ),
+                tooltip_bgcolor=ft.Colors.with_opacity(0.8, ft.Colors.BLUE_GREY_900),
+                min_y=0,
+                max_y=10.5,  # Aumentado para dar espaço para tooltips no topo
+                min_x=0,
+                max_x=x_index - 1,
+                expand=True,
+            )
+            
+            # Criar legenda simples
+            legend = ft.Row([
+                ft.Container(
+                    content=ft.Row([
+                        ft.Container(width=30, height=3, bgcolor=ft.Colors.BLUE_400),
+                        ft.Text("Total Score", size=12, weight="bold"),
+                    ], spacing=8),
+                    padding=5,
+                ),
+                ft.Container(
+                    content=ft.Row([
+                        ft.Container(width=30, height=3, bgcolor=ft.Colors.RED_300),
+                        ft.Text(f"Target ({target_value:.1f})", size=12, weight="bold"),
+                    ], spacing=8),
+                    padding=5,
+                ),
+            ],
+                spacing=20,
+                alignment=ft.MainAxisAlignment.CENTER,
+                wrap=True,
+            )
+            
+            # Criar cards de insights (Top 3 piores meses)
+            insights_cards = []
+            
+            if seasonality_insights:
+                for rank, insight in enumerate(seasonality_insights, 1):
+                    # Definir cor baseado no ranking
+                    if rank == 1:
+                        icon_color = ft.Colors.RED_400
+                        border_color = ft.Colors.RED_400
+                    elif rank == 2:
+                        icon_color = ft.Colors.ORANGE_400
+                        border_color = ft.Colors.ORANGE_400
+                    else:
+                        icon_color = ft.Colors.YELLOW_700
+                        border_color = ft.Colors.YELLOW_700
+                    
+                    card = ft.Container(
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.TRENDING_DOWN, size=32, color=icon_color),
+                                ft.Column([
+                                    ft.Text(f"{insight['month']} - #{rank} Pior Mês", size=18, weight="bold"),
+                                    ft.Text(
+                                        "Performance mais baixa",
+                                        size=13,
+                                        color=icon_color,
+                                        weight="bold"
+                                    ),
+                                ], spacing=2, expand=True),
+                            ], spacing=12),
+                            ft.Divider(height=1),
+                            ft.Text(f"Média do mês: {insight['avg']:.2f}", size=14),
+                            ft.Text(f"Média geral: {insight['general_avg']:.2f}", size=14),
+                            ft.Text(
+                                f"Diferença: -{insight['diff']:.2f} pontos",
+                                size=14,
+                                color=icon_color,
+                                weight="bold"
+                            ),
+                            ft.Text(
+                                f"Baseado em {insight['years_count']} anos de dados",
+                                size=12,
+                                italic=True
+                            ),
+                        ], spacing=8),
+                        padding=15,
+                        bgcolor=theme_colors.get('surface_variant'),
+                        border_radius=12,
+                        border=ft.border.all(2, border_color),
+                    )
+                    insights_cards.append(card)
+            else:
+                insights_cards.append(
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Icon(ft.Icons.CHECK_CIRCLE, size=48, color=ft.Colors.GREEN),
+                            ft.Text(
+                                "Performance consistente ao longo do ano",
+                                size=16,
+                                text_align=ft.TextAlign.CENTER,
+                                weight="bold"
+                            ),
+                            ft.Container(height=5),
+                            ft.Text(
+                                f"Não há variação sazonal significativa (média geral: {general_avg:.2f})",
+                                size=13,
+                                text_align=ft.TextAlign.CENTER,
+                                color=ft.Colors.GREY_600
+                            ),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+                        padding=30,
+                        bgcolor=theme_colors.get('surface_variant'),
+                        border_radius=12,
+                    )
+                )
+            
+            # Montar o conteúdo final
+            content = ft.Column([
+                # Título
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.CALENDAR_MONTH, size=32, color=theme_colors.get('primary')),
+                        ft.Text("Análise de Sazonalidade", size=24, weight="bold"),
+                    ], spacing=12),
+                    margin=ft.margin.only(bottom=20),
+                ),
+                
+                # Gráfico
+                ft.Container(
+                    content=chart,
+                    bgcolor=theme_colors.get('surface_variant'),
+                    border_radius=12,
+                    padding=20,
+                    height=400,
+                    clip_behavior=ft.ClipBehavior.NONE,
+                ),
+                
+                ft.Container(height=20),
+                
+                # Insights
+                ft.Text("Padrões Sazonais Identificados", size=18, weight="bold"),
+                ft.Container(height=10),
+                
+                ft.Column(insights_cards, spacing=15),
+                
+            ], spacing=0, scroll=ft.ScrollMode.AUTO, expand=True)
+            
+            timeline_seasonality_container.current.content = content
+            timeline_seasonality_container.current.update()
+            
+        except Exception as e:
+            print(f"Erro ao atualizar análise de sazonalidade: {e}")
+            import traceback
+            traceback.print_exc()
+            timeline_seasonality_container.current.content = ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=ft.Colors.RED_400),
+                    ft.Container(height=10),
+                    ft.Text(f"Erro ao gerar análise: {e}", size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.RED_600),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                alignment=ft.alignment.center,
+                expand=True,
+            )
+            timeline_seasonality_container.current.update()
+    
     def on_timeline_vendor_change(e):
         """Callback quando o vendor é alterado"""
         vendor_id = timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else ""
@@ -15605,6 +16345,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         update_timeline_individual_charts(vendor_id, year)
         update_timeline_analytics(vendor_id, year)
         update_timeline_table(vendor_id, year)
+        update_timeline_seasonality()
             
     def on_timeline_year_change(e):
         """Callback quando o ano é alterado"""
@@ -15617,6 +16358,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         update_timeline_individual_charts(vendor_id, year)
         update_timeline_analytics(vendor_id, year)
         update_timeline_table(vendor_id, year)
+        update_timeline_seasonality()
 
     def clear_timeline_vendor(e):
         """Limpa o fornecedor selecionado e reseta todos os cards"""
@@ -15709,6 +16451,18 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     alignment=ft.alignment.center,
                 )
             
+            # Limpar sazonalidade
+            if timeline_seasonality_container.current:
+                timeline_seasonality_container.current.content = ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.CALENDAR_MONTH, size=48, color=ft.Colors.GREY_400),
+                        ft.Container(height=10),
+                        ft.Text("Selecione um fornecedor para visualizar análise de sazonalidade", 
+                               size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                    alignment=ft.alignment.center,
+                )
+            
             # Atualizar a página
             safe_page_update(page)
             
@@ -15734,10 +16488,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
 
     timeline_view = ft.Container(
         content=ft.Column([
-            # Título da seção
+            # Header com título e botão de informações
             ft.Container(
-                content=ft.Text("Timeline Analytics", size=28, weight="bold"),
-                alignment=ft.alignment.top_left,
+                content=ft.Row([
+                    ft.Text("Timeline Analytics", size=28, weight="bold"),
+                    ft.Container(expand=True),  # Espaço flexível para empurrar o botão para a direita
+                    ft.IconButton(
+                        icon=ft.Icons.INFO_OUTLINE,
+                        tooltip="Informações do fornecedor",
+                        on_click=lambda e: show_supplier_info_dialog(timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else None),
+                        icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
+                        icon_size=24,
+                    ),
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 padding=ft.padding.only(bottom=10),
             ),
             
@@ -15757,6 +16520,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                                 border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline'),
                                 text_size=14,
+                                content_padding=ft.padding.only(left=10, right=45, top=10, bottom=10),  # Reservar espaço à direita para o X
                             ),
                             padding=ft.padding.all(5)
                         ),
@@ -15786,13 +16550,6 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     width=0,
                     height=0,
                 ),
-                ft.IconButton(
-                    icon=ft.Icons.INFO_OUTLINE,
-                    tooltip="Informações do fornecedor",
-                    on_click=lambda e: show_supplier_info_dialog(timeline_vendor_dropdown.current.value if timeline_vendor_dropdown.current else None),
-                    icon_color=get_current_theme_colors(get_theme_name_from_page(page)).get('primary'),
-                    icon_size=20,
-                ),
                 # o botão de limpar fornecedor foi substituído pelo botão flutuante dentro do campo
                 ft.Dropdown(
                     label="Ano",
@@ -15808,7 +16565,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                     color=get_current_theme_colors(get_theme_name_from_page(page)).get('on_surface'),
                     border_color=get_current_theme_colors(get_theme_name_from_page(page)).get('outline')
                 ),
-            ], spacing=8, alignment=ft.MainAxisAlignment.CENTER, ref=timeline_search_container),
+            ], spacing=2, alignment=ft.MainAxisAlignment.CENTER, ref=timeline_search_container),
             
             ft.Container(height=20),
             
@@ -16148,6 +16905,32 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                                 ft.Icon(ft.Icons.TABLE_CHART, size=48, color=ft.Colors.GREY_400),
                                                 ft.Container(height=10),
                                                 ft.Text("Selecione um fornecedor para visualizar a tabela", 
+                                                       size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
+                                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
+                                            alignment=ft.alignment.center,
+                                        ),
+                                        padding=ft.padding.all(20),
+                                        expand=True,
+                                    ),
+                                    elevation=1,
+                                ),
+                                padding=ft.padding.only(top=10),
+                                expand=True,
+                            ),
+                        ),
+                        # Tab de Sazonalidade
+                        ft.Tab(
+                            text="Seasonality",
+                            icon=ft.Icons.CALENDAR_MONTH,
+                            content=ft.Container(
+                                content=ft.Card(
+                                    content=ft.Container(
+                                        ref=timeline_seasonality_container,
+                                        content=ft.Container(
+                                            content=ft.Column([
+                                                ft.Icon(ft.Icons.CALENDAR_MONTH, size=48, color=ft.Colors.GREY_400),
+                                                ft.Container(height=10),
+                                                ft.Text("Selecione um fornecedor para visualizar análise de sazonalidade", 
                                                        size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.GREY_600),
                                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, alignment=ft.MainAxisAlignment.CENTER),
                                             alignment=ft.alignment.center,
@@ -16672,18 +17455,19 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                 t4 = trend_icon(q4, q3)
 
                 # Handler para ir para a aba Timeline e filtrar pelo supplier
-                def create_goto_handler(sid):
+                def create_goto_handler(sid, vname, vbu):
                     def handle(e):
                         try:
-                            # 1. Definir supplier no filtro da Timeline
+                            # 1. Definir supplier no filtro da Timeline (usando supplier_id)
                             if timeline_vendor_dropdown and timeline_vendor_dropdown.current:
-                                timeline_vendor_dropdown.current.value = sid
+                                timeline_vendor_dropdown.current.value = str(sid)
                             
                             # 1.5. Preencher o campo de pesquisa visual com o nome do supplier
                             if timeline_vendor_search_field and timeline_vendor_search_field.current:
                                 # Buscar o nome do supplier usando o ID
-                                supplier_name = vendor_name  # vendor_name já está disponível no escopo
-                                timeline_vendor_search_field.current.value = supplier_name
+                                bu_text = vbu if vbu else "N/A"
+                                display_text = f"{vname} - {bu_text}"
+                                timeline_vendor_search_field.current.value = display_text
                                 # Mostrar o botão X
                                 if timeline_clear_button_ref and timeline_clear_button_ref.current:
                                     timeline_clear_button_ref.current.visible = True
@@ -16724,7 +17508,7 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
                                 ], expand=True),
                                 ft.Column([
                                     ft.Row([
-                                        ft.IconButton(icon=ft.Icons.TIMELINE, tooltip="Abrir Timeline para este fornecedor", icon_size=18, on_click=create_goto_handler(supplier_id))
+                                        ft.IconButton(icon=ft.Icons.TIMELINE, tooltip="Abrir Timeline para este fornecedor", icon_size=18, on_click=create_goto_handler(supplier_id, vendor_name, bu))
                                     ], alignment=ft.MainAxisAlignment.END),
                                     ft.Text(f"{media_val:.2f}", size=28, weight=ft.FontWeight.BOLD, color="red"),
                                     ft.Container(content=mini_chart, width=120, height=40)
@@ -17235,7 +18019,10 @@ def initialize_main_app(page: ft.Page, user_theme="white"):
         safe_page_update(page)
 def main():
     """Função principal que inicia com tela de login"""
-    ft.app(target=login_screen)
+    ft.app(
+        target=login_screen,
+        view=ft.AppView.FLET_APP
+    )
 
 if __name__ == "__main__":
     main()
