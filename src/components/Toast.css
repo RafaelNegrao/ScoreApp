@@ -1,0 +1,123 @@
+/* Toast Notifications */
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  
+  min-width: 300px;
+  max-width: 500px;
+  padding: 16px 20px;
+  
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  
+  animation: toast-slide-in 0.3s ease-out;
+  overflow: hidden;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast > i:first-child {
+  font-size: 20px;
+  flex-shrink: 0;
+  color: white;
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: white;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.8);
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.toast-close:hover {
+  color: white;
+}
+
+.toast-close i {
+  font-size: 16px;
+}
+
+/* Toast Types - Com cores de fundo */
+.toast-success {
+  background: #22c55e;
+}
+
+.toast-error {
+  background: #ef4444;
+}
+
+.toast-warning {
+  background: #fbbf24;
+}
+
+.toast-warning .toast-message,
+.toast-warning .toast-close {
+  color: #000;
+}
+
+.toast-warning > i:first-child {
+  color: #000;
+}
+
+.toast-warning .toast-close:hover {
+  color: #000;
+}
+
+.toast-info {
+  background: #3b82f6;
+}
+
+/* Dark theme support - mantém as mesmas cores */
+[data-theme="dark"] .toast,
+[data-theme="dracula"] .toast {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .toast-message,
+[data-theme="dracula"] .toast-message {
+  color: #ecf0f1;
+}
+
+[data-theme="dark"] .toast-close,
+[data-theme="dracula"] .toast-close {
+  color: #7f8c8d;
+}
+
+[data-theme="dark"] .toast-close:hover,
+[data-theme="dracula"] .toast-close:hover {
+  color: #ecf0f1;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .toast {
+    left: 20px;
+    right: 20px;
+    min-width: auto;
+    max-width: none;
+  }
+}

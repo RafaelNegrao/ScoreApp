@@ -1,0 +1,56 @@
+# Tauri + React + TypeScript
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Node
+node_modules/
+
+# Build
+/dist/
+/build/
+/.vite/
+/database/
+/target/
+AI_GUIDELINES.md
+
+# Tauri
+/src-tauri/target
+/src-tauri/WixTools
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Backups
+*.backup
+*.bak
+
+# Rust
+Cargo.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Others
+.env
+.env.*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.db
+

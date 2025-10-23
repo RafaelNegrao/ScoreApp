@@ -1,0 +1,246 @@
+.privileges-manager {
+  padding: 1.5rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.privileges-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  gap: 1rem;
+  color: var(--text-muted);
+}
+
+.privileges-loading i {
+  font-size: 2rem;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.privileges-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  gap: 1rem;
+  text-align: center;
+}
+
+.privileges-denied i {
+  font-size: 4rem;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.privileges-denied h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
+.privileges-denied p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  max-width: 400px;
+}
+
+.privileges-header {
+  margin-bottom: 2rem;
+}
+
+.privileges-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.privileges-title i {
+  font-size: 1.5rem;
+  color: var(--accent-primary);
+}
+
+.privileges-title h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--text-primary);
+}
+
+.privileges-subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.privileges-info-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--accent-primary);
+  color: white;
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.privileges-info-notice i {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.privileges-info-notice p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.privileges-info-notice code {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+}
+
+.privileges-roles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.privilege-role-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.privilege-role-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.role-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.role-card-header i {
+  font-size: 1.75rem;
+}
+
+.role-card-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.role-description {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 1rem 0;
+  line-height: 1.5;
+}
+
+.role-permissions h5 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem 0;
+  font-weight: 600;
+}
+
+.role-permissions ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.role-permissions li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.375rem 0;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.role-permissions li i {
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+
+.privileges-footer-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+}
+
+.privileges-footer-note i {
+  color: var(--accent-primary);
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.privileges-footer-note strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--text-primary);
+}
+
+.privileges-footer-note p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.privileges-footer-note code {
+  background: var(--card-bg);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  color: var(--accent-primary);
+  border: 1px solid var(--border-color);
+}
+
+/* Scrollbar */
+.privileges-manager::-webkit-scrollbar {
+  width: 8px;
+}
+
+.privileges-manager::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+.privileges-manager::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+.privileges-manager::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

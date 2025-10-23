@@ -1,0 +1,27 @@
+/* Toast Container - Wrapper para múltiplos toasts */
+.toast-container {
+  position: fixed;
+  top: 80px;
+  right: 30px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.toast-container .toast {
+  position: relative;
+  top: auto;
+  right: auto;
+  margin-bottom: 0;
+  pointer-events: all;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .toast-container {
+    left: 20px;
+    right: 20px;
+  }
+}

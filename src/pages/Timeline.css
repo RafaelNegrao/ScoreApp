@@ -1,0 +1,453 @@
+/* Timeline Analytics - Estilos v2 */
+
+/* Filters Section */
+.timeline-filters {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  margin-top: 1.5rem;
+  align-items: center;
+  padding: 0 2rem;
+  justify-content: center;
+}
+
+.search-container {
+  flex: 1;
+  max-width: 900px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--input-bg);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+  position: relative;
+  height: 48px;
+  box-sizing: border-box;
+}
+
+.search-container:focus-within {
+  border-color: var(--accent-primary);
+}
+
+.timeline-search {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.timeline-search::placeholder {
+  color: var(--text-muted);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.clear-search-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.clear-search-btn i {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Year Select */
+.year-select-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.year-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 12px 36px 12px 16px;
+  border: none !important;
+  border-radius: 8px;
+  background: var(--input-bg) !important;
+  background-image: none !important;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: none;
+  min-width: 100px;
+  outline: none !important;
+  height: 48px;
+  box-sizing: border-box;
+  box-shadow: none !important;
+}
+
+.year-select:hover,
+.year-select:focus,
+.year-select:focus-visible,
+.year-select:active {
+  outline: none !important;
+  border: none !important;
+  background: var(--input-bg) !important;
+  box-shadow: none !important;
+}
+
+.year-select::-moz-focus-inner {
+  border: 0;
+}
+
+.year-select:-moz-focusring {
+  color: inherit;
+  text-shadow: none;
+}
+
+.year-select-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Custom Select Wrapper - Estilo Score */
+
+.timeline-filters .custom-select-wrapper {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 48px;
+}
+
+.timeline-filters .filter-select {
+  padding: 0.75rem 1.5rem 0.75rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 120px;
+  height: 48px;
+  box-sizing: border-box;
+}
+
+.timeline-filters .filter-select:hover,
+.timeline-filters .filter-select:focus,
+.timeline-filters .filter-select:focus-visible,
+.timeline-filters .filter-select:active {
+  outline: none;
+  background: var(--input-bg);
+}
+
+/* Tabs Navigation - Estilo Score */
+.timeline-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid var(--border-color);
+  flex-wrap: wrap;
+  background: transparent;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 0 2rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.timeline-tab {
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.timeline-tab:hover {
+  color: var(--accent-primary);
+  background: var(--card-bg);
+}
+
+.timeline-tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.timeline-tab svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+/* Search Dropdown */
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-top: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  display: none;
+}
+
+.search-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 24px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid var(--card-bg);
+  filter: drop-shadow(0 -2px 2px rgba(0, 0, 0, 0.05));
+}
+
+.search-dropdown.show {
+  display: block;
+  animation: dropdownSlide 0.2s ease;
+}
+
+@keyframes dropdownSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-item {
+  padding: 14px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.dropdown-item:first-child {
+  border-radius: 12px 12px 0 0;
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+  border-radius: 0 0 12px 12px;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.dropdown-item.no-results {
+  cursor: default;
+  text-align: center;
+}
+
+.dropdown-item.no-results:hover {
+  background: transparent;
+  transform: none;
+}
+
+.dropdown-item.no-results .dropdown-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropdown-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dropdown-item-line1 {
+  display: flex;
+  align-items: center;
+}
+
+.dropdown-item-line1 strong {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dropdown-item-line2 {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dropdown-detail-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dropdown-detail-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.dropdown-detail-separator {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.dropdown-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Status Indicator */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.status-indicator.active i {
+  color: #10b981;
+}
+
+.status-indicator.inactive i {
+  color: #ef4444;
+}
+
+.status-indicator.pending i {
+  color: #f59e0b;
+}
+
+/* Content Area */
+.timeline-content {
+  animation: fadeIn 0.3s ease;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2rem;
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.empty-state i {
+  font-size: 3rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.empty-state svg {
+  font-size: 3rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  opacity: 0.5;
+  width: 48px;
+  height: 48px;
+}
+
+.empty-state p {
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 400px;
+  opacity: 0.85;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .timeline-header {
+    padding: 0 1rem;
+    padding-top: 1rem;
+  }
+
+  .timeline-filters {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0 1rem;
+  }
+
+  .timeline-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 1rem;
+  }
+
+  .timeline-tab {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+
+  .timeline-content {
+    padding: 1.5rem 1rem;
+  }
+
+  .empty-state {
+    padding: 3rem 1rem;
+  }
+
+  .empty-state p {
+    font-size: 0.95rem;
+    font-weight: 400;
+    opacity: 0.85;
+  }
+}
