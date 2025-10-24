@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { useToastContext } from '../contexts/ToastContext';
 import SupplierEditModal from './SupplierEditModal';
-import './SupplierManager.css';
+
 
 interface Supplier {
   supplier_id: string;

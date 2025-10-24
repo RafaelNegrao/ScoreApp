@@ -143,7 +143,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
+  gap: 8px;
   margin-bottom: 12px;
 }
 
@@ -174,10 +174,13 @@
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+  margin-right: -8px;
 }
 
 .chart-button:hover {
-  background: rgba(206, 17, 38, 0.1);
+  background: transparent;
   color: var(--accent-primary);
   transform: scale(1.05);
 }
@@ -213,7 +216,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -227,18 +230,21 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin-top: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--text-muted);
 }
 
 .risk-quarter {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 10px;
-  background: var(--bg-secondary);
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 8px;
+  background: transparent;
   border-radius: 8px;
-  text-align: center;
+  text-align: left;
   transition: background 0.2s;
 }
 
@@ -247,23 +253,25 @@
 }
 
 .quarter-label {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  flex-shrink: 0;
 }
 
 .quarter-value-row {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
-  min-height: 22px;
+  min-height: 20px;
+  width: 100%;
 }
 
 .quarter-value {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
   color: inherit !important;

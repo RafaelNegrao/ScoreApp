@@ -8,6 +8,7 @@ import "./Risks.css";
 
 interface RiskSupplier {
   supplier_id: string;
+  ssid: string | null;
   vendor_name: string;
   bu: string | null;
   po: string | null;
@@ -149,8 +150,8 @@ function Risks() {
                   <div className="risk-card-info-stacked">
                     <span>BU: {supplier.bu || "N/A"}</span>
                     <span>PO: {supplier.po || "N/A"}</span>
-                    <span>SSID: {supplier.supplier_id}</span>
-                    <span>ID: {supplier.supplier_id.slice(-3)}</span>
+                    <span>SSID: {supplier.ssid || "N/A"}</span>
+                    <span>ID: {supplier.supplier_id}</span>
                   </div>
                 </div>
 

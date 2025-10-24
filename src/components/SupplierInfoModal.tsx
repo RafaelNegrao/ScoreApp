@@ -98,12 +98,20 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
             <span className="supplier-info-title">
               <i className="bi bi-buildings"></i> {currentSupplier.vendor_name}
             </span>
-            <button className="supplier-info-close" onClick={onClose}>
-              <i className="bi bi-x-lg"></i>
-            </button>
+            <div className="supplier-info-header-actions">
+              {permissions.canManageSuppliers && (
+                <button className="supplier-info-edit" onClick={handleOpenEditModal} title="Editar">
+                  <i className="bi bi-pencil"></i>
+                </button>
+              )}
+              <button className="supplier-info-close" onClick={onClose}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
           </div>
           <div className="supplier-info-main">
-            <div className="supplier-info-fields">
+            <div className="supplier-info-scrollable">
+              <div className="supplier-info-fields">
               <div className="supplier-info-row">
                 <div className="supplier-info-item">
                   <span className="supplier-info-label">ID:</span>
@@ -155,8 +163,9 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                 </div>
               </div>
             </div>
+            </div>
           
-          <div className="supplier-info-responsibles">
+            <div className="supplier-info-responsibles">
             {loading ? (
               <div style={{ textAlign: 'center', padding: '20px' }}>
                 <i className="bi bi-arrow-repeat spin"></i> Carregando...
@@ -244,15 +253,10 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
-        <div className="supplier-info-footer">
-          {permissions.canManageSuppliers && (
-            <button className="supplier-info-close-btn" onClick={handleOpenEditModal}>Editar</button>
-          )}
-        </div>
       </div>
-    </div>
 
     <SupplierEditModal
       isOpen={isEditModalOpen}

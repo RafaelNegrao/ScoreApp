@@ -2812,6 +2812,7 @@ pub struct ListItemSingleField {
 #[derive(Debug, Serialize, Clone)]
 pub struct RiskSupplier {
     pub supplier_id: String,
+    pub ssid: Option<String>,
     pub vendor_name: String,
     pub bu: Option<String>,
     pub po: Option<String>,
@@ -2841,6 +2842,7 @@ impl DatabaseManager {
         let query = format!(
             "SELECT 
                 CAST(sup.supplier_id AS TEXT) AS supplier_id,
+                sup.ssid,
                 sup.vendor_name,
                 sup.bu,
                 CAST(sup.supplier_po AS TEXT) AS supplier_po,
@@ -2855,7 +2857,7 @@ impl DatabaseManager {
             WHERE score.year = '{}' 
                 AND score.total_score IS NOT NULL 
                 AND score.total_score != ''
-            GROUP BY sup.supplier_id, sup.vendor_name, sup.bu, sup.supplier_po
+            GROUP BY sup.supplier_id, sup.ssid, sup.vendor_name, sup.bu, sup.supplier_po
             HAVING avg_score < {}
             ORDER BY avg_score ASC",
             year_str, target
@@ -2868,20 +2870,22 @@ impl DatabaseManager {
         
         let suppliers = stmt.query_map([], |row| {
             let supplier_id: String = row.get(0)?;
-            let vendor_name: String = row.get(1)?;
-            let bu: Option<String> = row.get(2)?;
-            let po: Option<String> = row.get(3)?;
-            let q1: Option<f64> = row.get(4)?;
-            let q2: Option<f64> = row.get(5)?;
-            let q3: Option<f64> = row.get(6)?;
-            let q4: Option<f64> = row.get(7)?;
-            let avg_score: f64 = row.get(8)?;
+            let ssid: Option<String> = row.get(1)?;
+            let vendor_name: String = row.get(2)?;
+            let bu: Option<String> = row.get(3)?;
+            let po: Option<String> = row.get(4)?;
+            let q1: Option<f64> = row.get(5)?;
+            let q2: Option<f64> = row.get(6)?;
+            let q3: Option<f64> = row.get(7)?;
+            let q4: Option<f64> = row.get(8)?;
+            let avg_score: f64 = row.get(9)?;
             
             println!("  📊 {} - {} | Média: {:.2} | Q1: {:?} | Q2: {:?} | Q3: {:?} | Q4: {:?}", 
                      supplier_id, vendor_name, avg_score, q1, q2, q3, q4);
             
             Ok(RiskSupplier {
                 supplier_id,
+                ssid,
                 vendor_name,
                 bu,
                 po,

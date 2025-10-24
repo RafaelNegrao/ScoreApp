@@ -98,7 +98,7 @@
   display: flex;
   gap: 1rem;
   margin-bottom: 2rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
 }
 
@@ -153,7 +153,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: none;
-  min-width: 140px;
+  min-width: 100px;
   outline: none !important;
   height: 48px;
   box-sizing: border-box;
@@ -177,6 +177,20 @@
 .filter-select:-moz-focusring {
   color: inherit;
   text-shadow: none;
+}
+
+/* Estilo para placeholder dos selects */
+.filter-select option[value=""] {
+  color: var(--text-secondary);
+}
+
+.filter-select:invalid,
+.filter-select[value=""] {
+  color: var(--text-secondary);
+}
+
+.filter-select:valid:not([value=""]) {
+  color: var(--text-primary);
 }
 
 .select-icon {
@@ -1461,7 +1475,7 @@
   width: 46px;
   height: 46px;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: none;
   background: var(--card-bg);
   color: var(--text-primary);
   font-size: 20px;
@@ -1474,8 +1488,6 @@
 }
 
 .more-options-btn:hover {
-  background: var(--sidebar-hover);
-  border-color: var(--accent-primary);
   color: var(--accent-primary);
 }
 
@@ -1536,8 +1548,8 @@
 }
 
 .close-modal-btn:hover:not(:disabled) {
-  background: var(--sidebar-hover);
-  color: var(--text-primary);
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
 }
 
 .close-modal-btn:disabled {
@@ -1577,6 +1589,7 @@
 
 .full-score-select-wrapper select {
   padding: 0.75rem;
+  padding-right: 2.5rem;
   border-radius: 8px;
   border: 1px solid var(--border-color);
   background: var(--input-bg);
@@ -1584,6 +1597,11 @@
   font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1.25em;
 }
 
 .full-score-select-wrapper select:hover:not(:disabled) {
@@ -1593,12 +1611,25 @@
 .full-score-select-wrapper select:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(206, 17, 38, 0.1);
 }
 
 .full-score-select-wrapper select:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Estilo para options placeholder (sem valor) */
+.full-score-select-wrapper select option[value=""] {
+  color: var(--text-secondary);
+}
+
+.full-score-select-wrapper select:invalid,
+.full-score-select-wrapper select[value=""] {
+  color: var(--text-secondary);
+}
+
+.full-score-select-wrapper select:valid:not([value=""]) {
+  color: var(--text-primary);
 }
 
 .full-score-switch {
@@ -1771,7 +1802,6 @@
 .btn-generate:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(206, 17, 38, 0.3);
 }
 
 .btn-cancel:disabled,

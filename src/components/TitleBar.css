@@ -156,11 +156,12 @@ body.login-page .titlebar-controls {
 .titlebar-button.notification {
   position: relative;
   width: 46px;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 .titlebar-button.notification:hover {
-  background: var(--sidebar-hover);
+  background: transparent;
+  color: var(--text-secondary);
 }
 
 /* Notificações Ativas - Animação e Cor */
@@ -174,6 +175,7 @@ body.login-page .titlebar-controls {
 }
 
 .titlebar-button.notification.has-notifications:hover {
+  background: transparent;
   color: var(--accent-hover);
 }
 

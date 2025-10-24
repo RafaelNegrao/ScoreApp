@@ -702,7 +702,7 @@ function Score() {
                       className="selected-badge"
                       onClick={() => setShowSelectedModal(true)}
                     >
-                      <i className="bi bi-people-fill"></i>
+                      <i className="bi bi-check2-circle"></i>
                       <span className="selected-count">{selectedSuppliers.size}</span>
                     </button>
                   )}
@@ -770,6 +770,7 @@ function Score() {
                       className="filter-select"
                       value={selectedMonth}
                       onChange={(e) => setSelectedMonth(e.target.value)}
+                      required
                     >
                       <option value="">Mês</option>
                       <option value="1">Janeiro</option>
@@ -792,6 +793,7 @@ function Score() {
                       className="filter-select"
                       value={selectedYear}
                       onChange={(e) => setSelectedYear(e.target.value)}
+                      required
                     >
                       <option value="">Ano</option>
                       {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() + i).map((year) => (
@@ -807,7 +809,7 @@ function Score() {
                     onClick={() => setShowFullScoreModal(true)}
                     title="Mais opções"
                   >
-                    <i className="bi bi-three-dots"></i>
+                    <i className="bi bi-gear"></i>
                   </button>
                 </div>
               </div>
@@ -1217,6 +1219,7 @@ function Score() {
                     value={fullScoreMonth}
                     onChange={(e) => setFullScoreMonth(e.target.value)}
                     disabled={isGenerating}
+                    required
                   >
                     <option value="">Selecione</option>
                     <option value="1">Janeiro</option>
@@ -1240,6 +1243,7 @@ function Score() {
                     value={fullScoreYear}
                     onChange={(e) => setFullScoreYear(e.target.value)}
                     disabled={isGenerating}
+                    required
                   >
                     <option value="">Selecione</option>
                     <option value="2024">2024</option>

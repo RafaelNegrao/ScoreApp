@@ -124,8 +124,8 @@
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
-  color: var(--text-muted);
-  font-size: 12px;
+  color: #999999;
+  font-size: 16px;
 }
 
 /* Custom Select Wrapper - Estilo Score */
@@ -164,7 +164,7 @@
   display: flex;
   gap: 8px;
   border-bottom: 2px solid var(--border-color);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   background: transparent;
   position: sticky;
   top: 0;

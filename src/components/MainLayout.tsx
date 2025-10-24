@@ -30,6 +30,28 @@ function MainLayout() {
     };
   }, []);
 
+  // Efeito para controlar o menu baseado no tamanho da tela
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1300) {
+        setMenuOpen(false);
+      } else if (window.innerWidth >= 1300) {
+        setMenuOpen(true);
+      }
+    };
+
+    // Executa ao montar o componente
+    handleResize();
+
+    // Adiciona listener para mudanças de tamanho
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('menuOpen', menuOpen.toString());
     // Adiciona/remove classe no body para controlar a barra inferior

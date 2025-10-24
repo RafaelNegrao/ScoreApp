@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Info, BarChart2, Grid3x3, Calendar, TrendingUp, Clock } from "lucide-react";
+import { Search, Info, BarChart2, Grid3x3, Calendar, TrendingUp } from "lucide-react";
 import { invoke } from '@tauri-apps/api/tauri';
 import { useLocation } from 'react-router-dom';
 import SupplierInfoModal from "../components/SupplierInfoModal";
@@ -60,7 +60,6 @@ function Timeline() {
     { id: "performance", label: "Performance Chart", icon: TrendingUp },
     { id: "individual", label: "Individual Metrics", icon: Grid3x3 },
     { id: "detalhado", label: "Detailed Records", icon: Calendar },
-    { id: "sazonalidade", label: "Seasonality", icon: Clock },
   ];
 
   // Fechar dropdown ao clicar fora
@@ -257,13 +256,6 @@ function Timeline() {
             supplierId={selectedSupplier?.supplier_id || null}
             selectedYear={selectedYear}
           />
-        )}
-
-        {activeTab === "sazonalidade" && (
-          <div className="empty-state">
-            <i className="bi bi-clock-history" style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.5 }}></i>
-            <p style={{ fontSize: '0.95rem', fontWeight: 400, color: 'var(--text-muted)', opacity: 0.85 }}>Análise de sazonalidade dos dados</p>
-          </div>
         )}
       </div>
 

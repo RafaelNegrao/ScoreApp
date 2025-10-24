@@ -407,16 +407,6 @@ function Settings() {
                 <div className="info-layout-grid">
                   <div className="info-section-group">
                     <div className="info-section-header">
-                      <i className="bi bi-bullseye"></i>
-                      <h4>Objetivo do Sistema</h4>
-                    </div>
-                    <p className="info-section-text">
-                      Sistema para consolidar e gerenciar notas de avaliação dos fornecedores, facilitando decisões estratégicas.
-                    </p>
-                  </div>
-
-                  <div className="info-section-group">
-                    <div className="info-section-header">
                       <i className="bi bi-code-slash"></i>
                       <h4>Desenvolvimento</h4>
                     </div>
@@ -447,7 +437,25 @@ function Settings() {
                     </div>
                     <ul className="info-features-list">
                       <li><i className="bi bi-check-circle-fill"></i> Consolidação de notas por período</li>
-                      <li><i className="bi bi-check-circle-fill"></i> Importação/exportação via Excel</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Gestão completa de fornecedores</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Análise de riscos e tendências</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Timeline de performance</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Controle de permissões de usuários</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Geração automática de relatórios</li>
+                    </ul>
+                  </div>
+
+                  <div className="info-section-group">
+                    <div className="info-section-header">
+                      <i className="bi bi-cpu"></i>
+                      <h4>Tecnologias Utilizadas</h4>
+                    </div>
+                    <ul className="info-features-list">
+                      <li><i className="bi bi-check-circle-fill"></i> React + TypeScript</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Tauri (Rust)</li>
+                      <li><i className="bi bi-check-circle-fill"></i> SQLite Database</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Vite Build Tool</li>
+                      <li><i className="bi bi-check-circle-fill"></i> CSS Modules</li>
                     </ul>
                   </div>
                 </div>

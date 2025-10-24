@@ -254,7 +254,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
       (pickup * criteriaWeights.pickup) +
       (packageScore * criteriaWeights.package);
     
-    return total.toFixed(2);
+    return total.toFixed(1);
   };
 
   // Função para salvar um score individual

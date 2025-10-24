@@ -104,7 +104,7 @@ export const themes: Record<string, Theme> = {
       accentLight: "#8be9fd",
       textPrimary: "#f8f8f2",
       textSecondary: "#6272a4",
-      textMuted: "#44475a",
+      textMuted: "#4d5778",
       borderColor: "#44475a",
       success: "#50fa7b",
       error: "#ff5555",

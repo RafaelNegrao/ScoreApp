@@ -10,8 +10,7 @@
   margin: 0;
   align-items: start;
   height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
   
   /* Custom scrollbar */
   scrollbar-width: thin;
@@ -42,6 +41,30 @@
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  /* Custom scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.3) transparent;
+}
+
+.users-form-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.users-form-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.users-form-panel::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 3px;
+}
+
+.users-form-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
 }
 
 .user-form-header {
@@ -336,7 +359,8 @@
   border-radius: 14px;
   box-shadow: none;
   overflow: hidden;
-  max-height: 100%;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
 }
 
 .users-list-header {
@@ -609,14 +633,25 @@
 }
 
 /* Responsive */
-@media (max-width: 1200px) {
+@media (max-width: 1050px) {
   .users-management {
     grid-template-columns: 1fr;
+    gap: 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .users-form-panel {
     position: relative;
     top: 0;
+    order: 1;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .users-list-panel {
+    order: 2;
+    max-height: none;
   }
 }
 
