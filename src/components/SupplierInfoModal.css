@@ -45,6 +45,15 @@
   transition: background 0.2s, color 0.2s;
 }
 
+/* Tema Cummins (branco) - fundo mais escuro */
+[data-theme="cummins"] .supplier-info-modal {
+  background: #e9ecef;
+}
+
+[data-theme="cummins"] .supplier-info-main {
+  background: #e9ecef;
+}
+
 /* Cabeçalho */
 .supplier-info-header {
   display: flex;
@@ -55,6 +64,11 @@
   font-size: 1.13rem;
   font-weight: 600;
   border-bottom: 1px solid var(--border-color, #334155);
+}
+
+/* Tema Cummins - cabeçalho mais escuro */
+[data-theme="cummins"] .supplier-info-header {
+  background: #d1d5db;
 }
 .supplier-info-title i {
   margin-right: 8px;
@@ -139,6 +153,14 @@
   color: var(--text-primary, #f1f5f9);
   flex: 1 1 220px;
 }
+
+/* Tema Cummins - adicionar borda aos campos */
+[data-theme="cummins"] .supplier-info-item {
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: var(--input-bg);
+}
 .supplier-info-label {
   color: var(--accent-primary);
   font-weight: 600;
@@ -171,6 +193,12 @@
   min-height: 52px;
   box-sizing: border-box;
 }
+
+/* Tema Cummins - email box com borda */
+[data-theme="cummins"] .supplier-info-email-box {
+  border: none;
+  background: var(--input-bg);
+}
 .supplier-info-email-value {
   color: var(--text-primary, #f1f5f9);
   line-height: 1.5;
@@ -187,6 +215,11 @@
   color: var(--text-primary, #f1f5f9);
   flex-shrink: 0;
   overflow: visible;
+}
+
+/* Tema Cummins - área de responsáveis */
+[data-theme="cummins"] .supplier-info-responsibles {
+  background: #e9ecef;
 }
 .responsibles-grid {
   display: grid;

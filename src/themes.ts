@@ -124,6 +124,10 @@ export const applyTheme = (themeName: keyof typeof themes) => {
   if (!theme) return;
 
   const root = document.documentElement;
+  
+  // Define o atributo data-theme no elemento HTML
+  root.setAttribute('data-theme', themeName);
+  
   Object.entries(theme.colors).forEach(([key, value]) => {
     const cssVarName = `--${key.replace(/([A-Z])/g, "-$1").toLowerCase()}`;
     root.style.setProperty(cssVarName, value);

@@ -260,3 +260,27 @@
 .spin {
   animation: spin 1s linear infinite;
 }
+
+/* Cummins Theme Customization */
+[data-theme="cummins"] .supplier-edit-modal {
+  background: #e9ecef;
+}
+
+[data-theme="cummins"] .supplier-edit-main {
+  background: #e9ecef;
+}
+
+[data-theme="cummins"] .supplier-edit-header {
+  background: #d1d5db;
+}
+
+[data-theme="cummins"] .form-input,
+[data-theme="cummins"] .form-textarea,
+[data-theme="cummins"] .custom-select-wrapper select {
+  border: none;
+  background: var(--input-bg);
+}
+
+[data-theme="cummins"] .supplier-edit-footer {
+  background: #e9ecef;
+}

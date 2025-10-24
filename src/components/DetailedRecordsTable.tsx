@@ -161,10 +161,10 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
               console.log(`📦 Campos disponíveis:`, Object.keys(score));
               
               // Extrair valores (IGUAL AO SCORE.TSX)
-              const otif = score.otif_score || '';
-              const nil = score.nil_score || '';
-              const pickup = score.pickup_score || '';
-              const pack = score.package_score || '';
+              const otif = score.otif_score ? parseFloat(score.otif_score).toFixed(1) : '';
+              const nil = score.nil_score ? parseFloat(score.nil_score).toFixed(1) : '';
+              const pickup = score.pickup_score ? parseFloat(score.pickup_score).toFixed(1) : '';
+              const pack = score.package_score ? parseFloat(score.package_score).toFixed(1) : '';
               const total = score.total_score || '';
               const comment = score.comment || '';
               
@@ -369,26 +369,26 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
       <div className="table-container" style={{
       overflowX: 'auto',
       overflowY: 'auto',
-      maxHeight: 'calc(100vh - 280px)',
+      maxHeight: 'calc(100vh - 350px)',
       position: 'relative'
     }}>
-      <table className="suppliers-table" style={{width:'100%'}}>
+      <table className="suppliers-table" style={{width:'100%', borderCollapse: 'collapse'}}>
         <thead style={{
           position: 'sticky',
           top: 0,
-          backgroundColor: 'var(--bg-primary)',
+          backgroundColor: 'var(--section-bg)',
           zIndex: 100,
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}>
           <tr>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)'}}>Período</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)'}}>OTIF</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)'}}>NIL</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)'}}>Pickup</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)'}}>Package</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)'}}>Total</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)', width: '100px', textAlign: 'center'}}>Comentário</th>
-            {!autoSave && <th style={{width: '60px', position: 'sticky', top: 0, backgroundColor: 'var(--bg-primary)'}}>Ações</th>}
+            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Período</th>
+            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>OTIF</th>
+            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>NIL</th>
+            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Pickup</th>
+            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Package</th>
+            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Total</th>
+            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', width: '100px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Comentário</th>
+            {!autoSave && <th style={{width: '60px', position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Ações</th>}
           </tr>
         </thead>
         <tbody>
@@ -408,9 +408,9 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
               const rowKey = `${rec.monthNumber}`;
               
               return (
-                <tr key={rec.month}>
-                  <td>{rec.month}</td>
-                  <td>
+                <tr key={rec.month} style={{borderBottom: '1px solid var(--border-color)'}}>
+                  <td style={{padding: '10px 16px', color: 'var(--text-primary)'}}>{rec.month}</td>
+                  <td style={{padding: '10px 16px', textAlign: 'center'}}>
                   <input 
                     type="number" 
                     className={`score-input ${!canEdit('otif') ? 'readonly' : ''}`}
@@ -454,7 +454,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                     }}
                   />
                 </td>
-                <td>
+                <td style={{padding: '10px 16px', textAlign: 'center'}}>
                   <input 
                     type="number" 
                     className={`score-input ${!canEdit('nil') ? 'readonly' : ''}`}
@@ -498,7 +498,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                     }}
                   />
                 </td>
-                <td>
+                <td style={{padding: '10px 16px', textAlign: 'center'}}>
                   <input 
                     type="number" 
                     className={`score-input ${!canEdit('pickup') ? 'readonly' : ''}`}
@@ -542,7 +542,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                     }}
                   />
                 </td>
-                <td>
+                <td style={{padding: '10px 16px', textAlign: 'center'}}>
                   <input 
                     type="number" 
                     className={`score-input ${!canEdit('package') ? 'readonly' : ''}`}
@@ -586,12 +586,17 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                     }}
                   />
                 </td>
-                <td>
-                  <b style={{color:'#3fa6ff'}}>
-                    {inputValues.get(`${rowKey}-total`) || ''}
+                <td style={{padding: '10px 16px', textAlign: 'center'}}>
+                  <b style={{color:'var(--accent-primary)', fontWeight: 600}}>
+                    {(() => {
+                      const total = inputValues.get(`${rowKey}-total`);
+                      if (!total || total === '') return '';
+                      const numValue = parseFloat(total);
+                      return isNaN(numValue) ? total : numValue.toFixed(2);
+                    })()}
                   </b>
                 </td>
-                <td style={{textAlign: 'center'}}>
+                <td style={{padding: '10px 16px', textAlign: 'center'}}>
                   <button
                     onClick={() => openCommentModal(rec.monthNumber, rec.month)}
                     style={{
@@ -601,7 +606,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                       padding: '4px 8px',
                       fontSize: '1.1rem',
                       transition: 'all 0.2s',
-                      color: inputValues.get(`${rowKey}-comments`) ? '#4ade80' : 'var(--text-muted)',
+                      color: inputValues.get(`${rowKey}-comments`) ? 'var(--accent-primary)' : 'var(--text-muted)',
                       opacity: inputValues.get(`${rowKey}-comments`) ? 1 : 0.5
                     }}
                     title={inputValues.get(`${rowKey}-comments`) ? 'Ver/editar comentário' : 'Adicionar comentário'}
@@ -618,7 +623,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                   </button>
                 </td>
                 {!autoSave && (
-                  <td style={{textAlign: 'center'}}>
+                  <td style={{padding: '10px 16px', textAlign: 'center'}}>
                     {modifiedRows.has(rowKey) && (
                       <button
                         className="save-button"

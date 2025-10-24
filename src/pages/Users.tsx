@@ -19,7 +19,7 @@ interface User {
 }
 
 const Users = () => {
-  const { user: currentUser, permissions, isUser } = usePermissions();
+  const { user: currentUser, permissions, isUser, isAdmin } = usePermissions();
   const { toasts, showToast, removeToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
@@ -167,6 +167,12 @@ const Users = () => {
     e.preventDefault();
 
     try {
+      // Se o usuário atual for Admin, eles não podem alterar as permissões de score nesta tela.
+      const otifVal = isAdmin ? (editingUser ? (editingUser.otif === 1 ? 1 : 0) : 0) : (formData.otif ? 1 : 0);
+      const nilVal = isAdmin ? (editingUser ? (editingUser.nil === 1 ? 1 : 0) : 0) : (formData.nil ? 1 : 0);
+      const pickupVal = isAdmin ? (editingUser ? (editingUser.pickup === 1 ? 1 : 0) : 0) : (formData.pickup ? 1 : 0);
+      const packageVal = isAdmin ? (editingUser ? (editingUser.package === 1 ? 1 : 0) : 0) : (formData.package ? 1 : 0);
+
       if (editingUser) {
         // Atualizar usuário existente
         await invoke('update_user', {
@@ -176,10 +182,10 @@ const Users = () => {
           privilege: formData.privilege,
           status: formData.status,
           password: formData.password || undefined,
-          otif: formData.otif ? 1 : 0,
-          nil: formData.nil ? 1 : 0,
-          pickup: formData.pickup ? 1 : 0,
-          package: formData.package ? 1 : 0,
+          otif: otifVal,
+          nil: nilVal,
+          pickup: pickupVal,
+          package: packageVal,
         });
         showToast('Usuário atualizado com sucesso!', 'success');
       } else {
@@ -190,10 +196,10 @@ const Users = () => {
           privilege: formData.privilege,
           status: formData.status,
           password: formData.password,
-          otif: formData.otif ? 1 : 0,
-          nil: formData.nil ? 1 : 0,
-          pickup: formData.pickup ? 1 : 0,
-          package: formData.package ? 1 : 0,
+          otif: otifVal,
+          nil: nilVal,
+          pickup: pickupVal,
+          package: packageVal,
         });
         showToast('Usuário cadastrado com sucesso!', 'success');
       }
@@ -320,7 +326,7 @@ const Users = () => {
             </div>
           </div>
 
-          {!isUser && (
+          {!isUser && !isAdmin && (
             <div className="permissions-group">
               <span className="permissions-title">Permissões de módulos</span>
               <div className="permissions-grid">

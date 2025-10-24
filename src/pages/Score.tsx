@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import SupplierInfoModal from "../components/SupplierInfoModal";
+import { CommentModal } from "../components/CommentModal";
 import { invoke } from '@tauri-apps/api/tauri';
 import { Info } from "lucide-react";
+import { useToast } from '../hooks/useToast';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import "./Score.css";
 
@@ -9,7 +11,7 @@ interface Supplier {
   supplier_id: string;
   vendor_name: string;
   supplier_po?: string;
-  business_unit?: string;
+  bu?: string;
   supplier_status?: string;
 }
 
@@ -161,10 +163,690 @@ function CriteriaTab() {
 }
 
 /**
+ * Componente de visualização anual por fornecedor
+ */
+interface YearlyViewTableProps {
+  selectedSuppliers: Set<string>;
+  selectedYear: string;
+  getSupplierById: (id: string) => Supplier | undefined;
+  permissions: UserPermissions;
+  criteriaWeights: { otif: number; nil: number; pickup: number; package: number };
+  showToast: (message: string, type?: 'success' | 'error' | 'warning' | 'info', duration?: number) => void;
+}
+
+interface YearlyMonthData {
+  month: number;
+  monthName: string;
+  otif: number | null;
+  nil: number | null;
+  pickup: number | null;
+  package: number | null;
+  total: number | null;
+  comment: string | null;
+}
+
+function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, permissions, criteriaWeights, showToast }: YearlyViewTableProps) {
+  const [yearlyData, setYearlyData] = useState<Map<string, YearlyMonthData[]>>(new Map());
+  const [commentModalOpen, setCommentModalOpen] = useState(false);
+  const [selectedComment, setSelectedComment] = useState<{ supplierId: string; month: number; monthName: string; comment: string } | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showSupplierInfo, setShowSupplierInfo] = useState<Supplier | null>(null);
+  const [inputValues, setInputValues] = useState<Map<string, any>>(new Map());
+  const [originalValues, setOriginalValues] = useState<Map<string, any>>(new Map()); // Rastreia valores originais
+  const [modifiedCells, setModifiedCells] = useState<Set<string>>(new Set());
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const suppliersArray = Array.from(selectedSuppliers);
+  const totalSuppliers = suppliersArray.length;
+  
+  // Verifica se o mês é futuro
+  const isFutureMonth = (month: number): boolean => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1; // 0-indexed, então +1
+    const selectedYearNum = parseInt(selectedYear);
+    
+    if (selectedYearNum > currentYear) return true;
+    if (selectedYearNum === currentYear && month > currentMonth) return true;
+    return false;
+  };
+  
+  // Verifica se o usuário tem permissão para editar um campo específico
+  const canEdit = (field: 'otif' | 'nil' | 'pickup' | 'package'): boolean => {
+    const permission = permissions[field];
+    return permission === 'Sim' || permission === 'sim' || permission === 'SIM' || permission === '1' || permission === 'true';
+  };
+
+  useEffect(() => {
+    if (selectedYear && selectedSuppliers.size > 0) {
+      loadYearlyData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear, selectedSuppliers]);
+
+  const loadYearlyData = async () => {
+    console.log('Loading yearly data for year:', selectedYear);
+    const data = new Map<string, YearlyMonthData[]>();
+    const newInputValues = new Map<string, any>();
+    const newOriginalValues = new Map<string, any>(); // Rastreia valores originais
+    
+    for (const supplierId of Array.from(selectedSuppliers)) {
+      const monthsData: YearlyMonthData[] = [];
+      
+      for (let month = 1; month <= 12; month++) {
+        try {
+          const scores = await invoke<any[]>('get_supplier_scores', {
+            supplierIds: [supplierId],
+            month,
+            year: parseInt(selectedYear)
+          });
+          
+          const score = scores && scores.length > 0 ? scores[0] : null;
+          
+          const rowKey = `${supplierId}-${month}`;
+          
+          // Preenche os inputValues com os dados existentes (IGUAL AO TIMELINE)
+          const otif = score?.otif_score ? parseFloat(score.otif_score).toFixed(1) : '';
+          const nil = score?.nil_score ? parseFloat(score.nil_score).toFixed(1) : '';
+          const pickup = score?.pickup_score ? parseFloat(score.pickup_score).toFixed(1) : '';
+          const pack = score?.package_score ? parseFloat(score.package_score).toFixed(1) : '';
+          const comment = score?.comment || '';
+          
+          console.log(`Month ${month} - Comment from DB:`, comment, 'Full score:', score);
+          
+          newInputValues.set(`${rowKey}-otif`, otif);
+          newInputValues.set(`${rowKey}-nil`, nil);
+          newInputValues.set(`${rowKey}-pickup`, pickup);
+          newInputValues.set(`${rowKey}-package`, pack);
+          newInputValues.set(`${rowKey}-comments`, comment);
+          
+          // Salva os valores originais
+          newOriginalValues.set(`${rowKey}-otif`, otif);
+          newOriginalValues.set(`${rowKey}-nil`, nil);
+          newOriginalValues.set(`${rowKey}-pickup`, pickup);
+          newOriginalValues.set(`${rowKey}-package`, pack);
+          newOriginalValues.set(`${rowKey}-comments`, comment);
+          
+          let calculatedTotal: number | null = null;
+          
+          if (otif !== '' || nil !== '' || pickup !== '' || pack !== '') {
+            const otifNum = otif ? parseFloat(otif) : 0;
+            const nilNum = nil ? parseFloat(nil) : 0;
+            const pickupNum = pickup ? parseFloat(pickup) : 0;
+            const packageNum = pack ? parseFloat(pack) : 0;
+            
+            calculatedTotal = 
+              (otifNum * criteriaWeights.otif) +
+              (nilNum * criteriaWeights.nil) +
+              (pickupNum * criteriaWeights.pickup) +
+              (packageNum * criteriaWeights.package);
+          }
+          
+          monthsData.push({
+            month,
+            monthName: monthNames[month - 1],
+            otif: otif ? parseFloat(otif) : null,
+            nil: nil ? parseFloat(nil) : null,
+            pickup: pickup ? parseFloat(pickup) : null,
+            package: pack ? parseFloat(pack) : null,
+            total: calculatedTotal,
+            comment: comment || null
+          });
+        } catch (error) {
+          const rowKey = `${supplierId}-${month}`;
+          newInputValues.set(`${rowKey}-otif`, '');
+          newInputValues.set(`${rowKey}-nil`, '');
+          newInputValues.set(`${rowKey}-pickup`, '');
+          newInputValues.set(`${rowKey}-package`, '');
+          newInputValues.set(`${rowKey}-comments`, '');
+          
+          newOriginalValues.set(`${rowKey}-otif`, '');
+          newOriginalValues.set(`${rowKey}-nil`, '');
+          newOriginalValues.set(`${rowKey}-pickup`, '');
+          newOriginalValues.set(`${rowKey}-package`, '');
+          newOriginalValues.set(`${rowKey}-comments`, '');
+          
+          monthsData.push({
+            month,
+            monthName: monthNames[month - 1],
+            otif: null,
+            nil: null,
+            pickup: null,
+            package: null,
+            total: null,
+            comment: null
+          });
+        }
+      }
+      
+      data.set(supplierId, monthsData);
+    }
+    
+    setYearlyData(data);
+    setInputValues(newInputValues);
+    setOriginalValues(newOriginalValues); // Atualiza valores originais
+  };
+
+  const handleInputChange = (supplierId: string, month: number, field: string, value: string) => {
+    const rowKey = `${supplierId}-${month}`;
+    const key = `${rowKey}-${field}`;
+    
+    // Valida o valor para campos numéricos
+    if (field !== 'comments') {
+      const numValue = parseFloat(value);
+      if (value !== '' && (isNaN(numValue) || numValue < 0 || numValue > 10)) {
+        return; // Ignora valores inválidos
+      }
+      // Limita a 1 casa decimal
+      if (value.includes('.')) {
+        const parts = value.split('.');
+        if (parts[1] && parts[1].length > 1) {
+          value = `${parts[0]}.${parts[1].substring(0, 1)}`;
+        }
+      }
+    }
+    
+    const newInputValues = new Map(inputValues);
+    newInputValues.set(key, value);
+    setInputValues(newInputValues);
+    
+    // Recalcula o total
+    if (field !== 'comments') {
+      updateTotal(supplierId, month, newInputValues);
+    }
+  };
+
+  const handleInputBlur = async (supplierId: string, month: number, field?: string) => {
+    const rowKey = `${supplierId}-${month}`;
+    
+    // Formata o número para ter 1 casa decimal se for um campo numérico
+    if (field && field !== 'comments') {
+      const key = `${rowKey}-${field}`;
+      const value = inputValues.get(key);
+      
+      if (value && value !== '') {
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue)) {
+          const formatted = numValue.toFixed(1);
+          const newInputValues = new Map(inputValues);
+          newInputValues.set(key, formatted);
+          setInputValues(newInputValues);
+          
+          // Recalcula o total com o valor formatado
+          updateTotal(supplierId, month, newInputValues);
+        }
+      }
+    }
+    
+    // Verifica se houve mudanças reais comparando com valores originais
+    const fields = ['otif', 'nil', 'pickup', 'package'];
+    let hasChanges = false;
+    
+    for (const f of fields) {
+      const key = `${rowKey}-${f}`;
+      const currentValue = inputValues.get(key) || '';
+      const originalValue = originalValues.get(key) || '';
+      
+      if (currentValue !== originalValue) {
+        hasChanges = true;
+        break;
+      }
+    }
+    
+    // Se nenhum campo foi alterado ou se todos estão vazios, não salva
+    const allEmpty = fields.every(f => {
+      const value = inputValues.get(`${rowKey}-${f}`) || '';
+      return value === '';
+    });
+    
+    if (!hasChanges && allEmpty) {
+      console.log('🚫 Nenhuma mudança detectada ou todos os campos vazios - não salvando');
+      return;
+    }
+    
+    // Salva quando o campo perde o foco
+    await saveScore(supplierId, month);
+  };
+  
+  const updateTotal = (supplierId: string, month: number, values: Map<string, any>) => {
+    const rowKey = `${supplierId}-${month}`;
+    const otif = parseFloat(values.get(`${rowKey}-otif`) || '0') || 0;
+    const nil = parseFloat(values.get(`${rowKey}-nil`) || '0') || 0;
+    const pickup = parseFloat(values.get(`${rowKey}-pickup`) || '0') || 0;
+    const packageScore = parseFloat(values.get(`${rowKey}-package`) || '0') || 0;
+    
+    const total = 
+      (otif * criteriaWeights.otif) +
+      (nil * criteriaWeights.nil) +
+      (pickup * criteriaWeights.pickup) +
+      (packageScore * criteriaWeights.package);
+    
+    // Atualiza o yearlyData
+    const data = new Map(yearlyData);
+    const months = data.get(supplierId);
+    if (months) {
+      const monthData = months.find(m => m.month === month);
+      if (monthData) {
+        monthData.otif = otif || null;
+        monthData.nil = nil || null;
+        monthData.pickup = pickup || null;
+        monthData.package = packageScore || null;
+        monthData.total = total;
+      }
+      data.set(supplierId, [...months]);
+      setYearlyData(data);
+    }
+  };
+  
+  const saveScore = async (supplierId: string, month: number) => {
+    if (isSaving) return;
+    
+    try {
+      setIsSaving(true);
+      
+      const storedUser = sessionStorage.getItem('user');
+      const userName = storedUser ? JSON.parse(storedUser).user_name : 'Unknown';
+      
+      const supplier = getSupplierById(supplierId);
+      const supplierName = supplier?.vendor_name || '';
+      
+      const rowKey = `${supplierId}-${month}`;
+      const otif = inputValues.get(`${rowKey}-otif`) || null;
+      const nil = inputValues.get(`${rowKey}-nil`) || null;
+      const pickup = inputValues.get(`${rowKey}-pickup`) || null;
+      const packageScore = inputValues.get(`${rowKey}-package`) || null;
+      const comments = inputValues.get(`${rowKey}-comments`) || null;
+      
+      // Calcula o total
+      const otifNum = otif ? parseFloat(otif) : 0;
+      const nilNum = nil ? parseFloat(nil) : 0;
+      const pickupNum = pickup ? parseFloat(pickup) : 0;
+      const packageNum = packageScore ? parseFloat(packageScore) : 0;
+      
+      const totalScore = 
+        (otifNum * criteriaWeights.otif) +
+        (nilNum * criteriaWeights.nil) +
+        (pickupNum * criteriaWeights.pickup) +
+        (packageNum * criteriaWeights.package);
+      
+      console.log('💾 Saving score with comment:', comments);
+      
+      await invoke('save_supplier_score', {
+        supplierId,
+        supplierName,
+        month,
+        year: parseInt(selectedYear),
+        otifScore: otif,
+        nilScore: nil,
+        pickupScore: pickup,
+        packageScore: packageScore,
+        totalScore: totalScore.toString(),
+        comments,
+        userName
+      });
+      
+      // Remove as células modificadas desta linha
+      const newModifiedCells = new Set(modifiedCells);
+      ['otif', 'nil', 'pickup', 'package', 'comments'].forEach(field => {
+        newModifiedCells.delete(`${supplierId}-${month}-${field}`);
+      });
+      setModifiedCells(newModifiedCells);
+      
+      // Atualiza os dados localmente ao invés de recarregar
+      const data = new Map(yearlyData);
+      const months = data.get(supplierId);
+      if (months) {
+        const monthData = months.find(m => m.month === month);
+        if (monthData) {
+          monthData.otif = otif ? parseFloat(otif) : null;
+          monthData.nil = nil ? parseFloat(nil) : null;
+          monthData.pickup = pickup ? parseFloat(pickup) : null;
+          monthData.package = packageScore ? parseFloat(packageScore) : null;
+          monthData.total = totalScore;
+          monthData.comment = comments || null;
+        }
+        data.set(supplierId, months);
+        setYearlyData(data);
+      }
+      
+    } catch (error) {
+      console.error('Erro ao salvar:', error);
+      showToast('Erro ao salvar as notas', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  const handleCommentClick = (supplierId: string, month: number, monthName: string) => {
+    const rowKey = `${supplierId}-${month}`;
+    const comment = inputValues.get(`${rowKey}-comments`) || '';
+    console.log('🔍 Opening comment modal - rowKey:', rowKey, 'comment:', comment, 'all inputValues:', Array.from(inputValues.entries()));
+    setSelectedComment({ supplierId, month, monthName, comment });
+    setCommentModalOpen(true);
+  };
+  
+  const handleCommentSave = async (comment: string) => {
+    if (selectedComment) {
+      console.log('💬 Saving comment:', comment, 'for supplier:', selectedComment.supplierId, 'month:', selectedComment.month);
+      
+      // Atualiza o inputValues primeiro
+      const rowKey = `${selectedComment.supplierId}-${selectedComment.month}`;
+      const key = `${rowKey}-comments`;
+      const newInputValues = new Map(inputValues);
+      newInputValues.set(key, comment);
+      setInputValues(newInputValues);
+      
+      // Agora salva com o valor atualizado
+      const supplierId = selectedComment.supplierId;
+      const month = selectedComment.month;
+      
+      if (isSaving) return;
+      
+      try {
+        setIsSaving(true);
+        
+        const storedUser = sessionStorage.getItem('user');
+        const userName = storedUser ? JSON.parse(storedUser).user_name : 'Unknown';
+        
+        const supplier = getSupplierById(supplierId);
+        const supplierName = supplier?.vendor_name || '';
+        
+        const otif = newInputValues.get(`${rowKey}-otif`) || null;
+        const nil = newInputValues.get(`${rowKey}-nil`) || null;
+        const pickup = newInputValues.get(`${rowKey}-pickup`) || null;
+        const packageScore = newInputValues.get(`${rowKey}-package`) || null;
+        
+        // Calcula o total
+        const otifNum = otif ? parseFloat(otif) : 0;
+        const nilNum = nil ? parseFloat(nil) : 0;
+        const pickupNum = pickup ? parseFloat(pickup) : 0;
+        const packageNum = packageScore ? parseFloat(packageScore) : 0;
+        
+        const totalScore = 
+          (otifNum * criteriaWeights.otif) +
+          (nilNum * criteriaWeights.nil) +
+          (pickupNum * criteriaWeights.pickup) +
+          (packageNum * criteriaWeights.package);
+        
+        console.log('💾 Saving score with comment:', comment);
+        
+        await invoke('save_supplier_score', {
+          supplierId,
+          supplierName,
+          month,
+          year: parseInt(selectedYear),
+          otifScore: otif,
+          nilScore: nil,
+          pickupScore: pickup,
+          packageScore: packageScore,
+          totalScore: totalScore.toString(),
+          comments: comment,
+          userName
+        });
+        
+        // Atualiza os dados localmente
+        const data = new Map(yearlyData);
+        const months = data.get(supplierId);
+        if (months) {
+          const monthData = months.find(m => m.month === month);
+          if (monthData) {
+            monthData.comment = comment || null;
+          }
+          data.set(supplierId, months);
+          setYearlyData(data);
+        }
+        
+      } catch (error) {
+        console.error('Erro ao salvar comentário:', error);
+        showToast('Erro ao salvar comentário', 'error');
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
+  const cardsPerPage = 2;
+  const totalPages = Math.ceil(totalSuppliers / cardsPerPage);
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : totalPages - 1));
+  };
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev < totalPages - 1 ? prev + 1 : 0));
+  };
+
+  if (totalSuppliers === 0) return null;
+
+  const startIndex = currentIndex * cardsPerPage;
+  const endIndex = Math.min(startIndex + cardsPerPage, totalSuppliers);
+  const currentSuppliers = suppliersArray.slice(startIndex, endIndex);
+
+  return (
+    <>
+      <div className="yearly-carousel-container">
+        {/* Navegação e Contador */}
+        {totalPages > 1 && (
+          <div className="yearly-carousel-header">
+            <button 
+              className="yearly-carousel-nav yearly-nav-left"
+              onClick={handlePrev}
+              title="Anterior"
+            >
+              <i className="bi bi-chevron-left"></i>
+            </button>
+            
+            <div className="yearly-carousel-counter">
+              <span>{currentIndex + 1} / {totalPages}</span>
+            </div>
+            
+            <button 
+              className="yearly-carousel-nav yearly-nav-right"
+              onClick={handleNext}
+              title="Próximo"
+            >
+              <i className="bi bi-chevron-right"></i>
+            </button>
+          </div>
+        )}
+
+        {/* Cards dos Suppliers */}
+        <div className="yearly-cards-grid">
+          {currentSuppliers.map((supplierId) => {
+            const supplier = getSupplierById(supplierId);
+            const months = yearlyData.get(supplierId) || [];
+            
+            if (!supplier) return null;
+
+            return (
+              <div key={supplierId} className="yearly-supplier-card">
+                <div className="yearly-supplier-header">
+                  <div className="yearly-supplier-title-row">
+                    <div>
+                      <h3 className="yearly-supplier-name">{supplier.vendor_name}</h3>
+                      <div className="yearly-supplier-info">
+                        <span className="supplier-info-text">PO: {supplier.supplier_po || ''}</span>
+                        <span className="supplier-info-text">BU: {supplier.bu || ''}</span>
+                        <span 
+                          className={`supplier-status-indicator ${supplier.supplier_status === 'Active' ? 'status-active' : 'status-inactive'}`}
+                          title={supplier.supplier_status || 'Status desconhecido'}
+                        >
+                          <i className="bi bi-circle-fill"></i>
+                        </span>
+                      </div>
+                    </div>
+                    <button 
+                      className="supplier-info-icon-btn"
+                      onClick={() => setShowSupplierInfo(supplier)}
+                      title="Ver informações do fornecedor"
+                    >
+                      <Info size={18} />
+                    </button>
+                  </div>
+                </div>
+                <div className="yearly-table-wrapper">
+                  <table className="yearly-view-table">
+                    <thead>
+                      <tr>
+                        <th>Mês</th>
+                        <th>OTIF</th>
+                        <th>NIL</th>
+                        <th>Pickup</th>
+                        <th>Package</th>
+                        <th>Total</th>
+                        <th>Comments</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {months.map((monthData) => {
+                        const rowKey = `${supplierId}-${monthData.month}`;
+                        const hasModifications = ['otif', 'nil', 'pickup', 'package', 'comments'].some(
+                          field => modifiedCells.has(`${supplierId}-${monthData.month}-${field}`)
+                        );
+                        
+                        return (
+                          <tr key={monthData.month}>
+                            <td className="month-cell">{monthData.monthName}</td>
+                            <td>
+                              <input
+                                type="number"
+                                className={`yearly-score-input ${!canEdit('otif') || isFutureMonth(monthData.month) ? 'readonly' : ''}`}
+                                value={inputValues.get(`${rowKey}-otif`) || ''}
+                                onChange={(e) => handleInputChange(supplierId, monthData.month, 'otif', e.target.value)}
+                                onFocus={() => {
+                                  const key = `${rowKey}-otif`;
+                                  const newOriginal = new Map(originalValues);
+                                  newOriginal.set(key, inputValues.get(key) || '');
+                                  setOriginalValues(newOriginal);
+                                }}
+                                onBlur={() => handleInputBlur(supplierId, monthData.month, 'otif')}
+                                disabled={!canEdit('otif') || isFutureMonth(monthData.month)}
+                                title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
+                                min="0"
+                                max="10"
+                                step="0.1"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className={`yearly-score-input ${!canEdit('nil') || isFutureMonth(monthData.month) ? 'readonly' : ''}`}
+                                value={inputValues.get(`${rowKey}-nil`) || ''}
+                                onChange={(e) => handleInputChange(supplierId, monthData.month, 'nil', e.target.value)}
+                                onFocus={() => {
+                                  const key = `${rowKey}-nil`;
+                                  const newOriginal = new Map(originalValues);
+                                  newOriginal.set(key, inputValues.get(key) || '');
+                                  setOriginalValues(newOriginal);
+                                }}
+                                onBlur={() => handleInputBlur(supplierId, monthData.month, 'nil')}
+                                disabled={!canEdit('nil') || isFutureMonth(monthData.month)}
+                                title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
+                                min="0"
+                                max="10"
+                                step="0.1"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className={`yearly-score-input ${!canEdit('pickup') || isFutureMonth(monthData.month) ? 'readonly' : ''}`}
+                                value={inputValues.get(`${rowKey}-pickup`) || ''}
+                                onChange={(e) => handleInputChange(supplierId, monthData.month, 'pickup', e.target.value)}
+                                onFocus={() => {
+                                  const key = `${rowKey}-pickup`;
+                                  const newOriginal = new Map(originalValues);
+                                  newOriginal.set(key, inputValues.get(key) || '');
+                                  setOriginalValues(newOriginal);
+                                }}
+                                onBlur={() => handleInputBlur(supplierId, monthData.month, 'pickup')}
+                                disabled={!canEdit('pickup') || isFutureMonth(monthData.month)}
+                                title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
+                                min="0"
+                                max="10"
+                                step="0.1"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className={`yearly-score-input ${!canEdit('package') || isFutureMonth(monthData.month) ? 'readonly' : ''}`}
+                                value={inputValues.get(`${rowKey}-package`) || ''}
+                                onChange={(e) => handleInputChange(supplierId, monthData.month, 'package', e.target.value)}
+                                onFocus={() => {
+                                  const key = `${rowKey}-package`;
+                                  const newOriginal = new Map(originalValues);
+                                  newOriginal.set(key, inputValues.get(key) || '');
+                                  setOriginalValues(newOriginal);
+                                }}
+                                onBlur={() => handleInputBlur(supplierId, monthData.month, 'package')}
+                                disabled={!canEdit('package') || isFutureMonth(monthData.month)}
+                                title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
+                                min="0"
+                                max="10"
+                                step="0.1"
+                              />
+                            </td>
+                            <td className="total-cell">{monthData.total !== null ? monthData.total.toFixed(1) : '-'}</td>
+                            <td className="comment-cell">
+                              <button
+                                className="comment-icon-btn"
+                                onClick={() => !isFutureMonth(monthData.month) && handleCommentClick(supplierId, monthData.month, monthData.monthName)}
+                                disabled={isFutureMonth(monthData.month)}
+                                title={
+                                  isFutureMonth(monthData.month) 
+                                    ? 'Não é possível adicionar comentários em meses futuros' 
+                                    : (inputValues.get(`${rowKey}-comments`) ? 'Ver/Editar comentário' : 'Adicionar comentário')
+                                }
+                                style={{ 
+                                  opacity: isFutureMonth(monthData.month) ? '0.3' : (inputValues.get(`${rowKey}-comments`) ? '1' : '0.5'),
+                                  color: isFutureMonth(monthData.month) ? 'var(--text-muted)' : (inputValues.get(`${rowKey}-comments`) ? 'var(--accent-primary)' : 'var(--text-muted)'),
+                                  cursor: isFutureMonth(monthData.month) ? 'not-allowed' : 'pointer'
+                                }}
+                              >
+                                <i className="bi bi-chat-left-text-fill"></i>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      
+      {commentModalOpen && selectedComment && (
+        <CommentModal
+          isOpen={commentModalOpen}
+          onClose={() => setCommentModalOpen(false)}
+          comment={selectedComment.comment}
+          month={selectedComment.monthName}
+          onSave={handleCommentSave} 
+        />
+      )}
+      
+      {showSupplierInfo && (
+        <SupplierInfoModal
+          isOpen={true}
+          supplier={showSupplierInfo}
+          onClose={() => setShowSupplierInfo(null)}
+        />
+      )}
+    </>
+  );
+}
+
+/**
  * Página de Score.
  * Exibe e gerencia pontuações e avaliações.
  */
 function Score() {
+  const { showToast } = useToast();
   const [showSupplierInfo, setShowSupplierInfo] = useState<null | Supplier>(null);
   const [activeTab, setActiveTab] = useState<'input' | 'criterios'>('input');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -202,6 +884,11 @@ function Score() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [generationMessage, setGenerationMessage] = useState<string>('');
+  const [showOptionsMenu, setShowOptionsMenu] = useState<boolean>(false);
+  const [yearlyView, setYearlyView] = useState<boolean>(() => {
+    const saved = localStorage.getItem('yearlyView');
+    return saved === 'true';
+  });
 
   // Carregar critérios (pesos) do banco de dados
   useEffect(() => {
@@ -495,8 +1182,7 @@ function Score() {
       return;
     }
 
-    // Validação para não gerar para meses futuros - TEMPORARIAMENTE DESABILITADA
-    /*
+    // Validação para não gerar para meses futuros
     const now = new Date();
     const monthInt = parseInt(fullScoreMonth);
     const yearInt = parseInt(fullScoreYear);
@@ -505,7 +1191,6 @@ function Score() {
       setGenerationMessage('❌ Não é possível gerar notas para meses futuros.');
       return;
     }
-    */
 
     setIsGenerating(true);
     setGenerationProgress(0);
@@ -609,6 +1294,8 @@ function Score() {
         });
 
         // Aguardar batch completar
+        // O erro aqui pode ser tratado individualmente em cada promise, caso dê problema , eu volto aqui
+        // O erro é que não estava colocando o await, então não esperava as promessas terminarem antes de continuar
         await Promise.all(promises);
 
         // Atualizar progresso de 0 a 100%
@@ -740,7 +1427,7 @@ function Score() {
                                   </span>
                                   <span className="dropdown-detail-separator">•</span>
                                   <span className="dropdown-detail-item">
-                                    <span className="dropdown-detail-label">BU:</span> {supplier.business_unit || '—'}
+                                    <span className="dropdown-detail-label">BU:</span> {supplier.bu || '—'}
                                   </span>
                                 </div>
                               </div>
@@ -765,29 +1452,31 @@ function Score() {
                 </div>
                 
                 <div className="search-filters">
-                  <div className="custom-select-wrapper">
-                    <select 
-                      className="filter-select"
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      required
-                    >
-                      <option value="">Mês</option>
-                      <option value="1">Janeiro</option>
-                      <option value="2">Fevereiro</option>
-                      <option value="3">Março</option>
-                      <option value="4">Abril</option>
-                      <option value="5">Maio</option>
-                      <option value="6">Junho</option>
-                      <option value="7">Julho</option>
-                      <option value="8">Agosto</option>
-                      <option value="9">Setembro</option>
-                      <option value="10">Outubro</option>
-                      <option value="11">Novembro</option>
-                      <option value="12">Dezembro</option>
-                    </select>
-                    <i className="bi bi-chevron-down select-icon"></i>
-                  </div>
+                  {!yearlyView && (
+                    <div className="custom-select-wrapper month-selector-transition">
+                      <select 
+                        className="filter-select"
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        required
+                      >
+                        <option value="">Mês</option>
+                        <option value="1">Janeiro</option>
+                        <option value="2">Fevereiro</option>
+                        <option value="3">Março</option>
+                        <option value="4">Abril</option>
+                        <option value="5">Maio</option>
+                        <option value="6">Junho</option>
+                        <option value="7">Julho</option>
+                        <option value="8">Agosto</option>
+                        <option value="9">Setembro</option>
+                        <option value="10">Outubro</option>
+                        <option value="11">Novembro</option>
+                        <option value="12">Dezembro</option>
+                      </select>
+                      <i className="bi bi-chevron-down select-icon"></i>
+                    </div>
+                  )}
                   <div className="custom-select-wrapper">
                     <select 
                       className="filter-select"
@@ -803,14 +1492,58 @@ function Score() {
                     <i className="bi bi-chevron-down select-icon"></i>
                   </div>
                   
-                  {/* Botão para gerar nota cheia */}
-                  <button 
-                    className="more-options-btn"
-                    onClick={() => setShowFullScoreModal(true)}
-                    title="Mais opções"
-                  >
-                    <i className="bi bi-gear"></i>
-                  </button>
+                  {/* Botão para menu de opções */}
+                  <div className="options-menu-wrapper">
+                    <button 
+                      className="more-options-btn"
+                      onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                      title="Mais opções"
+                    >
+                      <i className="bi bi-gear"></i>
+                    </button>
+                    
+                    {showOptionsMenu && (
+                      <>
+                        <div 
+                          className="options-menu-overlay" 
+                          onClick={() => setShowOptionsMenu(false)}
+                        />
+                        <div className="options-menu-dropdown">
+                          <button 
+                            className="options-menu-item"
+                            onClick={() => {
+                              setShowFullScoreModal(true);
+                              setShowOptionsMenu(false);
+                            }}
+                          >
+                            <i className="bi bi-stars"></i>
+                            <span>Gerar nota cheia</span>
+                          </button>
+                          
+                          <div className="options-menu-divider"></div>
+                          
+                          <div className="options-menu-item switch-item">
+                            <div className="switch-label">
+                              <i className="bi bi-calendar3"></i>
+                              <span>Visualização por ano</span>
+                            </div>
+                            <label className="switch">
+                              <input 
+                                type="checkbox" 
+                                checked={yearlyView}
+                                onChange={(e) => {
+                                  const newValue = e.target.checked;
+                                  setYearlyView(newValue);
+                                  localStorage.setItem('yearlyView', newValue.toString());
+                                }}
+                              />
+                              <span className="slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -825,12 +1558,33 @@ function Score() {
               {/* Tabela de fornecedores selecionados */}
               {selectedSuppliers.size > 0 && (
                 <div className="suppliers-table-section">
-                  {!selectedMonth || !selectedYear ? (
+                  {!yearlyView && (!selectedMonth || !selectedYear) ? (
                     <div className="info-message">
                       <i className="bi bi-info-circle"></i>
                       <p>Selecione o mês e o ano para carregar as notas salvas</p>
                     </div>
                   ) : null}
+                  
+                  {yearlyView && !selectedYear ? (
+                    <div className="info-message">
+                      <i className="bi bi-info-circle"></i>
+                      <p>Selecione o ano para visualizar os dados anuais</p>
+                    </div>
+                  ) : null}
+                  
+                  {yearlyView && selectedYear ? (
+                    <div className="view-transition">
+                      <YearlyViewTable 
+                        selectedSuppliers={selectedSuppliers}
+                        selectedYear={selectedYear}
+                        getSupplierById={getSupplierById}
+                        permissions={permissions}
+                        criteriaWeights={criteriaWeights}
+                        showToast={showToast}
+                      />
+                    </div>
+                  ) : !yearlyView ? (
+                  <div className="view-transition">
                   <div className="table-container">
                     <table className="suppliers-table">
                       <thead>
@@ -861,7 +1615,7 @@ function Score() {
                               <td>{index + 1}</td>
                               <td>{supplier.supplier_id}</td>
                               <td>{supplier.supplier_po || '—'}</td>
-                              <td>{supplier.business_unit || '—'}</td>
+                              <td>{supplier.bu || '—'}</td>
                               <td className="supplier-name-cell">{supplier.vendor_name}</td>
                               <td>
                                 <input 
@@ -1104,6 +1858,8 @@ function Score() {
                       </tbody>
                     </table>
                   </div>
+                  </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1147,7 +1903,7 @@ function Score() {
                                 <div className="detail-item">
                                   <i className="bi bi-building"></i>
                                   <span className="detail-label">BU:</span>
-                                  <span className="detail-value">{supplier.business_unit || '—'}</span>
+                                  <span className="detail-value">{supplier.bu || '—'}</span>
                                 </div>
                               </div>
                             </div>

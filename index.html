@@ -3,11 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Score App</title>
+    <style>
+      html {
+        zoom: 1.0 !important;
+        -ms-zoom: 1.0 !important;
+        -webkit-text-size-adjust: 100% !important;
+        -ms-text-size-adjust: 100% !important;
+      }
+      body {
+        zoom: 1.0 !important;
+        -ms-zoom: 1.0 !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Força zoom em 100% independente da escala do Windows
+      (function() {
+        document.body.style.zoom = "100%";
+        document.documentElement.style.zoom = "100%";
+        
+        // Monitora mudanças de zoom e força volta para 100%
+        const observer = new MutationObserver(function() {
+          if (document.body.style.zoom !== "100%") {
+            document.body.style.zoom = "100%";
+          }
+          if (document.documentElement.style.zoom !== "100%") {
+            document.documentElement.style.zoom = "100%";
+          }
+        });
+        
+        observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

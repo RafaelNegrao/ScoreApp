@@ -80,7 +80,7 @@
 
 .comment-textarea:focus {
   outline: none;
-  border-color: #3fa6ff;
+  border-color: var(--accent-primary);
 }
 
 .comment-textarea::placeholder {
@@ -119,14 +119,14 @@
 }
 
 .comment-modal-button.save {
-  background-color: #3fa6ff;
+  background-color: var(--accent-primary);
   color: white;
 }
 
 .comment-modal-button.save:hover {
-  background-color: #5ab9ff;
+  background-color: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(63, 166, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(var(--accent-primary-rgb), 0.3);
 }
 
 .comment-modal-button:active {
