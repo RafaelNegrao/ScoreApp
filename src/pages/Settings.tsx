@@ -102,7 +102,10 @@ function CriteriaTab() {
   };
 
   const displayCriteria: CriteriaDisplayItem[] = criteria.map((item) => {
-    const baseLabel = normalizeName(item.criteria_name);
+    let baseLabel = normalizeName(item.criteria_name);
+    // Ajuste dos nomes conforme solicitado
+    if (/quality of pickup/i.test(baseLabel)) baseLabel = 'Pickup';
+    if (/quality pack/i.test(baseLabel)) baseLabel = 'Package';
     const isTarget = item.criteria_name.toLowerCase().includes('target');
 
     return {
@@ -181,29 +184,86 @@ function CriteriaTab() {
     );
   }
 
+
+  // Ordenação fixa: ORIF, NIL, PICKUP, PACKAGE (pesos), TARGET (abaixo)
+  const weightOrder = [
+    'otif', // ORIF
+    'nil',
+    'pick up',
+    'package',
+  ];
+  const targetOrder = [
+    'otif',
+    'nil',
+    'pick up',
+    'package',
+  ];
+  const weights = weightOrder
+    .map(name => displayCriteria.find(c => c.label.toLowerCase().includes(name) && c.type === 'weight'))
+    .filter(Boolean);
+  // Busca os targets na ordem, mas se não encontrar pelo nome, pega todos os do tipo target
+  let targets = targetOrder
+    .map(name => displayCriteria.find(c => c.label.toLowerCase().includes(name) && c.type === 'target'))
+    .filter(Boolean);
+  if (targets.length === 0) {
+    targets = displayCriteria.filter(c => c.type === 'target');
+  }
+
+  // Forçar label 'Target' para todos os targets
+  targets = targets.map(t => t && { ...t, label: 'Target' });
+
   return (
     <div className="settings-section">
       <div className="criteria-wrapper">
-        <div className="criteria-alert">
-          <i className="bi bi-exclamation-triangle-fill"></i>
-          <span>Os pesos de NIL, OTIF, Pick Up e Package devem somar exatamente 1.00</span>
-        </div>
-
         <div className="criteria-summary">
           <div className="criteria-summary-text">
             <span className="criteria-summary-label">Soma Total dos Pesos</span>
-            <span className="criteria-summary-helper">NIL + OTIF + Pick Up + Package = 1.00</span>
+            <span className="criteria-summary-helper">ORIF + NIL + Pick Up + Package = 1.00</span>
           </div>
-          <div className={`criteria-summary-value ${!isValidWeight ? 'invalid' : ''}`}>
-            {totalWeight.toFixed(2)}
+          <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+            <div className={`criteria-summary-value ${!isValidWeight ? 'invalid' : ''}`}>
+              {totalWeight.toFixed(2)}
+            </div>
+            <span title="Os pesos de ORIF, NIL, Pick Up e Package devem somar exatamente 1.00" style={{cursor: 'pointer', color: '#f59e0b', fontSize: '1.5rem', display: 'flex', alignItems: 'center'}}>
+              <i className="bi bi-info-circle"></i>
+            </span>
           </div>
         </div>
 
+        {/* Notas em linha fixa: ORIF, NIL, PICKUP, PACKAGE */}
         <div className="criteria-list">
-          {displayCriteria.map(item => (
+          {weights.map(item => item && (
             <div
               key={item.key}
-              className={`criteria-item ${item.type === 'target' ? 'target-item' : ''} ${item.type === 'weight' && !isValidWeight ? 'invalid' : ''}`}
+              className={`criteria-item ${item.type === 'weight' && !isValidWeight ? 'invalid' : ''}`}
+            >
+              <div className="criteria-item-header">
+                <span className="criteria-item-name">{item.label}</span>
+                <span className="criteria-item-value">{item.value.toFixed(item.precision)}</span>
+              </div>
+              <div className="criteria-item-controls">
+                <div className="criteria-slider">
+                  <input
+                    type="range"
+                    min={item.min}
+                    max={item.max}
+                    step={item.step}
+                    value={item.value}
+                    onChange={(e) => item.onChange(parseFloat(e.target.value))}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* TARGETS ABAIXO */}
+        <div className="criteria-list" style={{marginTop: '0.5rem'}}>
+          {targets.map(item => item && (
+            <div
+              key={item.key}
+              className={`criteria-item target-item`}
+              style={{ minWidth: '100%', flex: '1 1 100%' }}
             >
               <div className="criteria-item-header">
                 <span className="criteria-item-name">{item.label}</span>
@@ -329,7 +389,6 @@ function Settings() {
             <div className="tab-content">
               <div className="settings-section">
                 <h3><i className="bi bi-palette"></i> Theme</h3>
-                <p className="section-description">Escolha o tema visual do sistema</p>
                 <ThemeSelector />
               </div>
 

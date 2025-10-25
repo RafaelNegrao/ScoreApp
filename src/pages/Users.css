@@ -9,8 +9,8 @@
   padding-right: 8px;
   margin: 0;
   align-items: start;
-  height: 100%;
-  overflow: visible;
+  height: 100vh;
+  overflow: hidden;
   
   /* Custom scrollbar */
   scrollbar-width: thin;
@@ -38,12 +38,14 @@
 .users-form-panel {
   background: var(--section-bg);
   border: none;
+  min-height: 0;
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  max-height: calc(100vh - 140px);
+  max-height: 100%;
   overflow-y: auto;
-  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
   
   /* Custom scrollbar */
   scrollbar-width: thin;
@@ -224,14 +226,13 @@
   gap: 8px;
   padding: 10px 12px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .permission-toggle:hover {
-  border-color: var(--border-color);
   background: var(--bg-hover);
 }
 
@@ -335,6 +336,7 @@
 
 .user-btn-secondary:hover {
   background: var(--bg-hover);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
 .user-btn-danger {
@@ -359,8 +361,8 @@
   border-radius: 14px;
   box-shadow: none;
   overflow: hidden;
-  max-height: calc(100vh - 140px);
-  overflow-y: auto;
+  height: 100%;
+  max-height: 100%;
 }
 
 .users-list-header {
@@ -403,7 +405,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 24px;
+  padding: 0 8px 0 0;
   padding-right: 8px;
   overflow-y: auto;
   flex: 1;
@@ -590,7 +592,7 @@
 .permission-badge {
   padding: 4px 10px;
   background: var(--bg-secondary);
-  border: 1px solid rgba(128, 128, 128, 0.15);
+  border: none;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
@@ -605,31 +607,26 @@
 }
 
 .user-card-action {
-  flex: 1;
-  padding: 8px 16px;
-  background: var(--bg-secondary);
-  border: 1px solid rgba(128, 128, 128, 0.15);
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
   border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 18px;
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
 }
 
 .user-card-action:hover {
   background: var(--accent-primary);
   color: white;
-  border-color: var(--accent-primary);
 }
 
 .user-card-action.danger:hover {
   background: var(--error);
-  border-color: var(--error);
 }
 
 /* Responsive */
@@ -645,13 +642,13 @@
     position: relative;
     top: 0;
     order: 1;
-    max-height: none;
-    overflow: visible;
+      max-height: unset;
+      overflow: unset;
   }
 
   .users-list-panel {
     order: 2;
-    max-height: none;
+      max-height: unset;
   }
 }
 

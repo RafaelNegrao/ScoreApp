@@ -241,7 +241,7 @@ const Users = () => {
       <div className="users-form-panel">
         <div className="user-form-header">
           <h4>{editingUser ? 'Editar usuário' : 'Novo usuário'}</h4>
-          <span>{editingUser ? `Editando: ${editingUser.user_name}` : 'Preencha os dados abaixo'}</span>
+          {/* Removido texto de edição */}
         </div>
 
         <form onSubmit={handleSubmit} className="user-form">
@@ -265,7 +265,7 @@ const Users = () => {
                 type="text"
                 id="userWwid"
                 value={formData.wwid}
-                onChange={(e) => setFormData({ ...formData, wwid: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, wwid: e.target.value.toUpperCase() })}
                 placeholder="Ex: AL890"
                 maxLength={10}
                 disabled={!permissions.canEditWWID}
@@ -288,41 +288,42 @@ const Users = () => {
             </div>
           </div>
 
-          <div className="form-field">
-            <label htmlFor="userStatus">Status</label>
-            <select
-              id="userStatus"
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              disabled={!permissions.canEditAllUsers}
-              required
-            >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-              <option value="Pendent">Pendent</option>
-            </select>
-          </div>
-
-          <div className="form-field">
-            <label htmlFor="userPassword">Senha</label>
-            <div className="password-input-wrapper">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                id="userPassword"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder={editingUser ? 'Senha atual' : 'Defina uma senha'}
-                maxLength={40}
+          <div className="form-grid">
+            <div className="form-field">
+              <label htmlFor="userStatus">Status</label>
+              <select
+                id="userStatus"
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                disabled={!permissions.canEditAllUsers}
                 required
-              />
-              <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword(!showPassword)}
-                title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
               >
-                <i className={`bi ${showPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
-              </button>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+                <option value="Pendent">Pendent</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <label htmlFor="userPassword">Senha</label>
+              <div className="password-input-wrapper">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="userPassword"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder={editingUser ? 'Senha atual' : 'Defina uma senha'}
+                  maxLength={40}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  <i className={`bi ${showPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -389,7 +390,7 @@ const Users = () => {
         </form>
       </div>
 
-      <div className="users-list-panel">
+  <div className="users-list-panel" style={{flex: 1, minHeight: 0, overflowY: 'auto', maxHeight: '100vh', marginLeft: 0}}>
         {loading ? (
           <div className="users-list-loading">
             <i className="bi bi-arrow-repeat spin"></i>
@@ -402,7 +403,7 @@ const Users = () => {
             <small>Use o formulário ao lado para adicionar o primeiro usuário.</small>
           </div>
         ) : (
-          <div className="users-list">
+          <div className="users-list" style={{display: 'flex', flexDirection: 'column', gap: 16}}>
             {users.map((user) => (
               <div key={user.user_id} className="user-card">
                 <div className="user-card-header">
@@ -431,16 +432,16 @@ const Users = () => {
                   </div>
                 </div>
                 <div className="user-card-footer">
-                  <button className="user-card-action" onClick={() => handleEdit(user)}>
-                    <i className="bi bi-pencil"></i>
-                    Editar
-                  </button>
-                  {permissions.canDeleteUsers && (
-                    <button className="user-card-action danger" onClick={() => openDeleteModal(user)}>
-                      <i className="bi bi-trash"></i>
-                      Excluir
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, width: '100%' }}>
+                    <button className="user-card-action" title="Editar" onClick={() => handleEdit(user)}>
+                      <i className="bi bi-pencil"></i>
                     </button>
-                  )}
+                    {permissions.canDeleteUsers && (
+                      <button className="user-card-action danger" title="Excluir" onClick={() => openDeleteModal(user)}>
+                        <i className="bi bi-trash"></i>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

@@ -96,7 +96,7 @@ export const themes: Record<string, Theme> = {
       bgSecondary: "#21222c",
       bgTertiary: "#191a21",
       bgHover: "#343746",
-      cardBg: "#21222c",
+      cardBg: "#282a36",
       sectionBg: "#282a36",
       accentPrimary: "#bd93f9",
       accentSecondary: "#9b6ddb",

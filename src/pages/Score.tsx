@@ -46,10 +46,10 @@ function CriteriaTab() {
         <div className="criterio-card">
           <div className="criterio-header">
             <i className="bi bi-clock-history"></i>
-            <h3>OTIF (On Time In Full)</h3>
+            <h3>OTIF</h3>
           </div>
           <div className="criterio-body">
-            <p className="criterio-description">Segue tabela de OTIF. As notas são de 0 a 100%, porém a conversão para adição é multiplicar por 10.</p>
+            <p className="criterio-description">As notas são de 0 a 100%, porém a conversão para adição é multiplicar por 10.</p>
             <div className="criterio-example">
               <strong>Exemplo:</strong> 87% × 10 = 8,7
             </div>
@@ -90,7 +90,7 @@ function CriteriaTab() {
         <div className="criterio-card">
           <div className="criterio-header">
             <i className="bi bi-box-seam"></i>
-            <h3>NIL (Non-Invoiced Items)</h3>
+            <h3>NIL</h3>
           </div>
           <div className="criterio-body">
             <div className="criterio-rules">
@@ -114,7 +114,7 @@ function CriteriaTab() {
         <div className="criterio-card">
           <div className="criterio-header">
             <i className="bi bi-truck"></i>
-            <h3>PICKUP (Quality Pickup)</h3>
+            <h3>Pickup</h3>
           </div>
           <div className="criterio-body">
             <div className="criterio-rules">
@@ -138,7 +138,7 @@ function CriteriaTab() {
         <div className="criterio-card">
           <div className="criterio-header">
             <i className="bi bi-box"></i>
-            <h3>PACKAGE (Quality Package)</h3>
+            <h3>Package</h3>
           </div>
           <div className="criterio-body">
             <div className="criterio-rules">
@@ -1558,7 +1558,7 @@ function Score() {
               {/* Tabela de fornecedores selecionados */}
               {selectedSuppliers.size > 0 && (
                 <div className="suppliers-table-section">
-                  {!yearlyView && (!selectedMonth || !selectedYear) ? (
+                  {!yearlyView ? (
                     <div className="info-message">
                       <i className="bi bi-info-circle"></i>
                       <p>Selecione o mês e o ano para carregar as notas salvas</p>

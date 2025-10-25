@@ -13,6 +13,7 @@ interface ScoreRecord {
   nil?: number;
   quality_pickup?: number;
   quality_package?: number;
+  total_score?: number;
 }
 
 interface PerformanceChartProps {
@@ -41,6 +42,21 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
   const [loading, setLoading] = useState(false);
   const [regressionData, setRegressionData] = useState<RegressionData | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [target, setTarget] = useState<number | null>(null);
+
+  // Carrega o target da tabela criteria_table
+  useEffect(() => {
+    const loadTarget = async () => {
+      try {
+        const targetVal = await invoke<number>('get_target');
+        setTarget(targetVal);
+      } catch (e) {
+        console.error('Erro ao carregar target:', e);
+        setTarget(null);
+      }
+    };
+    loadTarget();
+  }, []);
 
   useEffect(() => {
     if (!supplierId) {
@@ -141,18 +157,17 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
         
         console.log(`📊 Mês ${monthNumber} (${m}):`, monthRecords.length, 'registros encontrados', monthRecords);
         
-        // Calcula a média de todas as métricas (OTIF, NIL, Quality Pickup, Quality Package)
+        // Usa o total_score diretamente
         if (monthRecords.length > 0) {
-          const allScores: number[] = [];
+          const totalScores: number[] = [];
           monthRecords.forEach(r => {
-            if (r.otif !== undefined && r.otif !== null) allScores.push(r.otif);
-            if (r.nil !== undefined && r.nil !== null) allScores.push(r.nil);
-            if (r.quality_pickup !== undefined && r.quality_pickup !== null) allScores.push(r.quality_pickup);
-            if (r.quality_package !== undefined && r.quality_package !== null) allScores.push(r.quality_package);
+            if (r.total_score !== undefined && r.total_score !== null) {
+              totalScores.push(r.total_score);
+            }
           });
           
-          const avg = allScores.length > 0 ? allScores.reduce((sum, s) => sum + s, 0) / allScores.length : 0;
-          console.log(`📊 Mês ${monthNumber} (${m}) - All Scores:`, allScores, '| Média:', avg);
+          const avg = totalScores.length > 0 ? totalScores.reduce((sum, s) => sum + s, 0) / totalScores.length : 0;
+          console.log(`📊 Mês ${monthNumber} (${m}) - Total Scores:`, totalScores, '| Média:', avg);
           return { month: m, score: parseFloat(avg.toFixed(1)) };
         }
         
@@ -192,15 +207,37 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
 
   return (
     <>
-      <div className="metric-chart-card performance-chart-centered" style={{ width: '100%' }}>
-        <div className="metric-chart-header"></div>
-        <div style={{ width: '100%', height: '600px', padding: '0 1.5rem' }}>
+      <div className="metric-chart-card performance-chart-centered" style={{ 
+        width: '100%', 
+        maxWidth: '100%'
+      }}>
+        <div className="metric-chart-header">
+          <h3 className="metric-chart-title">Performance</h3>
+          <div className="metric-chart-info">
+            <span className="metric-chart-label">Média:</span>
+            <span className="metric-chart-value" style={{ color: 'var(--accent-primary)' }}>
+              {data.length > 0 ? (data.reduce((sum, d) => sum + d.score, 0) / data.filter(d => d.score > 0).length || 0).toFixed(1) : '0.0'}
+            </span>
+          </div>
+        </div>
+        <div style={{ 
+          width: '100%', 
+          height: '100%',
+          minHeight: 'clamp(240px, 30vh, 300px)',
+          padding: '0 clamp(0.5rem, 2vw, 1.5rem)',
+          boxSizing: 'border-box'
+        }}>
           {loading ? (
             <div style={{ color: 'var(--text-secondary)' }}>Carregando...</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" opacity={0.3} />
+              <LineChart data={target !== null ? data.map(d => ({ ...d, target })) : data} margin={{ top: 20, right: 10, left: 0, bottom: 20 }}>
+                <CartesianGrid 
+                  strokeDasharray="3 3" 
+                  stroke="rgba(148, 163, 184, 0.15)" 
+                  vertical={true}
+                  horizontal={true}
+                />
                 <XAxis dataKey="month" stroke="var(--text-secondary)" style={{ fontSize: '14px' }} />
                 <YAxis domain={[0, 10]} stroke="var(--text-secondary)" style={{ fontSize: '14px' }} />
                 <Tooltip 
@@ -211,13 +248,26 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
                     borderRadius: '8px',
                     padding: '8px 12px'
                   }}
-                  formatter={(value: any) => {
+                  formatter={(value: any, name: string) => {
                     if (typeof value === 'number') {
                       return value.toFixed(1);
                     }
                     return value;
                   }}
                 />
+                {/* Linha de Target */}
+                {target !== null && (
+                  <Line
+                    type="monotone"
+                    dataKey="target"
+                    stroke="#FFD600"
+                    strokeWidth={2}
+                    dot={false}
+                    legendType="none"
+                    name="Target"
+                    strokeDasharray="2 2"
+                  />
+                )}
                 {/* Linha de tendência da regressão */}
                 {regressionData && (
                   <Line

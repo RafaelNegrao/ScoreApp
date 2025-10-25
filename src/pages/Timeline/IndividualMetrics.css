@@ -3,11 +3,209 @@
   margin-top: 3rem;
   margin-bottom: 2rem;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(450px, 100%), 1fr));
   gap: 1.5rem;
   padding: 0;
   width: 100%;
   height: 100%;
+}
+
+/* Modo Compacto - 2 cards com navegação */
+.individual-metrics-compact-carousel {
+  margin-top: 2.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  width: 100%;
+}
+
+.individual-compact-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(400px, 1fr));
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 100%;
+  padding: 0 0.5rem;
+  animation: fadeSlideIn 0.4s ease-out;
+}
+
+.individual-compact-grid .metric-chart-card {
+  min-width: 400px;
+  width: 100%;
+  min-height: 350px;
+  padding: 2rem 1.5rem 1rem 1.5rem;
+  animation: slideUp 0.4s ease-out;
+  animation-fill-mode: both;
+}
+
+.individual-compact-grid .metric-chart-card:nth-child(1) {
+  animation-delay: 0.05s;
+}
+
+.individual-compact-grid .metric-chart-card:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.individual-metrics-carousel {
+  margin-top: 2.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  width: 100%;
+}
+
+.individual-carousel-button {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.individual-carousel-button svg {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.individual-carousel-button.prev svg {
+  animation: pulseLeft 2s ease-in-out infinite;
+}
+
+.individual-carousel-button.next svg {
+  animation: pulseRight 2s ease-in-out infinite;
+}
+
+.individual-carousel-button:hover {
+  color: var(--accent-primary);
+  transform: scale(1.08);
+}
+
+.individual-carousel-button.prev:hover svg {
+  animation: slideLeft 0.6s ease-in-out infinite;
+}
+
+.individual-carousel-button.next:hover svg {
+  animation: slideRight 0.6s ease-in-out infinite;
+}
+
+.individual-carousel-track {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+}
+
+.individual-carousel-slide {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  animation: fadeSlideIn 0.4s ease-out;
+}
+
+.individual-carousel-track .metric-chart-card {
+  max-width: 600px;
+  width: 95vw;
+  animation: slideUp 0.3s ease-out;
+}
+
+.individual-carousel-indicators {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.individual-carousel-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(148, 163, 184, 0.4);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.individual-carousel-dot.active {
+  background: var(--accent-primary);
+}
+
+.individual-carousel-dot:focus {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+@keyframes pulseLeft {
+  0%, 100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(-2px);
+    opacity: 0.7;
+  }
+}
+
+@keyframes pulseRight {
+  0%, 100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(2px);
+    opacity: 0.7;
+  }
+}
+
+@keyframes slideLeft {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-4px);
+  }
+}
+
+@keyframes slideRight {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+
+/* Animações de transição de página */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Metric Chart Card */
@@ -19,7 +217,9 @@
   flex-direction: column;
   border: 1px solid var(--border-color);
   transition: all 0.3s ease;
-  overflow: hidden;
+  overflow: visible;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .metric-chart-card:hover {
@@ -61,11 +261,99 @@
 
 /* Centraliza o PerformanceChart mais para baixo */
 .performance-chart-centered {
-  margin-top: 3rem;
+  margin-top: 2rem;
   margin-bottom: 2rem;
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 100%;
+  max-width: 100%;
+  height: min(560px, calc(100vh - 360px));
+  min-height: 360px;
+}
+
+.performance-chart-centered .metric-chart-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.performance-chart-centered .metric-chart-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Ajustes responsivos para Performance Chart */
+@media (max-width: 1024px) {
+  .performance-chart-centered {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    height: min(520px, calc(100vh - 320px));
+    min-height: 320px;
+  }
+
+  .individual-carousel-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 800px) {
+  .performance-chart-centered {
+    margin-top: 1.25rem;
+    margin-bottom: 1.25rem;
+    height: min(480px, calc(100vh - 300px));
+    min-height: 300px;
+  }
+
+  .individual-carousel-button {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+@media (max-width: 768px) {
+  .performance-chart-centered .metric-chart-card {
+    padding: 1rem 1rem 0 1rem;
+  }
+  
+  .performance-chart-centered > div > div {
+    padding: 0 0.75rem !important;
+  }
+  
+  .performance-chart-centered {
+    margin-bottom: 1rem;
+    height: min(460px, calc(100vh - 280px));
+    min-height: 280px;
+  }
+  
+  .individual-metrics-carousel {
+    margin-top: 2rem;
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .performance-chart-centered .metric-chart-card {
+    padding: 0.75rem 0.75rem 0 0.75rem;
+  }
+  
+  .performance-chart-centered > div > div {
+    padding: 0 0.5rem !important;
+  }
+  
+  .performance-chart-centered {
+    margin-bottom: 1rem;
+    height: min(420px, calc(100vh - 260px));
+    min-height: 260px;
+  }
+
+  .individual-carousel-button {
+    width: 34px;
+    height: 34px;
+  }
 }
 
 /* Regression Info Bar */
@@ -151,14 +439,47 @@
 }
 
 /* Responsive Design */
+@media (max-width: 1400px) {
+  .individual-metrics-container {
+    grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+    gap: 1.25rem;
+  }
+}
+
 @media (max-width: 1200px) {
+  .individual-metrics-container {
+    grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  
+  .performance-chart-centered {
+    margin-top: 2rem;
+  }
+}
+
+@media (max-width: 1000px) {
   .individual-metrics-container {
     grid-template-columns: 1fr;
     gap: 1rem;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
+  .individual-metrics-container {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 800px) {
+  .individual-metrics-container {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  
   .metric-chart-card {
     padding: 1rem;
   }
@@ -169,5 +490,307 @@
 
   .metric-chart-value {
     font-size: 1rem;
+  }
+  
+  .performance-chart-centered {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+  }
+  
+  .regression-info-bar {
+    padding: 0.5rem 0.75rem;
+  }
+  
+  .regression-info-content {
+    gap: 0.5rem;
+  }
+  
+  .regression-info-label {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .individual-metrics-container {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .metric-chart-card {
+    padding: 1rem;
+  }
+
+  .metric-chart-title {
+    font-size: 1rem;
+  }
+
+  .metric-chart-value {
+    font-size: 1rem;
+  }
+  
+  .performance-chart-centered {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+  }
+  
+  .regression-info-bar {
+    padding: 0.5rem 0.75rem;
+  }
+  
+  .regression-info-content {
+    gap: 0.5rem;
+  }
+  
+  .regression-info-label {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .individual-metrics-container {
+    gap: 0.85rem;
+    margin-top: 1.25rem;
+  }
+  
+  .metric-chart-card {
+    padding: 0.85rem;
+  }
+  
+  .metric-chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .metric-chart-title {
+    font-size: 0.95rem;
+  }
+  
+  .metric-chart-label {
+    font-size: 0.8rem;
+  }
+  
+  .metric-chart-value {
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .individual-metrics-container {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    gap: 0.75rem;
+  }
+  
+  .metric-chart-card {
+    padding: 0.75rem;
+  }
+  
+  .metric-chart-title {
+    font-size: 0.9rem;
+  }
+  
+  .performance-chart-centered {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .regression-info-bar {
+    padding: 0.4rem 0.5rem;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  
+  .regression-info-content {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    width: 100%;
+  }
+  
+  .regression-info-item {
+    gap: 0.25rem;
+  }
+  
+  .regression-info-label {
+    font-size: 0.65rem;
+  }
+  
+  .regression-trend {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+  }
+  
+  .regression-info-button {
+    width: 100%;
+    justify-content: center;
+    border-radius: 6px;
+    height: 32px;
+  }
+}
+
+/* Responsividade para escalas de zoom do sistema (DPI scaling) */
+/* Classes aplicadas dinamicamente via JavaScript */
+.individual-metrics-container.zoom-125 {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.individual-metrics-container.zoom-125 .metric-chart-card {
+  padding: 1rem;
+}
+
+.individual-metrics-container.zoom-125 .metric-chart-title {
+  font-size: 0.85rem;
+}
+
+.individual-metrics-container.zoom-125 .metric-chart-label {
+  font-size: 0.7rem;
+}
+
+.individual-metrics-container.zoom-125 .metric-chart-value {
+  font-size: 0.85rem;
+}
+
+.individual-metrics-container.zoom-125 .regression-info-label {
+  font-size: 0.6rem;
+}
+
+.individual-metrics-container.zoom-125 .regression-info-value {
+  font-size: 0.65rem;
+}
+
+.individual-metrics-container.zoom-150 {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.individual-metrics-container.zoom-150 .metric-chart-card {
+  padding: 0.85rem;
+}
+
+.individual-metrics-container.zoom-150 .metric-chart-title {
+  font-size: 0.75rem;
+}
+
+.individual-metrics-container.zoom-150 .metric-chart-label {
+  font-size: 0.65rem;
+}
+
+.individual-metrics-container.zoom-150 .metric-chart-value {
+  font-size: 0.75rem;
+}
+
+.individual-metrics-container.zoom-150 .metric-chart-header {
+  margin-bottom: 0.7rem;
+}
+
+.individual-metrics-container.zoom-150 .regression-info-bar {
+  padding: 0.3rem 0.45rem;
+}
+
+.individual-metrics-container.zoom-150 .regression-info-label {
+  font-size: 0.55rem;
+}
+
+.individual-metrics-container.zoom-150 .regression-info-value {
+  font-size: 0.6rem;
+}
+
+.individual-metrics-container.zoom-150 .regression-trend {
+  font-size: 0.55rem;
+  padding: 0.1rem 0.28rem;
+}
+
+.individual-metrics-container.zoom-150 .regression-info-button {
+  width: 22px;
+  height: 22px;
+}
+
+/* Escala 125% (120 DPI) - fallback para browsers que suportam resolution */
+@media (min-resolution: 120dpi) and (max-resolution: 144dpi) {
+  .individual-metrics-container {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.2rem;
+  }
+  
+  .metric-chart-card {
+    padding: 1rem;
+  }
+  
+  .metric-chart-title {
+    font-size: 0.85rem;
+  }
+  
+  .metric-chart-label {
+    font-size: 0.7rem;
+  }
+  
+  .metric-chart-value {
+    font-size: 0.85rem;
+  }
+  
+  .regression-info-label {
+    font-size: 0.6rem;
+  }
+  
+  .regression-info-value {
+    font-size: 0.65rem;
+  }
+}
+
+/* Escala 150% (144 DPI) */
+@media (min-resolution: 144dpi) {
+  .individual-metrics-container {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+  
+  .metric-chart-card {
+    padding: 0.9rem;
+  }
+  
+  .metric-chart-title {
+    font-size: 0.75rem;
+  }
+  
+  .metric-chart-label {
+    font-size: 0.65rem;
+  }
+  
+  .metric-chart-value {
+    font-size: 0.75rem;
+  }
+  
+  .metric-chart-header {
+    margin-bottom: 0.75rem;
+  }
+  
+  .regression-info-bar {
+    padding: 0.35rem 0.5rem;
+  }
+  
+  .regression-info-label {
+    font-size: 0.55rem;
+  }
+  
+  .regression-info-value {
+    font-size: 0.6rem;
+  }
+  
+  .regression-trend {
+    font-size: 0.55rem;
+    padding: 0.1rem 0.3rem;
+  }
+  
+  .regression-info-button {
+    width: 24px;
+    height: 24px;
   }
 }

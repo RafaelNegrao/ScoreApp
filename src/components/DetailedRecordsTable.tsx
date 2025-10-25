@@ -366,13 +366,13 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
         onSave={handleSaveComment}
       />
       
-      <div className="table-container" style={{
+      <div className="table-container yearly-table-wrapper" style={{
       overflowX: 'auto',
       overflowY: 'auto',
       maxHeight: 'calc(100vh - 350px)',
       position: 'relative'
     }}>
-      <table className="suppliers-table" style={{width:'100%', borderCollapse: 'collapse'}}>
+      <table className="yearly-view-table" style={{width:'100%', borderCollapse: 'collapse'}}>
         <thead style={{
           position: 'sticky',
           top: 0,
@@ -381,14 +381,14 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}>
           <tr>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'left', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Período</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>OTIF</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>NIL</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Pickup</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Package</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Total</th>
-            <th style={{position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', width: '100px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Comentário</th>
-            {!autoSave && <th style={{width: '60px', position: 'sticky', top: 0, backgroundColor: 'var(--section-bg)', padding: '12px 16px', textAlign: 'center', fontWeight: 600, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)'}}>Ações</th>}
+            <th>Período</th>
+            <th>OTIF</th>
+            <th>NIL</th>
+            <th>Pickup</th>
+            <th>Package</th>
+            <th>Total</th>
+            <th>Comments</th>
+            {!autoSave && <th>Ações</th>}
           </tr>
         </thead>
         <tbody>
@@ -408,12 +408,12 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
               const rowKey = `${rec.monthNumber}`;
               
               return (
-                <tr key={rec.month} style={{borderBottom: '1px solid var(--border-color)'}}>
-                  <td style={{padding: '10px 16px', color: 'var(--text-primary)'}}>{rec.month}</td>
-                  <td style={{padding: '10px 16px', textAlign: 'center'}}>
+                <tr key={rec.month}>
+                  <td className="month-cell">{rec.month}</td>
+                  <td>
                   <input 
                     type="number" 
-                    className={`score-input ${!canEdit('otif') ? 'readonly' : ''}`}
+                    className={`yearly-score-input ${!canEdit('otif') ? 'readonly' : ''}`}
                     min="0" 
                     max="10" 
                     step="0.1"
@@ -454,10 +454,10 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                     }}
                   />
                 </td>
-                <td style={{padding: '10px 16px', textAlign: 'center'}}>
+                <td>
                   <input 
                     type="number" 
-                    className={`score-input ${!canEdit('nil') ? 'readonly' : ''}`}
+                    className={`yearly-score-input ${!canEdit('nil') ? 'readonly' : ''}`}
                     min="0" 
                     max="10" 
                     step="0.1"
@@ -498,10 +498,10 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                     }}
                   />
                 </td>
-                <td style={{padding: '10px 16px', textAlign: 'center'}}>
+                <td>
                   <input 
                     type="number" 
-                    className={`score-input ${!canEdit('pickup') ? 'readonly' : ''}`}
+                    className={`yearly-score-input ${!canEdit('pickup') ? 'readonly' : ''}`}
                     min="0" 
                     max="10" 
                     step="0.1"
@@ -542,10 +542,10 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                     }}
                   />
                 </td>
-                <td style={{padding: '10px 16px', textAlign: 'center'}}>
+                <td>
                   <input 
                     type="number" 
-                    className={`score-input ${!canEdit('package') ? 'readonly' : ''}`}
+                    className={`yearly-score-input ${!canEdit('package') ? 'readonly' : ''}`}
                     min="0" 
                     max="10" 
                     step="0.1"
@@ -586,72 +586,37 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                     }}
                   />
                 </td>
-                <td style={{padding: '10px 16px', textAlign: 'center'}}>
-                  <b style={{color:'var(--accent-primary)', fontWeight: 600}}>
-                    {(() => {
-                      const total = inputValues.get(`${rowKey}-total`);
-                      if (!total || total === '') return '';
-                      const numValue = parseFloat(total);
-                      return isNaN(numValue) ? total : numValue.toFixed(2);
-                    })()}
-                  </b>
+                <td className="total-cell">
+                  {(() => {
+                    const total = inputValues.get(`${rowKey}-total`);
+                    if (!total || total === '') return '-';
+                    const numValue = parseFloat(total);
+                    return isNaN(numValue) ? total : numValue.toFixed(1);
+                  })()}
                 </td>
-                <td style={{padding: '10px 16px', textAlign: 'center'}}>
+                <td className="comment-cell">
                   <button
+                    className="comment-icon-btn"
                     onClick={() => openCommentModal(rec.monthNumber, rec.month)}
+                    title={inputValues.get(`${rowKey}-comments`) ? 'Ver/editar comentário' : 'Adicionar comentário'}
                     style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '4px 8px',
-                      fontSize: '1.1rem',
-                      transition: 'all 0.2s',
                       color: inputValues.get(`${rowKey}-comments`) ? 'var(--accent-primary)' : 'var(--text-muted)',
                       opacity: inputValues.get(`${rowKey}-comments`) ? 1 : 0.5
-                    }}
-                    title={inputValues.get(`${rowKey}-comments`) ? 'Ver/editar comentário' : 'Adicionar comentário'}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'scale(1.15)';
-                      e.currentTarget.style.opacity = '1';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'scale(1)';
-                      e.currentTarget.style.opacity = inputValues.get(`${rowKey}-comments`) ? '1' : '0.5';
                     }}
                   >
                     <i className="bi bi-chat-left-text-fill"></i>
                   </button>
                 </td>
                 {!autoSave && (
-                  <td style={{padding: '10px 16px', textAlign: 'center'}}>
+                  <td className="action-cell">
                     {modifiedRows.has(rowKey) && (
                       <button
-                        className="save-button"
+                        className="save-score-btn"
                         onClick={() => saveScore(rec.monthNumber)}
                         disabled={isSaving}
                         title="Salvar alterações"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: isSaving ? 'not-allowed' : 'pointer',
-                          padding: '4px 8px',
-                          color: '#3fa6ff',
-                          fontSize: '1.2rem',
-                          transition: 'all 0.2s',
-                          opacity: isSaving ? 0.5 : 1
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isSaving) {
-                            e.currentTarget.style.transform = 'scale(1.1)';
-                            e.currentTarget.style.color = '#5ab9ff';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'scale(1)';
-                          e.currentTarget.style.color = '#3fa6ff';
-                        }}
                       >
-                        <i className="bi bi-floppy" style={{pointerEvents: 'none'}}></i>
+                        <i className="bi bi-floppy"></i>
                       </button>
                     )}
                   </td>

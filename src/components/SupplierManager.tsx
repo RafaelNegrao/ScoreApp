@@ -284,18 +284,35 @@ function SupplierManager() {
                   <i className="bi bi-arrow-repeat spin"></i>
                 </div>
               )}
+              {suppliers.length > 0 && !isSearching && (
+                <span className="count-inside-input">{suppliers.length}</span>
+              )}
             </div>
-            {suppliers.length > 0 && (
-              <div className="supplier-count">
-                <span className="count-number">{suppliers.length}</span>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
       {/* Carousel de Fornecedores */}
-      {suppliers.length > 0 ? (
+      {isSearching ? (
+        <div className="supplier-carousel-container">
+          <div className="supplier-carousel">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="supplier-card skeleton-card">
+                <div className="supplier-card-header">
+                  <div className="skeleton skeleton-title"></div>
+                  <div className="skeleton skeleton-subtitle"></div>
+                </div>
+                <div className="supplier-card-body">
+                  <div className="skeleton skeleton-line"></div>
+                  <div className="skeleton skeleton-line"></div>
+                  <div className="skeleton skeleton-line"></div>
+                  <div className="skeleton skeleton-line"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : suppliers.length > 0 ? (
         <div className="supplier-carousel-container">
           <button className="carousel-nav carousel-nav-left" onClick={scrollLeft}>
             <i className="bi bi-chevron-left"></i>
@@ -623,21 +640,19 @@ function SupplierManager() {
             <i className="bi bi-chevron-right"></i>
           </button>
         </div>
-      ) : (
-        <div className="supplier-empty-state">
-          <i className="bi bi-shop"></i>
-          <p>Busque e edite fornecedores</p>
-          <span className="empty-state-hint">Use a busca acima para encontrar fornecedores</span>
-        </div>
-      )}
-
-
-
-      {searchQuery.trim().length >= 1 && suppliers.length === 0 && !isSearching && (
-        <div className="supplier-empty-state">
-          <i className="bi bi-inbox"></i>
-          <p>Nenhum fornecedor encontrado</p>
-        </div>
+      ) : !isSearching && (
+        searchQuery.trim().length >= 1 ? (
+          <div className="supplier-empty-state">
+            <i className="bi bi-inbox"></i>
+            <p>Nenhum fornecedor encontrado</p>
+          </div>
+        ) : (
+          <div className="supplier-empty-state">
+            <i className="bi bi-shop"></i>
+            <p>Busque e edite fornecedores</p>
+            <span className="empty-state-hint">Use a busca acima para encontrar fornecedores</span>
+          </div>
+        )
       )}
 
       {/* Botão Flutuante para Adicionar Fornecedor */}

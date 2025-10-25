@@ -9,15 +9,17 @@
   align-items: center;
   padding: 0 2rem;
   justify-content: center;
+  flex-wrap: nowrap;
 }
 
 .search-container {
   flex: 1;
   max-width: 900px;
+  min-width: 200px;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: var(--input-bg);
+  background: #e5e7eb;
   padding: 0.75rem 1rem;
   border-radius: 8px;
   border: 2px solid transparent;
@@ -33,7 +35,7 @@
 
 .timeline-search {
   flex: 1;
-  background: transparent;
+  background: #e5e7eb;
   border: none;
   outline: none;
   color: var(--text-primary);
@@ -76,6 +78,7 @@
 .year-select-wrapper {
   position: relative;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .year-select {
@@ -85,7 +88,7 @@
   padding: 12px 36px 12px 16px;
   border: none !important;
   border-radius: 8px;
-  background: var(--input-bg) !important;
+  background: #e5e7eb !important;
   background-image: none !important;
   color: var(--text-primary);
   font-size: 15px;
@@ -97,6 +100,7 @@
   height: 48px;
   box-sizing: border-box;
   box-shadow: none !important;
+  white-space: nowrap;
 }
 
 .year-select:hover,
@@ -104,6 +108,7 @@
 .year-select:focus-visible,
 .year-select:active {
   outline: none !important;
+  background: #e5e7eb !important;
   border: none !important;
   background: var(--input-bg) !important;
   box-shadow: none !important;
@@ -141,7 +146,7 @@
   padding: 0.75rem 1.5rem 0.75rem 1rem;
   border: none;
   border-radius: 8px;
-  background: var(--input-bg);
+  background: #e5e7eb;
   color: var(--text-primary);
   font-size: 15px;
   font-weight: 500;
@@ -156,7 +161,7 @@
 .timeline-filters .filter-select:focus-visible,
 .timeline-filters .filter-select:active {
   outline: none;
-  background: var(--input-bg);
+  background: #e5e7eb;
 }
 
 /* Tabs Navigation - Estilo Score */
@@ -375,6 +380,17 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Padding extra quando mostrando gráficos com barra de regressão */
+.timeline-content:has(.performance-chart-centered) {
+  padding-bottom: 12rem;
+}
+
+.timeline-content:has(.individual-metrics-container) {
+  padding-bottom: 8rem;
 }
 
 .empty-state {
@@ -414,6 +430,73 @@
 }
 
 /* Responsive Design */
+@media (max-width: 1024px) {
+  .timeline-filters {
+    padding: 0 1.5rem;
+    gap: 0.75rem;
+  }
+  
+  .search-container {
+    min-width: 180px;
+  }
+  
+  .timeline-tabs {
+    padding: 0 1.5rem;
+  }
+  
+  .timeline-content {
+    padding: 1.5rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .timeline-filters {
+    padding: 0 1.25rem;
+    gap: 0.5rem;
+  }
+  
+  .search-container {
+    min-width: 150px;
+  }
+  
+  .year-select {
+    min-width: 90px;
+    padding: 12px 32px 12px 12px;
+  }
+  
+  .timeline-tabs {
+    padding: 0 1.25rem;
+  }
+  
+  .timeline-content {
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 800px) {
+  .timeline-filters {
+    padding: 0 1rem;
+    gap: 0.5rem;
+  }
+  
+  .search-container {
+    min-width: 120px;
+  }
+  
+  .year-select {
+    min-width: 85px;
+    font-size: 14px;
+  }
+  
+  .timeline-tabs {
+    padding: 0 1rem;
+  }
+  
+  .timeline-content {
+    padding: 1rem;
+  }
+}
+
 @media (max-width: 768px) {
   .timeline-header {
     padding: 0 1rem;
@@ -424,12 +507,36 @@
     flex-direction: column;
     align-items: stretch;
     padding: 0 1rem;
+    gap: 0.75rem;
+  }
+  
+  .search-container {
+    max-width: 100%;
+    min-width: 100%;
+  }
+  
+  .year-select-wrapper {
+    width: 100%;
+  }
+  
+  .year-select {
+    width: 100%;
   }
 
   .timeline-tabs {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     padding: 0 1rem;
+    scrollbar-width: thin;
+  }
+  
+  .timeline-tabs::-webkit-scrollbar {
+    height: 4px;
+  }
+  
+  .timeline-tabs::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
   }
 
   .timeline-tab {
@@ -438,7 +545,7 @@
   }
 
   .timeline-content {
-    padding: 1.5rem 1rem;
+    padding: 1rem;
   }
 
   .empty-state {
@@ -449,5 +556,61 @@
     font-size: 0.95rem;
     font-weight: 400;
     opacity: 0.85;
+  }
+}
+
+@media (max-width: 480px) {
+  .timeline-filters {
+    padding: 0 0.75rem;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .search-container {
+    padding: 0.6rem 0.85rem;
+    height: 44px;
+  }
+  
+  .timeline-search {
+    font-size: 14px;
+  }
+  
+  .year-select {
+    height: 44px;
+    font-size: 14px;
+    padding: 10px 32px 10px 14px;
+  }
+  
+  .timeline-tabs {
+    padding: 0 0.75rem;
+    gap: 4px;
+  }
+  
+  .timeline-tab {
+    padding: 10px 12px;
+    font-size: 13px;
+    gap: 6px;
+  }
+  
+  .timeline-tab svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .timeline-content {
+    padding: 0.75rem;
+  }
+  
+  .empty-state {
+    padding: 2rem 0.75rem;
+  }
+  
+  .empty-state svg,
+  .empty-state i {
+    font-size: 2.5rem;
+  }
+  
+  .empty-state p {
+    font-size: 0.9rem;
   }
 }

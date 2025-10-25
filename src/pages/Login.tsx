@@ -298,7 +298,7 @@ function Login({ onLogin }: LoginProps) {
                       type="text"
                       id="username"
                       value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      onChange={(e) => setUsername(e.target.value.toUpperCase())}
                       placeholder=""
                       required
                       disabled={loading}
@@ -370,7 +370,7 @@ function Login({ onLogin }: LoginProps) {
                       type="text"
                       id="signup-wwid"
                       value={signupWwid}
-                      onChange={(e) => setSignupWwid(e.target.value)}
+                      onChange={(e) => setSignupWwid(e.target.value.toUpperCase())}
                       placeholder=""
                       required
                       disabled={loading}

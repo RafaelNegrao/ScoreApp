@@ -1,3 +1,9 @@
+/* Ajuste para o formulário de campo único se adaptar ao conteúdo interno */
+.lists-management.single-field .lists-form-panel {
+  height: fit-content !important;
+  max-height: none !important;
+  overflow-y: visible !important;
+}
 /* ==================== ANIMAÇÕES ==================== */
 
 @keyframes spin {
@@ -91,8 +97,7 @@
   gap: 24px;
   animation: fadeIn 0.4s ease;
   height: 100%;
-  overflow-y: auto;
-  padding-right: 8px;
+  overflow: hidden;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(128, 128, 128, 0.3) transparent;
@@ -127,7 +132,31 @@
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  min-height: 0;
   height: fit-content;
+  overflow-y: visible;
+  display: flex;
+  flex-direction: column;
+  
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.3) transparent;
+}
+
+.lists-form-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lists-form-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lists-form-panel::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 3px;
+}
+
+.lists-form-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
 }
 
 .list-form-header {
@@ -186,6 +215,29 @@
   background: var(--input-bg);
 }
 
+/* Form Field with Button */
+.form-field-with-button {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.form-field-with-button .form-field {
+  flex: 1;
+}
+
+.form-field-with-button .list-btn-primary.add-btn {
+  flex: 0 0 auto;
+  min-width: 140px;
+  height: 44px;
+  margin-bottom: 0;
+  padding: 12px 16px;
+}
+
+.form-field.flex-1 {
+  flex: 1;
+}
+
 /* Form Actions */
 .form-actions {
   display: flex;
@@ -237,6 +289,7 @@
   background: transparent;
   border-radius: 14px;
   overflow: hidden;
+  height: 100%;
   max-height: 100%;
 }
 
@@ -277,6 +330,7 @@
   gap: 16px;
   padding: 0;
   overflow-y: auto;
+  flex: 1;
   
   scrollbar-width: thin;
   scrollbar-color: rgba(128, 128, 128, 0.3) transparent;

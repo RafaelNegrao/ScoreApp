@@ -97,7 +97,6 @@ function ThreeFieldList({ type, title }: { type: string; title: string }) {
       <div className="lists-form-panel">
         <div className="list-form-header">
           <h4>{editingName ? 'Editar Item' : 'Novo Item'}</h4>
-          <span>Preencha os campos abaixo</span>
         </div>
 
         <form className="list-form" onSubmit={handleSubmit}>
@@ -123,29 +122,31 @@ function ThreeFieldList({ type, title }: { type: string; title: string }) {
             />
           </div>
 
-          <div className="form-field">
-            <label>Alias</label>
-            <input
-              type="text"
-              value={formData.alias}
-              onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
-              placeholder="Digite o alias"
-              required
-            />
-          </div>
-
-          <div className="form-actions">
-            <button type="submit" className="list-btn-primary">
+          <div className="form-field-with-button">
+            <div className="form-field flex-1">
+              <label>Alias</label>
+              <input
+                type="text"
+                value={formData.alias}
+                onChange={(e) => setFormData({ ...formData, alias: e.target.value.toUpperCase() })}
+                placeholder="Digite o alias"
+                required
+              />
+            </div>
+            <button type="submit" className="list-btn-primary add-btn">
               <i className={`bi ${editingName ? 'bi-check-lg' : 'bi-plus-lg'}`}></i>
               {editingName ? 'Atualizar' : 'Adicionar'}
             </button>
-            {editingName && (
+          </div>
+
+          {editingName && (
+            <div className="form-actions">
               <button type="button" className="list-btn-secondary" onClick={handleCancel}>
                 <i className="bi bi-x-lg"></i>
                 Cancelar
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </form>
       </div>
 
@@ -270,7 +271,6 @@ function SingleFieldList({ type, title, fieldLabel }: { type: string; title: str
       <div className="lists-form-panel">
         <div className="list-form-header">
           <h4>{editingName ? 'Editar' : 'Novo'} {fieldLabel}</h4>
-          <span>Preencha o campo abaixo</span>
         </div>
 
         <form className="list-form" onSubmit={handleSubmit}>

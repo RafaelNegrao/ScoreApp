@@ -1,3 +1,12 @@
+/* Título da página de Gestão de Riscos */
+.risk-page-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  margin-top: 8px;
+  letter-spacing: 0.5px;
+}
 /* Risks Page Styles */
 
 /* Header da página Risks */
@@ -50,7 +59,7 @@
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background: var(--bg-primary);
+  background: var(--section-bg) !important;
   border: none;
   border-radius: 8px;
   padding: 12px 36px 12px 16px;
@@ -86,8 +95,8 @@
 /* Cards Grid */
 .risk-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
   padding-bottom: 40px;
   max-height: calc(100vh - 220px);
   overflow-y: auto;
@@ -116,12 +125,12 @@
 .risk-card {
   background: var(--section-bg);
   border: none;
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 12px;
+  padding: 20px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   cursor: pointer;
 }
@@ -135,8 +144,8 @@
 .risk-card-header {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 4px;
+  gap: 8px;
+  margin-bottom: 2px;
 }
 
 .risk-card-title-row {
@@ -144,12 +153,28 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+}
+
+.risk-card-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.risk-mini-chart {
+  width: 120px;
+  height: 60px;
+  flex-shrink: 0;
+  margin-left: auto;
+  pointer-events: none;
 }
 
 .risk-card-title-row h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   flex: 1;
@@ -159,7 +184,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 280px;
+  max-width: 240px;
 }
 
 /* Chart Button */
@@ -190,7 +215,7 @@
 }
 
 .risk-score-large {
-  font-size: 40px;
+  font-size: 32px;
   font-weight: 700;
   line-height: 1;
   flex-shrink: 0;

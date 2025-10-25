@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { TrendingUp, TrendingDown, BarChart2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { BarChart, Bar, ReferenceLine, ResponsiveContainer, Cell } from "recharts";
 import "../pages/Page.css";
 import "./Score.css";
 import "./Risks.css";
@@ -17,6 +18,7 @@ interface RiskSupplier {
   q2: number | null;
   q3: number | null;
   q4: number | null;
+  monthly_scores?: number[];
 }
 
 /**
@@ -57,7 +59,36 @@ function Risks() {
         target: target,
       });
       console.log('📊 Fornecedores em risco carregados:', data);
-      setSuppliers(data);
+      
+      // Buscar dados mensais para cada fornecedor
+      const suppliersWithMonthly = await Promise.all(
+        data.map(async (supplier) => {
+          try {
+            const records = await invoke<any[]>("get_supplier_score_records", {
+              supplierId: supplier.supplier_id,
+            });
+            
+            // Filtrar pelo ano selecionado e criar array de 12 meses
+            const monthlyScores = Array(12).fill(null);
+            records
+              .filter((r) => r.year === selectedYear.toString())
+              .forEach((record) => {
+                const monthIndex = parseInt(record.month) - 1;
+                const score = record.total_score ? parseFloat(record.total_score) : null;
+                if (monthIndex >= 0 && monthIndex < 12 && score !== null) {
+                  monthlyScores[monthIndex] = score;
+                }
+              });
+            
+            return { ...supplier, monthly_scores: monthlyScores };
+          } catch (error) {
+            console.error(`Erro ao buscar dados mensais para ${supplier.supplier_id}:`, error);
+            return { ...supplier, monthly_scores: Array(12).fill(null) };
+          }
+        })
+      );
+      
+      setSuppliers(suppliersWithMonthly);
     } catch (error) {
       console.error("Erro ao carregar fornecedores em risco:", error);
       setSuppliers([]);
@@ -89,6 +120,7 @@ function Risks() {
 
   return (
     <div className="page-container">
+
       {/* Header - Meta e Controles */}
       <div className="risk-page-header">
         {/* Seletor de Ano */}
@@ -106,7 +138,11 @@ function Risks() {
           </select>
           <i className="bi bi-chevron-down select-icon"></i>
         </div>
-        
+
+        {/* Espaço flexível para empurrar o target para o canto oposto */}
+        <div style={{ flex: 1 }} />
+
+        {/* Card de Target no canto oposto */}
         <div className="risk-meta-badge">
           <i className="bi bi-bullseye"></i>
           <span>Meta: <strong>{target.toFixed(2)}</strong></span>
@@ -147,11 +183,41 @@ function Risks() {
                       {supplier.avg_score.toFixed(2)}
                     </div>
                   </div>
-                  <div className="risk-card-info-stacked">
-                    <span>BU: {supplier.bu || "N/A"}</span>
-                    <span>PO: {supplier.po || "N/A"}</span>
-                    <span>SSID: {supplier.ssid || "N/A"}</span>
-                    <span>ID: {supplier.supplier_id}</span>
+
+                  <div className="risk-card-content">
+                    <div className="risk-card-info-stacked">
+                      <span>BU: {supplier.bu || "N/A"}</span>
+                      <span>PO: {supplier.po || "N/A"}</span>
+                      <span>SSID: {supplier.ssid || "N/A"}</span>
+                      <span>ID: {supplier.supplier_id}</span>
+                    </div>
+
+                    {/* Mini Chart */}
+                    <div className="risk-mini-chart">
+                      <ResponsiveContainer width="100%" height={60}>
+                        <BarChart 
+                          data={
+                            supplier.monthly_scores 
+                              ? supplier.monthly_scores.map((score, index) => ({
+                                  month: index + 1,
+                                  score: score
+                                }))
+                              : []
+                          }
+                          margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+                        >
+                          <ReferenceLine y={target} stroke="rgba(128, 128, 128, 0.3)" strokeDasharray="3 3" strokeWidth={1} />
+                          <Bar dataKey="score" radius={[2, 2, 0, 0]}>
+                            {supplier.monthly_scores?.map((score, index) => (
+                              <Cell 
+                                key={`cell-${index}`} 
+                                fill={score !== null && score >= target ? "rgba(34, 197, 94, 0.5)" : "rgba(239, 68, 68, 0.5)"} 
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
 

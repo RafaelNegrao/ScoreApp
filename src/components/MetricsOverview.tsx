@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import { TrendingUp, TrendingDown, Calendar, CalendarRange, CalendarCheck } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, CalendarRange, CalendarCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import './MetricsOverview.css';
 
 interface MetricsOverviewProps {
@@ -35,6 +35,22 @@ interface MetricsData {
 const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedYear }) => {
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+
+  // Detectar zoom do sistema Windows
+  useEffect(() => {
+    const detectZoom = () => {
+      const zoom = Math.round((window.outerWidth / window.innerWidth) * 100);
+      console.log('MetricsOverview - Zoom detectado:', zoom, '%');
+      setZoomLevel(zoom);
+    };
+    
+    detectZoom();
+    window.addEventListener('resize', detectZoom);
+    
+    return () => window.removeEventListener('resize', detectZoom);
+  }, []);
 
   useEffect(() => {
     if (!supplierId) {
@@ -57,7 +73,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       const calculatedMetrics = calculateMetrics(records, selectedYear);
       setMetrics(calculatedMetrics);
     } catch (error) {
-      console.error('Erro ao carregar métricas:', error);
+  console.error('Erro ao carregar metrics:', error);
       setMetrics(null);
     } finally {
       setLoading(false);
@@ -161,11 +177,19 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     };
   };
 
+  const handlePrevCard = () => {
+    setCurrentCardIndex((prev) => (prev === 0 ? 2 : prev - 1));
+  };
+
+  const handleNextCard = () => {
+    setCurrentCardIndex((prev) => (prev === 2 ? 0 : prev + 1));
+  };
+
   if (!supplierId) {
     return (
       <div className="metrics-empty-state">
         <i className="bi bi-bar-chart-fill" style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.5 }}></i>
-        <p>Selecione um fornecedor para visualizar as métricas</p>
+  <p>Selecione um fornecedor para visualizar as metrics</p>
       </div>
     );
   }
@@ -174,7 +198,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     return (
       <div className="metrics-loading">
         <div className="spinner"></div>
-        <p>Carregando métricas...</p>
+  <p>Carregando metrics...</p>
       </div>
     );
   }
@@ -193,48 +217,97 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       <div className="metrics-section">
         <h2 className="metrics-title">
           <i className="bi bi-bar-chart-fill"></i>
-          Visão Geral das Métricas
+          Visão Geral das Metrics
         </h2>
         
         {/* Cards superiores - Médias gerais */}
-        <div className="metrics-top-cards">
-          <div className="metric-card">
-            <div className="metric-icon">
-              <i className="bi bi-bar-chart-fill"></i>
+        {zoomLevel >= 120 ? (
+          // Modo Carousel para zoom >= 120%
+          <div className="metrics-carousel-section">
+            <button className="metrics-carousel-btn" onClick={handlePrevCard}>
+              <ChevronLeft size={24} />
+            </button>
+            
+            <div className="metrics-carousel-wrapper">
+              <div className={`metrics-carousel-card metric-card ${currentCardIndex === 0 ? 'center' : currentCardIndex === 1 ? 'left' : 'right'}`}>
+                <div className="metric-icon">
+                  <i className="bi bi-bar-chart-fill"></i>
+                </div>
+                <div className="metric-content">
+                  <div className="metric-label">Overall Average</div>
+                  <div className="metric-value">{metrics.overallAverage}</div>
+                  <div className="metric-description">Média Geral</div>
+                </div>
+              </div>
+
+              <div className={`metrics-carousel-card metric-card ${currentCardIndex === 1 ? 'center' : currentCardIndex === 2 ? 'left' : 'right'}`}>
+                <div className="metric-icon">
+                  <CalendarRange size={24} />
+                </div>
+                <div className="metric-content">
+                  <div className="metric-label">12 Months Avg</div>
+                  <div className="metric-value">{metrics.twelveMonthsAverage}</div>
+                  <div className="metric-description">Últimos 12 meses</div>
+                </div>
+              </div>
+
+              <div className={`metrics-carousel-card metric-card ${currentCardIndex === 2 ? 'center' : currentCardIndex === 0 ? 'left' : 'right'}`}>
+                <div className="metric-icon">
+                  <CalendarCheck size={24} />
+                </div>
+                <div className="metric-content">
+                  <div className="metric-label">Year Average</div>
+                  <div className="metric-value">{metrics.yearAverage}</div>
+                  <div className="metric-description">Média do ano</div>
+                </div>
+              </div>
             </div>
-            <div className="metric-content">
-              <div className="metric-label">Overall Average</div>
-              <div className="metric-value">{metrics.overallAverage}</div>
-              <div className="metric-description">Média Geral</div>
+            
+            <button className="metrics-carousel-btn" onClick={handleNextCard}>
+              <ChevronRight size={24} />
+            </button>
+          </div>
+        ) : (
+          // Modo Grid normal
+          <div className="metrics-top-cards">
+            <div className="metric-card">
+              <div className="metric-icon">
+                <i className="bi bi-bar-chart-fill"></i>
+              </div>
+              <div className="metric-content">
+                <div className="metric-label">Overall Average</div>
+                <div className="metric-value">{metrics.overallAverage}</div>
+                <div className="metric-description">Média Geral</div>
+              </div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-icon">
+                <CalendarRange size={24} />
+              </div>
+              <div className="metric-content">
+                <div className="metric-label">12 Months Avg</div>
+                <div className="metric-value">{metrics.twelveMonthsAverage}</div>
+                <div className="metric-description">Últimos 12 meses</div>
+              </div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-icon">
+                <CalendarCheck size={24} />
+              </div>
+              <div className="metric-content">
+                <div className="metric-label">Year Average</div>
+                <div className="metric-value">{metrics.yearAverage}</div>
+                <div className="metric-description">Média do ano</div>
+              </div>
             </div>
           </div>
+        )}
 
-          <div className="metric-card">
-            <div className="metric-icon">
-              <CalendarRange size={24} />
-            </div>
-            <div className="metric-content">
-              <div className="metric-label">12 Months Avg</div>
-              <div className="metric-value">{metrics.twelveMonthsAverage}</div>
-              <div className="metric-description">Últimos 12 meses</div>
-            </div>
-          </div>
-
-          <div className="metric-card">
-            <div className="metric-icon">
-              <CalendarCheck size={24} />
-            </div>
-            <div className="metric-content">
-              <div className="metric-label">Year Average</div>
-              <div className="metric-value">{metrics.yearAverage}</div>
-              <div className="metric-description">Média do ano</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Cards inferiores - Métricas trimestrais */}
+  {/* Cards inferiores - Metrics trimestrais */}
         <div className="metrics-section-title">
-          <h3>Métricas Trimestrais</h3>
+          <h3>Metrics Trimestrais</h3>
         </div>
 
         <div className="metrics-quarterly-cards">
