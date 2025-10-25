@@ -112,9 +112,9 @@
 .search-input {
   width: 100%;
   padding: 12px 80px 12px 16px;
-  border: 2px solid transparent;
+  border: none;
   border-radius: 8px;
-  background: #e5e7eb;
+  background: var(--input-bg);
   color: var(--text-primary);
   font-size: 15px;
   transition: all 0.3s ease;
@@ -124,7 +124,6 @@
 
 .search-input:focus {
   outline: none;
-  border-color: var(--accent-primary);
   box-shadow: none;
 }
 
@@ -175,30 +174,27 @@
   -webkit-appearance: none;
   -moz-appearance: none;
   padding: 12px 36px 12px 16px;
-  border: none !important;
+  border: none;
   border-radius: 8px;
-  background: #e5e7eb !important;
-  background-image: none !important;
+  background: var(--input-bg);
+  background-image: none;
   color: var(--text-primary);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
-  transition: none;
+  transition: all 0.2s ease;
   min-width: 100px;
-  outline: none !important;
+  outline: none;
   height: 48px;
   box-sizing: border-box;
-  box-shadow: none !important;
 }
 
 .filter-select:hover,
 .filter-select:focus,
 .filter-select:focus-visible,
 .filter-select:active {
-  outline: none !important;
-  border: none !important;
-  background: #e5e7eb !important;
-  box-shadow: none !important;
+  outline: none;
+  background: var(--input-bg);
 }
 
 .filter-select::-moz-focus-inner {
@@ -2421,3 +2417,15 @@ input:checked + .slider:before {
   }
 }
 
+/* Tema Branco - Cor específica para campos de pesquisa */
+[data-theme="cummins"] .search-input,
+[data-theme="cummins"] .filter-select {
+  background: #ededed !important;
+}
+
+[data-theme="cummins"] .filter-select:hover,
+[data-theme="cummins"] .filter-select:focus,
+[data-theme="cummins"] .filter-select:focus-visible,
+[data-theme="cummins"] .filter-select:active {
+  background: #ededed !important;
+}
