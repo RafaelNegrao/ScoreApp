@@ -1,2 +1,5 @@
 #define RT_MANIFEST 24
 1 RT_MANIFEST "app.manifest"
+
+// Application Icon
+1 ICON "icons\\cummins.ico"

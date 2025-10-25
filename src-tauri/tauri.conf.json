@@ -80,7 +80,7 @@
         "resizable": true,
         "title": "Score App",
         "width": 1200,
-        "minWidth": 1200,
+        "minWidth": 800,
         "minHeight": 500,
         "decorations": false,
         "transparent": true,

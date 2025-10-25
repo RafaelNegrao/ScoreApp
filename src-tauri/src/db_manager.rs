@@ -38,6 +38,7 @@ pub struct ScoreRecord {
     pub nil: Option<f64>,
     pub quality_pickup: Option<f64>,
     pub quality_package: Option<f64>,
+    pub total_score: Option<f64>,
 }
 
 /// Estrutura para critério de avaliação
@@ -1127,7 +1128,7 @@ impl DatabaseManager {
 
         let conn = conn_guard.as_ref().unwrap();
         
-        let query = "SELECT supplier_id, month, year, otif, nil, quality_pickup, quality_package
+        let query = "SELECT supplier_id, month, year, otif, nil, quality_pickup, quality_package, total_score
                      FROM supplier_score_records_table 
                      WHERE lower(trim(supplier_id)) = lower(trim(?1))
                      ORDER BY year, month";
@@ -1157,6 +1158,7 @@ impl DatabaseManager {
             let nil = get_score(4);
             let quality_pickup = get_score(5);
             let quality_package = get_score(6);
+            let total_score = get_score(7);
             
             // Converte month para número
             let month_num: i32 = month_str.parse().unwrap_or(1);
@@ -1169,6 +1171,7 @@ impl DatabaseManager {
                 nil,
                 quality_pickup,
                 quality_package,
+                total_score,
             })
         })
         .map_err(|e| format!("Erro ao executar query: {}", e))?
