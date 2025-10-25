@@ -6,6 +6,7 @@ import SupplierManager from "../components/SupplierManager";
 import PrivilegesManager from "../components/PrivilegesManager";
 import Users from "./Users";
 import Lists from "./Lists";
+import LogsTable from "../components/LogsTable";
 import { ToastContainer } from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
 import { usePermissions } from "../contexts/PermissionsContext";
@@ -444,16 +445,7 @@ function Settings() {
           {/* TAB: LOG */}
           {activeTab === 'log' && permissions.canAccessLog && (
             <div className="tab-content">
-              <div className="settings-section">
-                <h3><i className="bi bi-clock-history"></i> System Log</h3>
-                <p className="section-description">Histórico de atividades do sistema</p>
-                
-                <div className="empty-state">
-                  <i className="bi bi-inbox"></i>
-                  <p>Logs do sistema</p>
-                  <small>Em desenvolvimento</small>
-                </div>
-              </div>
+              <LogsTable />
             </div>
           )}
 

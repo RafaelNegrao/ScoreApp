@@ -1,0 +1,19 @@
+.yearly-cards-grid {
+  position: relative;
+  min-height: 200px;
+}
+
+.yearly-cards-fade {
+  animation: fadePage 0.4s;
+}
+
+@keyframes fadePage {
+  0% {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

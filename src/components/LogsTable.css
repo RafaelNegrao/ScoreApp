@@ -1,0 +1,242 @@
+.logs-delete-btn {
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.logs-delete-btn i {
+  font-size: 1.3rem;
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.logs-delete-btn:hover i {
+  color: var(--error);
+}
+.logs-table-container {
+  padding: 20px;
+  background: var(--background-secondary);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: calc(100vh - 180px);
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+  flex-shrink: 0;
+  padding: 16px;
+  background: var(--background-primary);
+  border-radius: 8px;
+}
+
+.logs-header h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.5rem;
+}
+
+.logs-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.logs-search {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 8px;
+  background: var(--section-bg);
+  color: var(--text-primary);
+  font-size: 14px;
+  min-width: 280px;
+  transition: all 0.2s;
+}
+
+.logs-search:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+.logs-loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+.logs-table-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  background: var(--background-primary);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  flex: 1;
+  border: 1px solid var(--border-color);
+}
+
+.logs-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 1400px;
+}
+
+.logs-table thead {
+  background: var(--section-bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.logs-table th {
+  padding: 14px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--section-bg);
+  border-bottom: 2px solid var(--border-color);
+  font-size: 13px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+
+.logs-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 13px;
+  background: var(--background-primary);
+}
+
+.logs-table tbody tr {
+  transition: background 0.2s;
+}
+
+.logs-table tbody tr:hover {
+  background: var(--background-secondary);
+}
+
+.logs-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.no-logs {
+  text-align: center;
+  padding: 40px !important;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.event-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-icon {
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+.log-value {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Paginação */
+.logs-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.pagination-btn,
+.pagination-nav {
+  padding: 8px 12px;
+  border: none;
+  background: var(--section-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  min-width: 40px;
+}
+
+.pagination-btn:hover:not(.active),
+.pagination-nav:hover:not(:disabled) {
+  background: var(--background-primary);
+  transform: translateY(-1px);
+}
+
+.pagination-btn.active {
+  background: var(--primary-color);
+  color: white;
+  font-weight: 600;
+}
+
+.pagination-nav:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-dots {
+  color: var(--text-secondary);
+  padding: 0 5px;
+}
+
+.logs-info {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .logs-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .logs-controls {
+    flex-direction: column;
+  }
+
+  .logs-search {
+    width: 100%;
+  }
+
+  .logs-pagination {
+    gap: 4px;
+  }
+
+  .pagination-btn,
+  .pagination-nav {
+    padding: 6px 10px;
+    font-size: 12px;
+    min-width: 35px;
+  }
+}

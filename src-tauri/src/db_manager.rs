@@ -1,3 +1,16 @@
+// ...existing code...
+
+impl DatabaseManager {
+    /// Deleta todos os registros da tabela de logs
+    pub fn delete_all_logs() -> Result<(), String> {
+        println!("\n⚠️ Deletando todos os registros da tabela log_table...");
+        let conn_guard = Self::get_connection()?;
+        let conn = conn_guard.as_ref().ok_or_else(|| "Conexão não inicializada".to_string())?;
+        conn.execute("DELETE FROM log_table", []).map_err(|e| format!("Erro ao deletar logs: {}", e))?;
+        println!("✅ Todos os registros da tabela log_table foram excluídos.");
+        Ok(())
+    }
+}
 use rusqlite::{Connection, Result as SqlResult, OptionalExtension};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -116,6 +129,22 @@ pub struct SupplierUpdate {
 // comment -> comments
 // month/year são TEXT no banco
 
+/// Estrutura para registro de log
+#[derive(Debug, Serialize, Clone)]
+pub struct LogEntry {
+    pub log_id: i32,
+    pub date: String,
+    pub time: String,
+    pub user: String,
+    pub event: String,
+    pub wwid: String,
+    pub place: String,
+    pub supplier: Option<String>,
+    pub score_date: Option<String>,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+}
+
 /// Estrutura para informações do usuário
 #[derive(Debug, Serialize, Clone)]
 pub struct UserInfo {
@@ -197,6 +226,9 @@ impl DatabaseManager {
                 if is_new_db {
                     drop(db); // Libera o lock antes de chamar outras funções
                     Self::create_initial_structure()?;
+                } else {
+                    drop(db); // Libera o lock antes de chamar a migração
+                    Self::migrate_database()?;
                 }
                 
                 println!("✅ Banco de dados pronto para uso!");
@@ -223,7 +255,7 @@ impl DatabaseManager {
         
         // Criar tabela de usuários
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS users (
+            "CREATE TABLE IF NOT EXISTS users_table (
                 user_id TEXT PRIMARY KEY,
                 user_name TEXT NOT NULL,
                 user_email TEXT UNIQUE NOT NULL,
@@ -236,7 +268,7 @@ impl DatabaseManager {
                 user_permissions_package TEXT
             )",
             [],
-        ).map_err(|e| format!("Erro ao criar tabela users: {}", e))?;
+        ).map_err(|e| format!("Erro ao criar tabela users_table: {}", e))?;
         
         // Criar tabela de fornecedores
         conn.execute(
@@ -313,6 +345,73 @@ impl DatabaseManager {
         
         println!("✅ Estrutura inicial criada com sucesso!");
         Ok(())
+    }
+
+    /// Migra o banco de dados existente para nova estrutura
+    fn migrate_database() -> Result<(), String> {
+        println!("🔄 Verificando se é necessário migrar banco de dados...");
+        
+        let conn_guard = Self::get_connection()?;
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+        let conn = conn_guard.as_ref().unwrap();
+        
+        // Verificar se a coluna supplier existe na log_table
+        let has_supplier_column = Self::log_table_has_column(conn, "supplier")?;
+        
+        if !has_supplier_column {
+            println!("📝 Adicionando coluna 'supplier' na tabela log_table...");
+            conn.execute(
+                "ALTER TABLE log_table ADD COLUMN supplier TEXT",
+                [],
+            ).map_err(|e| format!("Erro ao adicionar coluna supplier: {}", e))?;
+            println!("✅ Coluna 'supplier' adicionada com sucesso!");
+        } else {
+            println!("✅ Coluna 'supplier' já existe na log_table");
+        }
+        
+        // Verificar se a coluna score_date existe na log_table
+        let has_score_date_column = Self::log_table_has_column(conn, "score_date")?;
+        
+        if !has_score_date_column {
+            println!("📝 Adicionando coluna 'score_date' na tabela log_table...");
+            conn.execute(
+                "ALTER TABLE log_table ADD COLUMN score_date TEXT",
+                [],
+            ).map_err(|e| format!("Erro ao adicionar coluna score_date: {}", e))?;
+            println!("✅ Coluna 'score_date' adicionada com sucesso!");
+        } else {
+            println!("✅ Coluna 'score_date' já existe na log_table");
+        }
+        
+        Ok(())
+    }
+
+    /// Verifica se uma coluna existe na tabela de logs
+    fn log_table_has_column(conn: &Connection, column_name: &str) -> Result<bool, String> {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(log_table)")
+            .map_err(|e| format!("Erro ao inspecionar estrutura da tabela de logs: {}", e))?;
+
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| format!("Erro ao consultar estrutura da tabela de logs: {}", e))?;
+
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| format!("Erro ao iterar colunas da tabela de logs: {}", e))?
+        {
+            let col_name: String = row
+                .get(1)
+                .map_err(|e| format!("Erro ao ler nome da coluna: {}", e))?;
+
+            if col_name.eq_ignore_ascii_case(column_name) {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     /// Obtém uma referência à conexão do banco
@@ -1187,6 +1286,45 @@ impl DatabaseManager {
     }
 
     /// Salva ou atualiza o score de um fornecedor
+    /// Função auxiliar para inserir log
+    fn insert_log(
+        conn: &Connection,
+        user: &str,
+        event: &str,
+        wwid: &str,
+        place: &str,
+        supplier: Option<&str>,
+        score_date: Option<&str>,
+        old_value: Option<&str>,
+        new_value: Option<&str>,
+    ) -> Result<(), String> {
+        let now = chrono::Local::now();
+        let date = now.format("%Y-%m-%d").to_string();
+        let time = now.format("%H:%M:%S").to_string();
+        
+        println!("📝 Inserindo log: event='{}', wwid='{}', place='{}', supplier={:?}, score_date={:?}", 
+            event, wwid, place, supplier, score_date);
+        
+        conn.execute(
+            "INSERT INTO log_table (date, time, user, event, wwid, place, supplier, score_date, old_value, new_value)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                date,
+                time,
+                user,
+                event,
+                wwid,
+                place,
+                supplier,
+                score_date,
+                old_value,
+                new_value
+            ],
+        ).map_err(|e| format!("Erro ao inserir log: {}", e))?;
+        
+        Ok(())
+    }
+
     pub fn save_supplier_score(
         supplier_id: String,
         supplier_name: String,
@@ -1199,6 +1337,7 @@ impl DatabaseManager {
         total_score: Option<String>,
         comments: Option<String>,
         user_name: String,
+        user_wwid: String,
     ) -> Result<String, String> {
         println!("\n💾 ========================================");
         println!("💾 SAVE_SUPPLIER_SCORE CHAMADO!");
@@ -1212,6 +1351,7 @@ impl DatabaseManager {
         println!("💾 total_score: {:?}", total_score);
         println!("💾 comments: {:?}", comments);
         println!("💾 user_name: '{}'", user_name);
+        println!("💾 user_wwid: '{}'", user_wwid);
         println!("💾 ========================================\n");
         
         let conn_guard = Self::get_connection()?;
@@ -1233,40 +1373,195 @@ impl DatabaseManager {
             .map(|c| c.contains("auto-generated") || c.contains("Maximum score"))
             .unwrap_or(false);
         
-        // Verifica se já existe um registro
-        let exists = conn.query_row(
-            "SELECT id FROM supplier_score_records_table WHERE lower(trim(supplier_id)) = lower(trim(?1)) AND month = ?2 AND year = ?3",
+        println!("🔍 WWID recebido do frontend: '{}'", user_wwid);
+        
+        // Verifica se já existe um registro e busca valores antigos para o log
+        let existing_data = conn.query_row(
+            "SELECT id, otif, nil, quality_pickup, quality_package, comment FROM supplier_score_records_table 
+             WHERE lower(trim(supplier_id)) = lower(trim(?1)) AND month = ?2 AND year = ?3",
             rusqlite::params![&supplier_id, month.to_string(), year.to_string()],
-            |row| row.get::<_, i32>(0)
+            |row| {
+                Ok((
+                    row.get::<_, i32>(0)?,
+                    row.get::<_, Option<f64>>(1)?,
+                    row.get::<_, Option<f64>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                ))
+            }
         );
         
-        match exists {
-            Ok(id) => {
+        let supplier_info = format!("{} ({})", supplier_name, supplier_id);
+        let score_date_str = format!("{}/{}", month, year);
+        
+        match existing_data {
+            Ok((id, old_otif, old_nil, old_pickup, old_package, old_comment)) => {
                 // Se for geração automática e já existe registro, apenas ignora
                 if is_auto_generated {
                     println!("⏭️  Registro já existe (id: {}), ignorando geração automática", id);
                     return Ok("Registro já existe, ignorado".to_string());
                 }
                 
-                // Caso contrário, atualiza o registro existente
+                // Registra logs para cada campo alterado (apenas se NÃO for auto-generated)
+                if let Some(ref new_otif) = otif_score {
+                    let old_val = old_otif.map(|v| v.to_string()).unwrap_or_else(|| "".to_string());
+                    // Normaliza comparação: converte ambos para f64 e compara
+                    let old_normalized = old_otif.unwrap_or(0.0);
+                    let new_normalized = new_otif.parse::<f64>().unwrap_or(0.0);
+                    
+                    if (old_normalized - new_normalized).abs() > 0.001 {
+                        Self::insert_log(
+                            conn,
+                            &user_name,
+                            "Update",
+                            &user_wwid,
+                            "OTIF",
+                            Some(&supplier_info),
+                            Some(&score_date_str),
+                            if old_val.is_empty() { None } else { Some(&old_val) },
+                            Some(new_otif)
+                        )?;
+                    }
+                }
+                
+                if let Some(ref new_nil) = nil_score {
+                    let old_val = old_nil.map(|v| v.to_string()).unwrap_or_else(|| "".to_string());
+                    // Normaliza comparação: converte ambos para f64 e compara
+                    let old_normalized = old_nil.unwrap_or(0.0);
+                    let new_normalized = new_nil.parse::<f64>().unwrap_or(0.0);
+                    
+                    if (old_normalized - new_normalized).abs() > 0.001 {
+                        Self::insert_log(
+                            conn,
+                            &user_name,
+                            "Update",
+                            &user_wwid,
+                            "NIL",
+                            Some(&supplier_info),
+                            Some(&score_date_str),
+                            if old_val.is_empty() { None } else { Some(&old_val) },
+                            Some(new_nil)
+                        )?;
+                    }
+                }
+                
+                if let Some(ref new_pickup) = pickup_score {
+                    let old_val = old_pickup.clone().unwrap_or_else(|| "".to_string());
+                    // Normaliza comparação: converte ambos para f64 e compara
+                    let old_normalized = old_pickup.as_ref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                    let new_normalized = new_pickup.parse::<f64>().unwrap_or(0.0);
+                    
+                    if (old_normalized - new_normalized).abs() > 0.001 {
+                        Self::insert_log(
+                            conn,
+                            &user_name,
+                            "Update",
+                            &user_wwid,
+                            "Pickup",
+                            Some(&supplier_info),
+                            Some(&score_date_str),
+                            if old_val.is_empty() { None } else { Some(&old_val) },
+                            Some(new_pickup)
+                        )?;
+                    }
+                }
+                
+                if let Some(ref new_package) = package_score {
+                    let old_val = old_package.clone().unwrap_or_else(|| "".to_string());
+                    // Normaliza comparação: converte ambos para f64 e compara
+                    let old_normalized = old_package.as_ref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                    let new_normalized = new_package.parse::<f64>().unwrap_or(0.0);
+                    
+                    if (old_normalized - new_normalized).abs() > 0.001 {
+                        Self::insert_log(
+                            conn,
+                            &user_name,
+                            "Update",
+                            &user_wwid,
+                            "Package",
+                            Some(&supplier_info),
+                            Some(&score_date_str),
+                            if old_val.is_empty() { None } else { Some(&old_val) },
+                            Some(new_package)
+                        )?;
+                    }
+                }
+                
+                if let Some(ref new_comment) = comments {
+                    let old_val = old_comment.clone().unwrap_or_else(|| "".to_string());
+                    if old_val != *new_comment && !new_comment.is_empty() {
+                        Self::insert_log(
+                            conn,
+                            &user_name,
+                            "Update",
+                            &user_wwid,
+                            "Comment",
+                            Some(&supplier_info),
+                            Some(&score_date_str),
+                            if old_val.is_empty() { None } else { Some(&old_val) },
+                            Some(new_comment)
+                        )?;
+                    }
+                }
+                
+                // Atualiza o registro existente - APENAS os campos que foram enviados (não nulos)
                 println!("📝 Atualizando registro existente (id: {})", id);
-                conn.execute(
-                    "UPDATE supplier_score_records_table 
-                     SET otif = ?1, nil = ?2, quality_pickup = ?3, quality_package = ?4, 
-                         total_score = ?5, comment = ?6, change_date = ?7, changed_by = ?8
-                     WHERE id = ?9",
-                    rusqlite::params![
-                        otif_score.as_ref().and_then(|s| s.parse::<f64>().ok()),
-                        nil_score.as_ref().and_then(|s| s.parse::<f64>().ok()),
-                        pickup_score,
-                        package_score,
-                        total_score_value,
-                        comments,
-                        now,
-                        user_name,
-                        id
-                    ],
-                ).map_err(|e| format!("Erro ao atualizar: {}", e))?;
+                
+                // Monta a query dinamicamente para atualizar apenas os campos enviados
+                let mut updates = Vec::new();
+                let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+                
+                if let Some(ref otif) = otif_score {
+                    updates.push("otif = ?");
+                    params.push(Box::new(otif.parse::<f64>().ok()));
+                }
+                
+                if let Some(ref nil) = nil_score {
+                    updates.push("nil = ?");
+                    params.push(Box::new(nil.parse::<f64>().ok()));
+                }
+                
+                if let Some(ref pickup) = pickup_score {
+                    updates.push("quality_pickup = ?");
+                    params.push(Box::new(pickup.clone()));
+                }
+                
+                if let Some(ref package) = package_score {
+                    updates.push("quality_package = ?");
+                    params.push(Box::new(package.clone()));
+                }
+                
+                if let Some(ref comment) = comments {
+                    updates.push("comment = ?");
+                    params.push(Box::new(comment.clone()));
+                }
+                
+                // Sempre atualiza total_score, change_date e changed_by
+                updates.push("total_score = ?");
+                updates.push("change_date = ?");
+                updates.push("changed_by = ?");
+                params.push(Box::new(total_score_value.clone()));
+                params.push(Box::new(now.clone()));
+                params.push(Box::new(user_name.clone()));
+                
+                if updates.is_empty() {
+                    println!("⚠️ Nenhum campo para atualizar");
+                    return Ok("Nenhuma alteração para salvar".to_string());
+                }
+                
+                let query = format!(
+                    "UPDATE supplier_score_records_table SET {} WHERE id = ?",
+                    updates.join(", ")
+                );
+                
+                params.push(Box::new(id));
+                
+                // Converte Vec<Box<dyn ToSql>> para &[&dyn ToSql]
+                let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                
+                conn.execute(&query, param_refs.as_slice())
+                    .map_err(|e| format!("Erro ao atualizar: {}", e))?;
                 
                 println!("✅ Score atualizado com sucesso!");
                 Ok("Score atualizado com sucesso".to_string())
@@ -1274,6 +1569,32 @@ impl DatabaseManager {
             Err(_) => {
                 // Insere novo registro
                 println!("➕ Criando novo registro");
+                
+                // Registra log de criação
+                if !is_auto_generated {
+                    // Para criação manual, registra normalmente
+                    let new_values = format!(
+                        "OTIF: {}, NIL: {}, Pickup: {}, Package: {}",
+                        otif_score.as_ref().unwrap_or(&"—".to_string()),
+                        nil_score.as_ref().unwrap_or(&"—".to_string()),
+                        pickup_score.as_ref().unwrap_or(&"—".to_string()),
+                        package_score.as_ref().unwrap_or(&"—".to_string())
+                    );
+                    
+                    Self::insert_log(
+                        conn,
+                        &user_name,
+                        "Create",
+                        &user_wwid,
+                        "All Scores",
+                        Some(&supplier_info),
+                        Some(&score_date_str),
+                        None,
+                        Some(&new_values)
+                    )?;
+                }
+                // Para auto-generated, o log será criado uma única vez no batch
+                
                 conn.execute(
                     "INSERT INTO supplier_score_records_table 
                      (supplier_id, supplier_name, month, year, otif, nil, quality_pickup, quality_package, 
@@ -2907,4 +3228,223 @@ impl DatabaseManager {
         
         Ok(suppliers)
     }
+
+    /// Registra log de geração em lote de notas cheias
+    pub fn log_bulk_generation(
+        user_name: String,
+        user_wwid: String,
+        month: i32,
+        year: i32,
+        count: i32,
+    ) -> Result<(), String> {
+        println!("\n📝 Registrando log de geração em lote...");
+        
+        let conn_guard = Self::get_connection()?;
+        let conn = conn_guard.as_ref()
+            .ok_or_else(|| "Conexão não inicializada".to_string())?;
+        
+        println!("🔍 WWID recebido: '{}'", user_wwid);
+        
+        let new_values = format!("{} suppliers - Month: {}/{}", count, month, year);
+        let score_date_str = format!("{}/{}", month, year);
+        
+        Self::insert_log(
+            conn,
+            &user_name,
+            "Create",
+            &user_wwid,
+            "All Scores",
+            Some("ALL"),
+            Some(&score_date_str),
+            None,
+            Some(&new_values)
+        )?;
+        
+        println!("✅ Log de geração em lote registrado");
+        Ok(())
+    }
+
+    /// Busca todos os logs do sistema
+    pub fn get_all_logs() -> Result<Vec<LogEntry>, String> {
+        println!("\n📋 Buscando todos os logs...");
+        
+        let conn_guard = Self::get_connection()?;
+        let conn = conn_guard.as_ref()
+            .ok_or_else(|| "Conexão não inicializada".to_string())?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT log_id, date, time, user, event, wwid, place, supplier, score_date, old_value, new_value
+                 FROM log_table
+                 ORDER BY date DESC, time DESC
+                 LIMIT 1000"
+            )
+            .map_err(|e| format!("Erro ao preparar query: {}", e))?;
+
+        let logs = stmt
+            .query_map([], |row| {
+                Ok(LogEntry {
+                    log_id: row.get(0)?,
+                    date: row.get(1)?,
+                    time: row.get(2)?,
+                    user: row.get(3)?,
+                    event: row.get(4)?,
+                    wwid: row.get(5)?,
+                    place: row.get(6)?,
+                    supplier: row.get(7)?,
+                    score_date: row.get(8)?,
+                    old_value: row.get(9)?,
+                    new_value: row.get(10)?,
+                })
+            })
+            .map_err(|e| format!("Erro ao executar query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Erro ao coletar resultados: {}", e))?;
+
+        println!("✅ {} logs encontrados", logs.len());
+        Ok(logs)
+    }
+
+    /// Busca logs por usuário
+    pub fn get_logs_by_user(user_name: String) -> Result<Vec<LogEntry>, String> {
+        println!("\n📋 Buscando logs do usuário: {}", user_name);
+        
+        let conn_guard = Self::get_connection()?;
+        let conn = conn_guard.as_ref()
+            .ok_or_else(|| "Conexão não inicializada".to_string())?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT log_id, date, time, user, event, wwid, place, supplier, score_date, old_value, new_value
+                 FROM log_table
+                 WHERE user = ?1
+                 ORDER BY date DESC, time DESC
+                 LIMIT 500"
+            )
+            .map_err(|e| format!("Erro ao preparar query: {}", e))?;
+
+        let logs = stmt
+            .query_map([user_name], |row| {
+                Ok(LogEntry {
+                    log_id: row.get(0)?,
+                    date: row.get(1)?,
+                    time: row.get(2)?,
+                    user: row.get(3)?,
+                    event: row.get(4)?,
+                    wwid: row.get(5)?,
+                    place: row.get(6)?,
+                    supplier: row.get(7)?,
+                    score_date: row.get(8)?,
+                    old_value: row.get(9)?,
+                    new_value: row.get(10)?,
+                })
+            })
+            .map_err(|e| format!("Erro ao executar query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Erro ao coletar resultados: {}", e))?;
+
+        println!("✅ {} logs encontrados", logs.len());
+        Ok(logs)
+    }
+
+    /// Busca logs por período
+    pub fn get_logs_by_date_range(start_date: String, end_date: String) -> Result<Vec<LogEntry>, String> {
+        println!("\n📋 Buscando logs entre {} e {}", start_date, end_date);
+        
+        let conn_guard = Self::get_connection()?;
+        let conn = conn_guard.as_ref()
+            .ok_or_else(|| "Conexão não inicializada".to_string())?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT log_id, date, time, user, event, wwid, place, supplier, score_date, old_value, new_value
+                 FROM log_table
+                 WHERE date BETWEEN ?1 AND ?2
+                 ORDER BY date DESC, time DESC
+                 LIMIT 1000"
+            )
+            .map_err(|e| format!("Erro ao preparar query: {}", e))?;
+
+        let logs = stmt
+            .query_map([start_date, end_date], |row| {
+                Ok(LogEntry {
+                    log_id: row.get(0)?,
+                    date: row.get(1)?,
+                    time: row.get(2)?,
+                    user: row.get(3)?,
+                    event: row.get(4)?,
+                    wwid: row.get(5)?,
+                    place: row.get(6)?,
+                    supplier: row.get(7)?,
+                    score_date: row.get(8)?,
+                    old_value: row.get(9)?,
+                    new_value: row.get(10)?,
+                })
+            })
+            .map_err(|e| format!("Erro ao executar query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Erro ao coletar resultados: {}", e))?;
+
+        println!("✅ {} logs encontrados", logs.len());
+        Ok(logs)
+    }
+
+    /// Busca usuários com mais atividade (para Super Admin)
+    pub fn get_most_active_users(limit: i32) -> Result<Vec<(String, String, i32)>, String> {
+        println!("👥 Buscando usuários mais ativos (limit: {})...", limit);
+        
+        let conn_guard = Self::get_connection()?;
+        
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+
+        let conn = conn_guard.as_ref().unwrap();
+        
+        // Debug: Verificar logs na tabela
+        let log_count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM log_table WHERE wwid != 'Unknown' AND wwid != ''",
+            [],
+            |row| row.get(0)
+        ).unwrap_or(0);
+        println!("📊 Total de logs com WWID válido: {}", log_count);
+        
+        // Debug: Verificar usuários na tabela
+        let user_count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM users_table",
+            [],
+            |row| row.get(0)
+        ).unwrap_or(0);
+        println!("👤 Total de usuários: {}", user_count);
+        
+        let mut stmt = conn
+            .prepare(
+                "SELECT u.user_wwid, 
+                        u.user_name, 
+                        COUNT(l.wwid) as activity_count
+                 FROM users_table u
+                 LEFT JOIN log_table l ON u.user_wwid = l.wwid
+                 WHERE l.wwid IS NOT NULL AND l.wwid != 'Unknown' AND l.wwid != ''
+                 GROUP BY u.user_wwid, u.user_name
+                 ORDER BY activity_count DESC
+                 LIMIT ?1"
+            )
+            .map_err(|e| format!("Erro ao preparar query: {}", e))?;
+
+        let users = stmt
+            .query_map([limit], |row| {
+                let wwid: String = row.get(0)?;
+                let name: String = row.get(1)?;
+                let count: i32 = row.get(2)?;
+                println!("  📌 WWID: {}, Nome: {}, Atividades: {}", wwid, name, count);
+                Ok((wwid, name, count))
+            })
+            .map_err(|e| format!("Erro ao executar query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Erro ao coletar resultados: {}", e))?;
+
+        println!("✅ {} usuários mais ativos encontrados", users.len());
+        Ok(users)
+    }
 }
+

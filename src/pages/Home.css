@@ -247,7 +247,7 @@
   position: absolute;
   width: 340px;
   max-width: 340px;
-  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
   will-change: transform, opacity, filter;
   pointer-events: none;
 }
@@ -274,12 +274,21 @@
   filter: brightness(0.85);
 }
 
+.carousel-card.hidden {
+  transform: translateX(0) scale(0.7);
+  opacity: 0;
+  z-index: 1;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 /* Info Card */
 .info-card {
   background: var(--section-bg);
   border-radius: 16px;
   padding: 1.75rem;
-  height: 320px;
+  min-height: 380px;
+  max-height: 380px;
   display: flex;
   flex-direction: column;
   border: 1px solid rgba(128, 128, 128, 0.15);
@@ -314,8 +323,29 @@
   flex-direction: column;
   gap: 0.875rem;
   flex: 1;
-  justify-content: space-evenly;
-  overflow: hidden;
+  justify-content: flex-start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 300px;
+  padding-right: 8px;
+}
+
+/* Scrollbar customizada para info-body */
+.info-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.info-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.info-body::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.info-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
 
 .info-row {
@@ -729,5 +759,98 @@
 
   .permission-item i {
     font-size: 1rem;
+  }
+}
+
+/* Usuários Mais Ativos - Card 4 */
+.active-user-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(var(--border-color-rgb, 200, 200, 200), 0.2);
+  transition: background 0.2s;
+}
+
+.active-user-row:last-child {
+  border-bottom: none;
+}
+
+.active-user-row:hover {
+  background: rgba(var(--primary-color-rgb, 59, 130, 246), 0.05);
+  border-radius: 4px;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.user-rank {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  min-width: 35px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-wwid {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.user-count {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 1rem;
+  background: rgba(var(--primary-color-rgb, 59, 130, 246), 0.1);
+  padding: 0.4rem 0.8rem;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.user-count i {
+  color: var(--primary-color);
+  font-size: 0.9rem;
+}
+
+/* Responsividade para o card de usuários ativos */
+@media (max-width: 768px) {
+  .active-user-row {
+    gap: 0.5rem;
+  }
+
+  .user-rank {
+    font-size: 1rem;
+    min-width: 30px;
+  }
+
+  .user-name {
+    font-size: 0.85rem;
+  }
+
+  .user-wwid {
+    font-size: 0.75rem;
+  }
+
+  .user-count {
+    font-size: 0.9rem;
+    padding: 0.3rem 0.6rem;
   }
 }

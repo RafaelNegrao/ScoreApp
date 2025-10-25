@@ -209,6 +209,7 @@ fn save_supplier_score(
     total_score: Option<String>,
     comments: Option<String>,
     user_name: String,
+    user_wwid: String,
 ) -> Result<String, String> {
     DatabaseManager::save_supplier_score(
         supplier_id,
@@ -222,6 +223,7 @@ fn save_supplier_score(
         total_score,
         comments,
         user_name,
+        user_wwid,
     )
 }
 
@@ -472,6 +474,36 @@ fn debug_get_record(record_id: i32) -> Result<String, String> {
     DatabaseManager::debug_get_record(record_id)
 }
 
+/// Comando para buscar todos os logs
+#[tauri::command]
+fn get_all_logs() -> Result<Vec<db_manager::LogEntry>, String> {
+    DatabaseManager::get_all_logs()
+}
+
+/// Comando para registrar log de geração em lote
+#[tauri::command]
+fn log_bulk_generation(user_name: String, user_wwid: String, month: i32, year: i32, count: i32) -> Result<(), String> {
+    DatabaseManager::log_bulk_generation(user_name, user_wwid, month, year, count)
+}
+
+/// Comando para buscar logs por usuário
+#[tauri::command]
+fn get_logs_by_user(user_name: String) -> Result<Vec<db_manager::LogEntry>, String> {
+    DatabaseManager::get_logs_by_user(user_name)
+}
+
+/// Comando para buscar logs por período
+#[tauri::command]
+fn get_logs_by_date_range(start_date: String, end_date: String) -> Result<Vec<db_manager::LogEntry>, String> {
+    DatabaseManager::get_logs_by_date_range(start_date, end_date)
+}
+
+/// Comando para buscar usuários mais ativos
+#[tauri::command]
+fn get_most_active_users(limit: i32) -> Result<Vec<(String, String, i32)>, String> {
+    DatabaseManager::get_most_active_users(limit)
+}
+
 fn main() {
     // Inicializa o banco de dados ao iniciar a aplicação
     println!("\n🚀 Iniciando Score App...");
@@ -530,6 +562,12 @@ fn main() {
             get_business_units,
             get_categories,
             get_suppliers_at_risk,
+            // Logs
+            get_all_logs,
+            get_logs_by_user,
+            get_logs_by_date_range,
+            log_bulk_generation,
+            get_most_active_users,
             // Lists management
             get_sqie_list,
             add_sqie_item,
@@ -562,12 +600,18 @@ fn main() {
             save_individual_score,
             debug_get_record,
             send_email_via_outlook,
-            get_supplier_responsibles
+            get_supplier_responsibles,
+            delete_all_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
+/// Comando Tauri para deletar todos os logs
+#[tauri::command]
+fn delete_all_logs() -> Result<(), String> {
+    DatabaseManager::delete_all_logs()
+}
 /// Comando Tauri para buscar responsáveis de um fornecedor
 #[tauri::command]
 fn get_supplier_responsibles(supplier_id: String) -> Result<SupplierResponsibles, String> {

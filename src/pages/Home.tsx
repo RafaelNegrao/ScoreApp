@@ -14,6 +14,12 @@ interface UserPermissions {
   package: string;
 }
 
+interface ActiveUser {
+  wwid: string;
+  name: string;
+  count: number;
+}
+
 function Home() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [userName, setUserName] = useState<string>('');
@@ -29,6 +35,8 @@ function Home() {
   const [totalEvaluations, setTotalEvaluations] = useState<number>(0);
   const [averageScore, setAverageScore] = useState<number>(0);
   const [totalUsers, setTotalUsers] = useState<number>(0);
+  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
+  const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
 
   useEffect(() => {
     const storedUser = sessionStorage.getItem('user');
@@ -37,11 +45,13 @@ function Home() {
       setUserName(user.user_name || 'Usuário');
       setUserWWID(user.user_wwid || 'N/A');
       setUserPrivilege(user.user_privilege || 'Padrão');
+      setIsSuperAdmin(user.user_privilege === 'Super Admin');
       if (user.permissions) {
         setPermissions(user.permissions);
       }
     }
     loadStatistics();
+    loadActiveUsers();
   }, []);
 
   const loadStatistics = async () => {
@@ -62,16 +72,43 @@ function Home() {
     }
   };
 
+  const loadActiveUsers = async () => {
+    try {
+      const users = await invoke<[string, string, number][]>('get_most_active_users', { limit: 5 });
+      const formattedUsers: ActiveUser[] = users.map(([wwid, name, count]) => ({
+        wwid,
+        name,
+        count
+      }));
+      setActiveUsers(formattedUsers);
+    } catch (error) {
+      console.error('Erro ao carregar usuários ativos:', error);
+    }
+  };
+
   const isPermissionActive = (permission: string): boolean => {
     return permission === 'Sim' || permission === 'Yes' || permission === '1' || permission === 'true';
   };
 
+  const totalCards = isSuperAdmin ? 4 : 3;
+
   const handlePrevCard = () => {
-    setCurrentCardIndex((prev) => (prev === 0 ? 2 : prev - 1));
+    setCurrentCardIndex((prev) => (prev === 0 ? totalCards - 1 : prev - 1));
   };
 
   const handleNextCard = () => {
-    setCurrentCardIndex((prev) => (prev === 2 ? 0 : prev + 1));
+    setCurrentCardIndex((prev) => (prev === totalCards - 1 ? 0 : prev + 1));
+  };
+
+  const getCardClass = (cardIndex: number): string => {
+    if (cardIndex === currentCardIndex) return 'center';
+    
+    const diff = (cardIndex - currentCardIndex + totalCards) % totalCards;
+    
+    if (diff === 1 || diff === -(totalCards - 1)) return 'right';
+    if (diff === totalCards - 1 || diff === -1) return 'left';
+    
+    return 'hidden';
   };
 
   return (
@@ -133,7 +170,7 @@ function Home() {
         
         <div className="carousel-container-wrapper">
           {/* Card 1: Perfil */}
-          <div className={`carousel-card info-card ${currentCardIndex === 0 ? 'center' : currentCardIndex === 1 ? 'left' : 'right'}`}>
+          <div className={`carousel-card info-card ${getCardClass(0)}`}>
             <div className="info-header">
               <i className="bi bi-person-circle"></i>
               <h3>Perfil</h3>
@@ -155,7 +192,7 @@ function Home() {
           </div>
 
           {/* Card 2: Permissões */}
-          <div className={`carousel-card info-card ${currentCardIndex === 1 ? 'center' : currentCardIndex === 2 ? 'left' : 'right'}`}>
+          <div className={`carousel-card info-card ${getCardClass(1)}`}>
             <div className="info-header">
               <i className="bi bi-shield-check"></i>
               <h3>Permissões</h3>
@@ -193,7 +230,7 @@ function Home() {
           </div>
 
           {/* Card 3: Sistema */}
-          <div className={`carousel-card info-card ${currentCardIndex === 2 ? 'center' : currentCardIndex === 0 ? 'left' : 'right'}`}>
+          <div className={`carousel-card info-card ${getCardClass(2)}`}>
             <div className="info-header">
               <i className="bi bi-gear-fill"></i>
               <h3>Sistema</h3>
@@ -215,6 +252,36 @@ function Home() {
               </div>
             </div>
           </div>
+
+          {/* Card 4: Usuários Mais Ativos (Super Admin only) */}
+          {isSuperAdmin && (
+            <div className={`carousel-card info-card ${getCardClass(3)}`}>
+              <div className="info-header">
+                <i className="bi bi-people-fill"></i>
+                <h3>Usuários Mais Ativos</h3>
+              </div>
+              <div className="info-body">
+                {activeUsers.length === 0 ? (
+                  <div className="info-row">
+                    <span className="info-label">Nenhum dado disponível</span>
+                  </div>
+                ) : (
+                  activeUsers.map((user, index) => (
+                    <div key={user.wwid} className="active-user-row">
+                      <div className="user-rank">#{index + 1}</div>
+                      <div className="user-info">
+                        <div className="user-name">{user.name}</div>
+                        <div className="user-wwid">WWID: {user.wwid}</div>
+                      </div>
+                      <div className="user-count">
+                        <i className="bi bi-pencil-square"></i> {user.count}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
         
         <button className="carousel-btn carousel-btn-next" onClick={handleNextCard}>

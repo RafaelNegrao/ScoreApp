@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import styles from "./YearlyPageTransition.module.css";
 import SupplierInfoModal from "../components/SupplierInfoModal";
 import { CommentModal } from "../components/CommentModal";
 import { invoke } from '@tauri-apps/api/tauri';
 import { Info } from "lucide-react";
+import './FullScoreModalAnimation.css';
 import { useToast } from '../hooks/useToast';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import "./Score.css";
@@ -187,6 +189,7 @@ interface YearlyMonthData {
 
 function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, permissions, criteriaWeights, showToast }: YearlyViewTableProps) {
   const [yearlyData, setYearlyData] = useState<Map<string, YearlyMonthData[]>>(new Map());
+  const [fadeKey, setFadeKey] = useState(0);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
   const [selectedComment, setSelectedComment] = useState<{ supplierId: string; month: number; monthName: string; comment: string } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -195,10 +198,26 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
   const [originalValues, setOriginalValues] = useState<Map<string, any>>(new Map()); // Rastreia valores originais
   const [modifiedCells, setModifiedCells] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
+  const [cardsPerPage, setCardsPerPage] = useState(2);
   
   const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const suppliersArray = Array.from(selectedSuppliers);
   const totalSuppliers = suppliersArray.length;
+  
+  // Detecta largura da tela para ajustar cardsPerPage
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth <= 1200) {
+        setCardsPerPage(1);
+      } else {
+        setCardsPerPage(2);
+      }
+    };
+    
+    handleResize(); // Executa na montagem
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   // Verifica se o mês é futuro
   const isFutureMonth = (month: number): boolean => {
@@ -447,6 +466,11 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
       
       const storedUser = sessionStorage.getItem('user');
       const userName = storedUser ? JSON.parse(storedUser).user_name : 'Unknown';
+      const parsedUser = storedUser ? JSON.parse(storedUser) : null;
+      const userWwid = parsedUser ? String(parsedUser.user_wwid || parsedUser.user_id || 'Unknown') : 'Unknown';
+      
+      console.log('🔍 [saveScore] Objeto user completo:', parsedUser);
+      console.log('🔍 [saveScore] WWID sendo enviado:', userWwid);
       
       const supplier = getSupplierById(supplierId);
       const supplierName = supplier?.vendor_name || '';
@@ -472,6 +496,12 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
       
       console.log('💾 Saving score with comment:', comments);
       
+      console.log('========================================');
+      console.log('🔍 DADOS SENDO ENVIADOS PARA save_supplier_score:');
+      console.log('userName:', userName);
+      console.log('userWwid:', userWwid);
+      console.log('========================================');
+      
       await invoke('save_supplier_score', {
         supplierId,
         supplierName,
@@ -483,7 +513,8 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         packageScore: packageScore,
         totalScore: totalScore.toString(),
         comments,
-        userName
+        userName,
+        userWwid
       });
       
       // Remove as células modificadas desta linha
@@ -548,6 +579,8 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         
         const storedUser = sessionStorage.getItem('user');
         const userName = storedUser ? JSON.parse(storedUser).user_name : 'Unknown';
+        const parsedUser2 = storedUser ? JSON.parse(storedUser) : null;
+        const userWwid2 = parsedUser2 ? String(parsedUser2.user_wwid || parsedUser2.user_id || 'Unknown') : 'Unknown';
         
         const supplier = getSupplierById(supplierId);
         const supplierName = supplier?.vendor_name || '';
@@ -582,7 +615,8 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
           packageScore: packageScore,
           totalScore: totalScore.toString(),
           comments: comment,
-          userName
+          userName,
+          userWwid: userWwid2
         });
         
         // Atualiza os dados localmente
@@ -606,14 +640,15 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
     }
   };
 
-  const cardsPerPage = 2;
   const totalPages = Math.ceil(totalSuppliers / cardsPerPage);
 
   const handlePrev = () => {
+    setFadeKey((k) => k + 1);
     setCurrentIndex((prev) => (prev > 0 ? prev - 1 : totalPages - 1));
   };
 
   const handleNext = () => {
+    setFadeKey((k) => k + 1);
     setCurrentIndex((prev) => (prev < totalPages - 1 ? prev + 1 : 0));
   };
 
@@ -652,7 +687,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         )}
 
         {/* Cards dos Suppliers */}
-        <div className="yearly-cards-grid">
+  <div className={`yearly-cards-grid ${styles["yearly-cards-fade"]}`} key={fadeKey}>
           {currentSuppliers.map((supplierId) => {
             const supplier = getSupplierById(supplierId);
             const months = yearlyData.get(supplierId) || [];
@@ -1133,6 +1168,8 @@ function Score() {
 
       const storedUser = sessionStorage.getItem('user');
       const userName = storedUser ? JSON.parse(storedUser).user_name : 'Unknown';
+      const parsedUser3 = storedUser ? JSON.parse(storedUser) : null;
+      const userWwid3 = parsedUser3 ? String(parsedUser3.user_wwid || parsedUser3.user_id || 'Unknown') : 'Unknown';
 
       const month = parseInt(selectedMonth);
       const year = parseInt(selectedYear);
@@ -1158,6 +1195,7 @@ function Score() {
         totalScore: totalScore,
         comments,
         userName,
+        userWwid: userWwid3
       });
 
       console.log('✅ Score salvo com sucesso!');
@@ -1240,6 +1278,8 @@ function Score() {
 
       const storedUser = sessionStorage.getItem('user');
       const userName = storedUser ? JSON.parse(storedUser).user_name : 'System';
+      const parsedUser4 = storedUser ? JSON.parse(storedUser) : null;
+      const userWwid4 = parsedUser4 ? String(parsedUser4.user_wwid || parsedUser4.user_id || 'Unknown') : 'Unknown';
 
       let added = 0;
       let ignored = 0;
@@ -1279,7 +1319,8 @@ function Score() {
               packageScore: notaFixa.toString(),
               totalScore: total.toFixed(2),
               comments: 'Maximum score auto-generated.',
-              userName
+              userName,
+              userWwid: userWwid4
             });
 
             // Verifica se foi ignorado ou inserido
@@ -1314,6 +1355,22 @@ function Score() {
         `Ignorados: ${ignored}\n` +
         `Total processado: ${suppliers.length}`
       );
+
+      // Registra log único da geração em lote
+      if (added > 0) {
+        try {
+          await invoke('log_bulk_generation', {
+            userName,
+            userWwid: userWwid4,
+            month,
+            year,
+            count: added
+          });
+          console.log(`Log de geração em lote registrado: ${added} fornecedores`);
+        } catch (error) {
+          console.error('Erro ao registrar log de geração em lote:', error);
+        }
+      }
 
     } catch (error) {
       console.error('Erro ao gerar notas cheias:', error);
