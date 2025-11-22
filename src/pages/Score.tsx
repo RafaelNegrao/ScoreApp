@@ -1185,8 +1185,22 @@ function Score() {
   const [showImportScoreModal, setShowImportScoreModal] = useState<boolean>(false);
   const [importRefreshKey, setImportRefreshKey] = useState<number>(0);
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
+  const [allowImportExport, setAllowImportExport] = useState<boolean>(() => {
+    return localStorage.getItem('allowImportExport') === 'true';
+  });
   const [normalViewCommentModal, setNormalViewCommentModal] = useState(false);
   const [normalViewSelectedComment, setNormalViewSelectedComment] = useState<{ supplierId: string; supplierName: string; comment: string } | null>(null);
+
+  // Listener para mudanças na permissão de importar/exportar
+  useEffect(() => {
+    const handleImportExportChange = () => {
+      const newValue = localStorage.getItem('allowImportExport') === 'true';
+      setAllowImportExport(newValue);
+    };
+
+    window.addEventListener('importExportChanged', handleImportExportChange);
+    return () => window.removeEventListener('importExportChanged', handleImportExportChange);
+  }, []);
 
   // Carregar critérios (pesos) do banco de dados
   useEffect(() => {
@@ -1223,13 +1237,20 @@ function Score() {
           setPermissions(user.permissions);
         }
         const privilege = (user.user_privilege || '').toLowerCase();
-        setIsSuperAdmin(privilege === 'super admin');
+        const isSuper = privilege === 'super admin';
+        setIsSuperAdmin(isSuper);
+        
+        // Carregar configuração de import/export
+        const importExportEnabled = localStorage.getItem('allowImportExport') === 'true';
+        setAllowImportExport(importExportEnabled);
       } catch (error) {
         console.error('❌ Erro ao carregar dados do usuário:', error);
         setIsSuperAdmin(false);
+        setAllowImportExport(false);
       }
     } else {
       setIsSuperAdmin(false);
+      setAllowImportExport(false);
     }
   }, []);
 
@@ -1979,7 +2000,7 @@ function Score() {
                             <span>Gerar nota cheia</span>
                           </button>
 
-                          {isSuperAdmin && (
+                          {allowImportExport && (
                             <>
                               <div className="options-menu-divider"></div>
 

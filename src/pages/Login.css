@@ -39,8 +39,8 @@ body.login-page {
 
 /* Lado Esquerdo - Formulário (fixo) */
 .login-form-section {
-  flex: 0 0 50%;
-  width: 50%;
+  flex: 0 0 40%;
+  width: 40%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -53,13 +53,20 @@ body.login-page {
 
 .login-form-wrapper {
   width: 100%;
-  max-width: 400px;
+  max-width: 340px;
   transition: opacity 0.3s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   margin: auto 0;
+}
+
+/* Ajuste para signup form - distribui o conteúdo sem scroll */
+.login-form-wrapper.signup-form {
+  justify-content: space-between;
+  height: 100%;
+  margin: 0;
 }
 
 /* Esconder/mostrar formulários */
@@ -92,12 +99,24 @@ body.login-page {
   text-transform: uppercase;
 }
 
+/* Reduzir tamanho do título no signup */
+.signup-form .app-name {
+  font-size: 1.6rem;
+  margin-bottom: 0.3rem;
+}
+
 .login-title {
   color: #ffffff;
   font-size: 1.75rem;
   font-weight: 600;
   margin-bottom: 1.5rem;
   position: relative;
+}
+
+/* Reduzir margem do título no signup */
+.signup-form .login-title {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
 }
 
 .login-title::after {
@@ -119,6 +138,11 @@ body.login-page {
   gap: 0.9rem;
   width: 100%;
   align-items: center;
+}
+
+/* Reduzir gap no signup form para evitar scroll */
+.signup-form .login-form {
+  gap: 0.6rem;
 }
 
 /* Wrapper para input de senha com botão de toggle */
@@ -182,6 +206,11 @@ body.login-page {
   width: 100%;
 }
 
+/* Reduzir gap no signup form */
+.signup-form .form-group {
+  gap: 0.2rem;
+}
+
 .form-group label {
   color: #f1f5f9 !important;
   font-size: 0.875rem;
@@ -199,6 +228,12 @@ body.login-page {
   font-size: 0.95rem;
   transition: all 0.3s ease;
   outline: none;
+}
+
+/* Reduzir padding dos inputs no signup */
+.signup-form .form-input {
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
 }
 
 /* Ícone de mostrar/ocultar senha - Edge/IE */

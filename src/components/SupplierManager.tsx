@@ -54,8 +54,9 @@ function SupplierManager() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingSuppliers, setSavingSuppliers] = useState<Set<string>>(new Set());
+  const saveTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToastContext();
@@ -181,10 +182,7 @@ function SupplierManager() {
     });
   };
 
-  const handleEditSupplier = (supplier: Supplier) => {
-    handleSelectSupplier(supplier);
-    setIsEditing(true);
-  };
+
 
   const handleInputChange = (field: keyof SupplierUpdate, value: string) => {
     setFormData(prev => ({
@@ -193,12 +191,75 @@ function SupplierManager() {
     }));
   };
 
-  const handleFieldChange = (supplier: Supplier, field: keyof SupplierUpdate, value: string) => {
-    // Só seleciona o fornecedor se ainda não estiver selecionado
+  const handleFieldChange = async (supplier: Supplier, field: keyof SupplierUpdate, value: string) => {
+    // Atualizar formData
     if (selectedSupplier?.supplier_id !== supplier.supplier_id) {
       handleSelectSupplier(supplier);
     }
     handleInputChange(field, value);
+
+    // Cancelar timeout anterior se existir
+    const existingTimeout = saveTimeouts.current.get(supplier.supplier_id);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Criar novo timeout para salvar após 1 segundo
+    const newTimeout = setTimeout(async () => {
+      await autoSave(supplier.supplier_id, field, value);
+    }, 1000);
+
+    saveTimeouts.current.set(supplier.supplier_id, newTimeout);
+  };
+
+  const autoSave = async (supplierId: string, field: keyof SupplierUpdate, value: string) => {
+    try {
+      setSavingSuppliers(prev => new Set(prev).add(supplierId));
+      
+      // Buscar dados atuais do fornecedor
+      const currentSupplier = suppliers.find(s => s.supplier_id === supplierId);
+      if (!currentSupplier) return;
+
+      const updateData: SupplierUpdate = {
+        supplier_id: currentSupplier.supplier_id,
+        supplier_name: currentSupplier.vendor_name,
+        supplier_po: currentSupplier.supplier_po || '',
+        bu: currentSupplier.bu || '',
+        supplier_email: currentSupplier.supplier_email || '',
+        supplier_status: currentSupplier.supplier_status || '',
+        planner: currentSupplier.planner || '',
+        country: currentSupplier.country || '',
+        supplier_category: currentSupplier.supplier_category || '',
+        continuity: currentSupplier.continuity || '',
+        sourcing: currentSupplier.sourcing || '',
+        sqie: currentSupplier.sqie || '',
+        ssid: currentSupplier.ssid || '',
+        otif_target: currentSupplier.otif_target || '',
+        nil_target: currentSupplier.nil_target || '',
+        pickup_target: currentSupplier.pickup_target || '',
+        package_target: currentSupplier.package_target || '',
+        [field]: value,
+      };
+
+      await invoke('update_supplier_data', { supplier: updateData });
+      
+      // Atualizar a lista local
+      setSuppliers(prev =>
+        prev.map(s => s.supplier_id === supplierId ? { ...s, [field]: value } : s)
+      );
+      
+      showToast('Salvo automaticamente', 'success');
+    } catch (error) {
+      console.error('Erro ao salvar automaticamente:', error);
+      showToast('Erro ao salvar', 'error');
+    } finally {
+      setSavingSuppliers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(supplierId);
+        return newSet;
+      });
+      saveTimeouts.current.delete(supplierId);
+    }
   };
 
   const handleSave = async () => {
@@ -216,7 +277,6 @@ function SupplierManager() {
         prev.map(s => (s.supplier_id === formData.supplier_id ? updatedSupplier : s))
       );
       setSelectedSupplier(updatedSupplier);
-      setIsEditing(false);
     } catch (error) {
       console.error('Erro ao salvar fornecedor:', error);
       showToast('Erro ao salvar fornecedor', 'error');
@@ -225,30 +285,7 @@ function SupplierManager() {
     }
   };
 
-  const handleCancel = () => {
-    if (selectedSupplier) {
-      setFormData({
-        supplier_id: selectedSupplier.supplier_id,
-        supplier_name: selectedSupplier.vendor_name,
-        supplier_po: selectedSupplier.supplier_po || '',
-        bu: selectedSupplier.bu || '',
-        supplier_email: selectedSupplier.supplier_email || '',
-        supplier_status: selectedSupplier.supplier_status || '',
-        planner: selectedSupplier.planner || '',
-        country: selectedSupplier.country || '',
-        supplier_category: selectedSupplier.supplier_category || '',
-        continuity: selectedSupplier.continuity || '',
-        sourcing: selectedSupplier.sourcing || '',
-        sqie: selectedSupplier.sqie || '',
-        ssid: selectedSupplier.ssid || '',
-        otif_target: selectedSupplier.otif_target || '',
-        nil_target: selectedSupplier.nil_target || '',
-        pickup_target: selectedSupplier.pickup_target || '',
-        package_target: selectedSupplier.package_target || '',
-      });
-    }
-    setIsEditing(false);
-  };
+
 
   const scrollLeft = () => {
     if (scrollContainerRef.current) {
@@ -338,13 +375,12 @@ function SupplierManager() {
                     <span className="supplier-card-id">#{supplier.supplier_id}</span>
                   </div>
                   <div className="supplier-card-actions-header">
-                    <button
-                      className="btn-icon-action btn-update"
-                      onClick={() => handleEditSupplier(supplier)}
-                      title="Atualizar"
-                    >
-                      <i className="bi bi-pencil-square"></i>
-                    </button>
+                    {savingSuppliers.has(supplier.supplier_id) && (
+                      <span className="auto-save-indicator">
+                        <i className="bi bi-arrow-repeat spin"></i>
+                        Salvando...
+                      </span>
+                    )}
                     <button
                       className="btn-icon-action btn-delete"
                       onClick={() => console.log('Deletar', supplier.supplier_id)}
@@ -388,11 +424,11 @@ function SupplierManager() {
                       <select
                         value={
                           selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.supplier_category
-                            : supplier.supplier_category || ''
+                            ? formData.country
+                            : supplier.country || ''
                         }
                         onChange={(e) => {
-                          handleFieldChange(supplier, 'supplier_category', e.target.value);
+                          handleFieldChange(supplier, 'country', e.target.value);
                         }}
                         className="form-input"
                       >
@@ -595,36 +631,7 @@ function SupplierManager() {
 
                 </div>
 
-                {/* Botões de ação quando em modo de edição */}
-                {isEditing && selectedSupplier?.supplier_id === supplier.supplier_id && (
-                  <div className="supplier-card-actions">
-                    <button 
-                      className="btn-cancel-card" 
-                      onClick={handleCancel}
-                      disabled={isSaving}
-                    >
-                      <i className="bi bi-x-lg"></i>
-                      Cancelar
-                    </button>
-                    <button 
-                      className="btn-save-card" 
-                      onClick={handleSave}
-                      disabled={isSaving}
-                    >
-                      {isSaving ? (
-                        <>
-                          <i className="bi bi-arrow-repeat spin"></i>
-                          Salvando...
-                        </>
-                      ) : (
-                        <>
-                          <i className="bi bi-check-lg"></i>
-                          Salvar
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
+
 
                 {supplier.total_score && (
                   <div className="supplier-score-badge">

@@ -84,6 +84,7 @@
 .month-select,
 .year-select {
   padding: 0.5rem 0.75rem;
+  height: 37px;
   border: 1px solid rgba(128, 128, 128, 0.2);
   border-radius: 6px;
   background: var(--section-bg);

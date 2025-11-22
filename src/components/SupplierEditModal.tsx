@@ -161,10 +161,13 @@ const SupplierEditModal: React.FC<SupplierEditModalProps> = ({ isOpen, supplier,
     try {
       setIsSaving(true);
       
+      console.log('💾 Salvando fornecedor:', formData);
+      
       if (supplier) {
         // Editar fornecedor existente
         await invoke('update_supplier_data', { supplier: formData });
         showToast('Fornecedor atualizado com sucesso!', 'success');
+        console.log('✅ Fornecedor atualizado');
       } else {
         // Criar novo fornecedor - gerar supplier_id único baseado em timestamp
         const newSupplierId = `SUP_${Date.now()}`;
@@ -175,9 +178,16 @@ const SupplierEditModal: React.FC<SupplierEditModalProps> = ({ isOpen, supplier,
         
         await invoke('create_supplier', { supplier: newSupplier });
         showToast('Fornecedor criado com sucesso!', 'success');
+        console.log('✅ Fornecedor criado');
       }
       
-      onSave(formData);
+      // Passar o formData atualizado para o callback
+      const updatedSupplier = {
+        ...supplier,
+        ...formData,
+        vendor_name: formData.supplier_name
+      };
+      onSave(updatedSupplier);
       onClose();
     } catch (error) {
       console.error('Erro ao salvar fornecedor:', error);

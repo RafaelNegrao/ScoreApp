@@ -330,6 +330,41 @@ function Settings() {
     const saved = localStorage.getItem('autoSave');
     return saved === null || saved === 'true'; // Default: true
   });
+  const [allowImportExport, setAllowImportExport] = useState<boolean>(() => {
+    const saved = localStorage.getItem('allowImportExport');
+    return saved === 'true';
+  });
+  const [allowSupplierEdit, setAllowSupplierEdit] = useState<boolean>(() => {
+    const saved = localStorage.getItem('allowSupplierEdit');
+    return saved === 'true';
+  });
+  const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
+
+  // Verificar se o usuário é Super Admin
+  useEffect(() => {
+    const storedUser = sessionStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        const privilege = (user.user_privilege || '').toLowerCase();
+        setIsSuperAdmin(privilege === 'super admin');
+      } catch (error) {
+        console.error('❌ Erro ao carregar privilégio do usuário:', error);
+        setIsSuperAdmin(false);
+      }
+    }
+  }, []);
+
+  // Listener para mudanças na permissão de editar suppliers
+  useEffect(() => {
+    const handleSupplierEditChange = () => {
+      const newValue = localStorage.getItem('allowSupplierEdit') === 'true';
+      setAllowSupplierEdit(newValue);
+    };
+
+    window.addEventListener('supplierEditChanged', handleSupplierEditChange);
+    return () => window.removeEventListener('supplierEditChanged', handleSupplierEditChange);
+  }, []);
 
   // Salvar preferência de auto-save no localStorage
   const handleAutoSaveToggle = (checked: boolean) => {
@@ -339,6 +374,24 @@ function Settings() {
     
     // Disparar evento customizado para sincronizar com outras abas/componentes
     window.dispatchEvent(new CustomEvent('autoSaveChanged', { detail: checked }));
+  };
+
+  // Controlar permissão de importar/exportar scores
+  const handleImportExportToggle = (checked: boolean) => {
+    setAllowImportExport(checked);
+    localStorage.setItem('allowImportExport', checked.toString());
+    console.log('📊 Import/Export Score', checked ? 'PERMITIDO' : 'BLOQUEADO');
+    
+    window.dispatchEvent(new CustomEvent('importExportChanged', { detail: checked }));
+  };
+
+  // Controlar permissão de editar suppliers
+  const handleSupplierEditToggle = (checked: boolean) => {
+    setAllowSupplierEdit(checked);
+    localStorage.setItem('allowSupplierEdit', checked.toString());
+    console.log('✏️ Supplier Edit', checked ? 'PERMITIDO' : 'BLOQUEADO');
+    
+    window.dispatchEvent(new CustomEvent('supplierEditChanged', { detail: checked }));
   };
 
   return (
@@ -351,7 +404,7 @@ function Settings() {
               <i className="bi bi-gear"></i> System
             </button>
           )}
-          {permissions.canAccessSuppliers && (
+          {(permissions.canAccessSuppliers || allowSupplierEdit) && (
             <button className={`tab-btn ${activeTab === 'suppliers' ? 'active' : ''}`} onClick={() => setActiveTab('suppliers')}>
               <i className="bi bi-building"></i> Suppliers
             </button>
@@ -394,28 +447,68 @@ function Settings() {
               </div>
 
               {!isUser && (
-                <div className="settings-section">
-                  <h3><i className="bi bi-floppy"></i> Auto Save</h3>
-                  <p className="section-description">Salvar automaticamente as alterações</p>
-                  
-                  <div className="switch-container">
-                    <label className="switch">
-                      <input 
-                        type="checkbox" 
-                        checked={autoSave}
-                        onChange={(e) => handleAutoSaveToggle(e.target.checked)}
-                      />
-                      <span className="slider"></span>
-                    </label>
-                    <span className="switch-label">Auto Save {autoSave ? 'habilitado' : 'desabilitado'}</span>
+                <>
+                  <div className="settings-section">
+                    <div className="setting-row">
+                      <div className="setting-info">
+                        <h3><i className="bi bi-floppy"></i> Auto Save</h3>
+                        <p className="section-description">Salvar automaticamente as alterações</p>
+                      </div>
+                      <label className="switch">
+                        <input 
+                          type="checkbox" 
+                          checked={autoSave}
+                          onChange={(e) => handleAutoSaveToggle(e.target.checked)}
+                        />
+                        <span className="slider"></span>
+                      </label>
+                    </div>
                   </div>
-                </div>
+
+                  {isSuperAdmin && (
+                    <>
+                      <div className="settings-section">
+                        <div className="setting-row">
+                          <div className="setting-info">
+                            <h3><i className="bi bi-file-earmark-arrow-up"></i> Import/Export Scores</h3>
+                            <p className="section-description">Permitir que usuários Admin importem e exportem formulários de scores</p>
+                          </div>
+                          <label className="switch">
+                            <input 
+                              type="checkbox" 
+                              checked={allowImportExport}
+                              onChange={(e) => handleImportExportToggle(e.target.checked)}
+                            />
+                            <span className="slider"></span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="settings-section">
+                        <div className="setting-row">
+                          <div className="setting-info">
+                            <h3><i className="bi bi-pencil-square"></i> Supplier Edit</h3>
+                            <p className="section-description">Permitir que usuários Admin editem suppliers e vejam o ícone em Settings</p>
+                          </div>
+                          <label className="switch">
+                            <input 
+                              type="checkbox" 
+                              checked={allowSupplierEdit}
+                              onChange={(e) => handleSupplierEditToggle(e.target.checked)}
+                            />
+                            <span className="slider"></span>
+                          </label>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
               )}
             </div>
           )}
 
           {/* TAB: SUPPLIERS */}
-          {activeTab === 'suppliers' && permissions.canAccessSuppliers && (
+          {activeTab === 'suppliers' && (permissions.canAccessSuppliers || allowSupplierEdit) && (
             <div className="tab-content">
               <SupplierManager />
             </div>

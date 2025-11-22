@@ -26,6 +26,20 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
   const [loading, setLoading] = useState<boolean>(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentSupplier, setCurrentSupplier] = useState(supplier);
+  const [allowSupplierEdit, setAllowSupplierEdit] = useState<boolean>(() => {
+    return localStorage.getItem('allowSupplierEdit') === 'true';
+  });
+
+  // Listener para mudanças na permissão de editar suppliers
+  useEffect(() => {
+    const handleSupplierEditChange = () => {
+      const newValue = localStorage.getItem('allowSupplierEdit') === 'true';
+      setAllowSupplierEdit(newValue);
+    };
+
+    window.addEventListener('supplierEditChanged', handleSupplierEditChange);
+    return () => window.removeEventListener('supplierEditChanged', handleSupplierEditChange);
+  }, []);
 
   // Carregar responsáveis do banco de dados
   useEffect(() => {
@@ -45,11 +59,16 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
           invoke<ListItemThreeFields[]>('get_sqie_list'),
         ]);
 
-        // Pegar o primeiro de cada lista (ou você pode implementar lógica de busca)
-        setPlanner(plannerList.length > 0 ? plannerList[0] : null);
-        setContinuity(continuityList.length > 0 ? continuityList[0] : null);
-        setSourcing(sourcingList.length > 0 ? sourcingList[0] : null);
-        setSqie(sqieList.length > 0 ? sqieList[0] : null);
+        // Buscar os responsáveis específicos do fornecedor pelos nomes
+        const foundPlanner = plannerList.find(p => p.name === supplier.planner) || null;
+        const foundContinuity = continuityList.find(c => c.name === supplier.continuity) || null;
+        const foundSourcing = sourcingList.find(s => s.name === supplier.sourcing) || null;
+        const foundSqie = sqieList.find(sq => sq.name === supplier.sqie) || null;
+
+        setPlanner(foundPlanner);
+        setContinuity(foundContinuity);
+        setSourcing(foundSourcing);
+        setSqie(foundSqie);
 
       } catch (error) {
         console.error('Erro ao carregar responsáveis:', error);
@@ -67,6 +86,15 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
   }, [isOpen, supplier]);
 
   const handleOpenEditModal = () => {
+    // Adicionar os responsáveis ao supplier antes de abrir o modal de edição
+    const supplierWithResponsibles = {
+      ...currentSupplier,
+      planner: planner?.name || currentSupplier.planner || '',
+      continuity: continuity?.name || currentSupplier.continuity || '',
+      sourcing: sourcing?.name || currentSupplier.sourcing || '',
+      sqie: sqie?.name || currentSupplier.sqie || ''
+    };
+    setCurrentSupplier(supplierWithResponsibles);
     setIsEditModalOpen(true);
   };
 
@@ -74,8 +102,31 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
     setIsEditModalOpen(false);
   };
 
-  const handleSaveSupplier = (updatedSupplier: any) => {
+  const handleSaveSupplier = async (updatedSupplier: any) => {
     setCurrentSupplier(updatedSupplier);
+    
+    // Recarregar os dados dos responsáveis após salvar
+    try {
+      const [plannerList, continuityList, sourcingList, sqieList] = await Promise.all([
+        invoke<ListItemThreeFields[]>('get_planner_list'),
+        invoke<ListItemThreeFields[]>('get_continuity_list'),
+        invoke<ListItemThreeFields[]>('get_sourcing_list'),
+        invoke<ListItemThreeFields[]>('get_sqie_list'),
+      ]);
+
+      const foundPlanner = plannerList.find(p => p.name === updatedSupplier.planner) || null;
+      const foundContinuity = continuityList.find(c => c.name === updatedSupplier.continuity) || null;
+      const foundSourcing = sourcingList.find(s => s.name === updatedSupplier.sourcing) || null;
+      const foundSqie = sqieList.find(sq => sq.name === updatedSupplier.sqie) || null;
+
+      setPlanner(foundPlanner);
+      setContinuity(foundContinuity);
+      setSourcing(foundSourcing);
+      setSqie(foundSqie);
+    } catch (error) {
+      console.error('Erro ao recarregar responsáveis:', error);
+    }
+    
     if (onEdit) {
       onEdit();
     }
@@ -99,7 +150,7 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
               <i className="bi bi-buildings"></i> {currentSupplier.vendor_name}
             </span>
             <div className="supplier-info-header-actions">
-              {permissions.canManageSuppliers && (
+              {(permissions.canManageSuppliers || allowSupplierEdit) && (
                 <button className="supplier-info-edit" onClick={handleOpenEditModal} title="Editar">
                   <i className="bi bi-pencil"></i>
                 </button>
