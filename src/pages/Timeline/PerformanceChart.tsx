@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 import { Info } from 'lucide-react';
 import RegressionModal from '../../components/RegressionModal';
 import '../../components/RegressionModal.css';
@@ -32,17 +32,43 @@ interface RegressionData {
   realVsPredicted: { month: string; real: number; predicted: number; difference: number }[];
 }
 
+interface ChartDataPoint {
+  month: string;
+  score: number | null;
+}
+
 const months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ];
 
 const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selectedYear }) => {
-  const [data, setData] = useState<{ month: string; score: number }[]>([]);
+  const [data, setData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [regressionData, setRegressionData] = useState<RegressionData | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [target, setTarget] = useState<number | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(100);
+
+  // Detectar zoom do sistema Windows
+  useEffect(() => {
+    const detectZoom = () => {
+      const zoom = Math.round((window.outerWidth / window.innerWidth) * 100);
+      setZoomLevel(zoom);
+    };
+    
+    detectZoom();
+    window.addEventListener('resize', detectZoom);
+    
+    return () => window.removeEventListener('resize', detectZoom);
+  }, []);
+
+  // Calcular tamanho de fonte baseado no zoom
+  const getFontSize = () => {
+    if (zoomLevel >= 140) return { axis: '8px', tooltip: '9px' };
+    if (zoomLevel >= 120) return { axis: '9px', tooltip: '10px' };
+    return { axis: '12px', tooltip: '13px' };
+  };
 
   // Carrega o target da tabela criteria_table
   useEffect(() => {
@@ -67,9 +93,9 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
     loadData();
   }, [supplierId, selectedYear]);
 
-  const calculateLinearRegression = (dataPoints: { month: string; score: number }[]): RegressionData => {
-    // Filtra apenas pontos com score > 0
-    const validPoints = dataPoints.filter(d => d.score > 0);
+  const calculateLinearRegression = (dataPoints: ChartDataPoint[]): RegressionData => {
+    // Filtra apenas pontos com score válido (incluindo 0) e não-null
+    const validPoints = dataPoints.filter(d => d.score !== null && d.score !== undefined && !isNaN(d.score as number));
     const n = validPoints.length;
 
     if (n === 0) {
@@ -85,10 +111,10 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
       };
     }
 
-    // Converte meses para números (1-12)
+    // Converte meses para números (1-12) e garante que score não seja null
     const points = validPoints.map((d, idx) => ({
       x: idx + 1,
-      y: d.score,
+      y: d.score as number, // Safe porque filtramos null acima
       month: d.month
     }));
 
@@ -166,12 +192,14 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
             }
           });
           
-          const avg = totalScores.length > 0 ? totalScores.reduce((sum, s) => sum + s, 0) / totalScores.length : 0;
-          console.log(`📊 Mês ${monthNumber} (${m}) - Total Scores:`, totalScores, '| Média:', avg);
-          return { month: m, score: parseFloat(avg.toFixed(1)) };
+          if (totalScores.length > 0) {
+            const avg = totalScores.reduce((sum, s) => sum + s, 0) / totalScores.length;
+            console.log(`📊 Mês ${monthNumber} (${m}) - Total Scores:`, totalScores, '| Média:', avg);
+            return { month: m, score: parseFloat(avg.toFixed(1)) };
+          }
         }
         
-        return { month: m, score: 0 };
+        return { month: m, score: null };
       });
       
       console.log('📊 Performance Chart - Final Monthly Scores:', monthlyScores);
@@ -207,117 +235,108 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
 
   return (
     <>
-      <div className="metric-chart-card performance-chart-centered" style={{ 
-        width: '100%', 
-        maxWidth: '100%'
-      }}>
-        <div className="metric-chart-header">
-          <h3 className="metric-chart-title">Performance</h3>
-          <div className="metric-chart-info">
-            <span className="metric-chart-label">Média:</span>
-            <span className="metric-chart-value" style={{ color: 'var(--accent-primary)' }}>
-              {data.length > 0 ? (data.reduce((sum, d) => sum + d.score, 0) / data.filter(d => d.score > 0).length || 0).toFixed(1) : '0.0'}
-            </span>
-          </div>
+      <div className="metric-chart-header">
+        <h3 className="metric-chart-title">Performance</h3>
+        <div className="metric-chart-info">
+          <span className="metric-chart-label">Média:</span>
+          <span className="metric-chart-value" style={{ color: 'var(--accent-primary)' }}>
+            {data.length > 0 ? (() => {
+              const validData = data.filter(d => d.score !== null && d.score !== undefined && !isNaN(d.score as number));
+              return validData.length > 0 ? (validData.reduce((sum, d) => sum + (d.score as number), 0) / validData.length).toFixed(1) : '0.0';
+            })() : '0.0'}
+          </span>
         </div>
+      </div>
         <div style={{ 
           width: '100%', 
-          height: '100%',
-          minHeight: 'clamp(240px, 30vh, 300px)',
-          padding: '0 clamp(0.5rem, 2vw, 1.5rem)',
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
           boxSizing: 'border-box'
         }}>
           {loading ? (
             <div style={{ color: 'var(--text-secondary)' }}>Carregando...</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={target !== null ? data.map(d => ({ ...d, target })) : data} margin={{ top: 20, right: 10, left: 0, bottom: 20 }}>
+              <BarChart data={data} margin={{ top: 25, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid 
                   strokeDasharray="3 3" 
                   stroke="rgba(148, 163, 184, 0.15)" 
-                  vertical={true}
+                  vertical={false}
                   horizontal={true}
                 />
-                <XAxis dataKey="month" stroke="var(--text-secondary)" style={{ fontSize: '14px' }} />
-                <YAxis domain={[0, 10]} stroke="var(--text-secondary)" style={{ fontSize: '14px' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    background: 'var(--card-bg)', 
-                    color: 'var(--text-primary)', 
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '8px',
-                    padding: '8px 12px'
-                  }}
-                  formatter={(value: any, name: string) => {
-                    if (typeof value === 'number') {
-                      return value.toFixed(1);
-                    }
-                    return value;
-                  }}
-                />
+                <XAxis dataKey="month" stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
+                <YAxis domain={[0, 10]} stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
+                {/* Tooltip removido para não mostrar hover */}
                 {/* Linha de Target */}
                 {target !== null && (
-                  <Line
-                    type="monotone"
-                    dataKey="target"
+                  <ReferenceLine
+                    y={target}
                     stroke="#FFD600"
                     strokeWidth={2}
-                    dot={false}
-                    legendType="none"
-                    name="Target"
-                    strokeDasharray="2 2"
-                  />
-                )}
-                {/* Linha de tendência da regressão */}
-                {regressionData && (
-                  <Line
-                    type="monotone"
-                    dataKey="trend"
-                    stroke="var(--accent-primary)"
-                    strokeWidth={1.5}
                     strokeDasharray="5 5"
-                    dot={false}
-                    opacity={0.4}
-                    legendType="none"
+                    label={{ value: 'Target', position: 'right', fill: '#FFD600', fontSize: 12 }}
                   />
                 )}
-                <Line 
-                  type="monotone" 
+                <Bar 
                   dataKey="score" 
-                  stroke="var(--accent-primary)" 
-                  strokeWidth={3} 
-                  dot={{ r: 6, stroke: 'var(--accent-primary)', strokeWidth: 2, fill: 'var(--card-bg)' }}
-                  activeDot={{ r: 8 }}
-                />
-              </LineChart>
+                  radius={[6, 6, 0, 0]} 
+                  label={(props: any) => {
+                    const { x, y, width, value } = props;
+                    if (value === null || value === undefined) return null;
+                    return (
+                      <text 
+                        x={x + width / 2} 
+                        y={y - 5} 
+                        fill="var(--text-secondary)" 
+                        textAnchor="middle" 
+                        fontSize={11}
+                      >
+                        {value.toFixed(1)}
+                      </text>
+                    );
+                  }}
+                >
+                  {data.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={
+                        entry.score === null ? 'transparent' : 
+                        entry.score === 0 ? '#fbbf24' : 
+                        (target !== null && entry.score < target ? '#ef4444' : '#22c55e')
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           )}
-        </div>
-
-        {/* Barra de Informações de Regressão */}
-        {regressionData && (
-          <div className="regression-info-bar">
-            <div className="regression-info-content">
-              <div className="regression-info-item">
-                <span className="regression-info-label">y={regressionData.slope.toFixed(2)}x{regressionData.intercept >= 0 ? '+' : ''}{regressionData.intercept.toFixed(1)}</span>
-              </div>
-              <div className="regression-info-item">
-                <span className={`regression-trend ${regressionData.trend.toLowerCase()}`}>
-                  {regressionData.trend === 'Crescente' && '↗ Crescente'}
-                  {regressionData.trend === 'Decrescente' && '↘ Decrescente'}
-                  {regressionData.trend === 'Estável' && '→ Estável'}
-                </span>
-              </div>
-              <div className="regression-info-item">
-                <span className="regression-info-label">R²={regressionData.r2.toFixed(2)}</span>
-              </div>
-            </div>
-            <button className="regression-info-button" onClick={() => setShowModal(true)}>
-              <Info size={14} />
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* Barra de Informações de Regressão */}
+      {regressionData && (
+        <div className="regression-info-bar">
+          <div className="regression-info-content">
+            <div className="regression-info-item">
+              <span className="regression-info-label">y={regressionData.slope.toFixed(2)}x{regressionData.intercept >= 0 ? '+' : ''}{regressionData.intercept.toFixed(1)}</span>
+            </div>
+            <div className="regression-info-item">
+              <span className={`regression-trend ${regressionData.trend.toLowerCase()}`}>
+                {regressionData.trend === 'Crescente' && '↗ Crescente'}
+                {regressionData.trend === 'Decrescente' && '↘ Decrescente'}
+                {regressionData.trend === 'Estável' && '→ Estável'}
+              </span>
+            </div>
+            <div className="regression-info-item">
+              <span className="regression-info-label">R²={regressionData.r2.toFixed(2)}</span>
+            </div>
+          </div>
+          <button className="regression-info-button" onClick={() => setShowModal(true)}>
+            <Info size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Modal de Regressão */}
       {regressionData && (

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Search, Info, BarChart2, Grid3x3, Calendar, TrendingUp } from "lucide-react";
+import { Search, Info, BarChart2, Grid3x3, TrendingUp, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { invoke } from '@tauri-apps/api/tauri';
 import { useLocation } from 'react-router-dom';
 import SupplierInfoModal from "../components/SupplierInfoModal";
-import { DetailedRecordsTable } from '../components/DetailedRecordsTable.tsx';
 import MetricsOverview from "../components/MetricsOverview";
 import PerformanceChart from './Timeline/PerformanceChart';
 import IndividualMetrics from './Timeline/IndividualMetrics';
+import { useTimelineContext } from '../contexts/TimelineContext';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import "../pages/Page.css";
 import "./Timeline.css";
@@ -15,7 +15,7 @@ interface Supplier {
   supplier_id: string;
   vendor_name: string;
   supplier_po?: string;
-  business_unit?: string;
+  bu?: string;
   supplier_status?: string;
 }
 
@@ -25,13 +25,35 @@ interface Supplier {
  */
 function Timeline() {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState("metricas");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedYear, setSelectedYear] = useState("2025");
+  const {
+    selectedSupplier,
+    setSelectedSupplier,
+    searchTerm,
+    setSearchTerm,
+    selectedYear,
+    setSelectedYear,
+    activeTab,
+    setActiveTab,
+  } = useTimelineContext();
+
   const [searchResults, setSearchResults] = useState<Supplier[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [showSupplierInfo, setShowSupplierInfo] = useState(false);
+  const [carouselPage, setCarouselPage] = useState(0);
+  const [isUnifiedCarousel, setIsUnifiedCarousel] = useState(false);
+  const [unifiedCarouselIndex, setUnifiedCarouselIndex] = useState(0);
+  const [isSmallHeight, setIsSmallHeight] = useState(false);
+
+  // Detectar altura pequena da tela
+  useEffect(() => {
+    const checkHeight = () => {
+      setIsSmallHeight(window.innerHeight < 700);
+    };
+    
+    checkHeight();
+    window.addEventListener('resize', checkHeight);
+    return () => window.removeEventListener('resize', checkHeight);
+  }, []);
 
   // Buscar automaticamente quando vindo de outra página
   useEffect(() => {
@@ -57,10 +79,26 @@ function Timeline() {
 
   const tabs = [
     { id: "metricas", label: "Metrics", icon: BarChart2 },
-    { id: "performance", label: "Performance Chart", icon: TrendingUp },
-    { id: "individual", label: "Individual Metrics", icon: Grid3x3 },
-    { id: "detalhado", label: "Detailed Records", icon: Calendar },
+    { id: "graficos", label: "Charts", icon: TrendingUp },
   ];
+
+  // Detectar tamanho de tela para carousel unificado
+  useEffect(() => {
+    const detectScreenSize = () => {
+      if (typeof window === 'undefined') return;
+      const width = window.innerWidth;
+      setIsUnifiedCarousel(width < 1200);
+    };
+
+    detectScreenSize();
+    window.addEventListener('resize', detectScreenSize);
+    return () => window.removeEventListener('resize', detectScreenSize);
+  }, []);
+
+  // Resetar índice do carousel ao mudar de fornecedor ou ano
+  useEffect(() => {
+    setUnifiedCarouselIndex(0);
+  }, [selectedSupplier, selectedYear]);
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -164,7 +202,7 @@ function Timeline() {
                         </span>
                         <span className="dropdown-detail-separator">•</span>
                         <span className="dropdown-detail-item">
-                          <span className="dropdown-detail-label">BU:</span> {supplier.business_unit || '—'}
+                          <span className="dropdown-detail-label">BU:</span> {supplier.bu || '—'}
                         </span>
                       </div>
                     </div>
@@ -237,26 +275,132 @@ function Timeline() {
           />
         )}
 
-        {activeTab === "performance" && (
-          <PerformanceChart 
-            supplierId={selectedSupplier?.supplier_id || null}
-            selectedYear={selectedYear}
-          />
+        {activeTab === "graficos" && (
+          !selectedSupplier ? (
+            <div className="empty-state">
+              <i className="bi bi-graph-up" style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.5 }}></i>
+              <p style={{ fontSize: '0.95rem', fontWeight: 400, color: 'var(--text-muted)', opacity: 0.85 }}>Selecione um fornecedor para visualizar o gráfico de performance</p>
+            </div>
+          ) : isUnifiedCarousel ? (
+            <>
+              <div className="unified-charts-carousel">
+                <button
+                  type="button"
+                  className="unified-carousel-button prev"
+                  onClick={() => setUnifiedCarouselIndex(prev => (prev === 0 ? 4 : prev - 1))}
+                  aria-label="Gráfico anterior"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+
+                <div className="unified-carousel-track">
+                  <div className="unified-carousel-slide" key={`unified-${unifiedCarouselIndex}`}>
+                    {unifiedCarouselIndex === 0 && (
+                      <div className="metric-chart-card unified-chart-card">
+                        <PerformanceChart 
+                          supplierId={selectedSupplier?.supplier_id || null}
+                          selectedYear={selectedYear}
+                        />
+                      </div>
+                    )}
+                    {unifiedCarouselIndex > 0 && (
+                      <IndividualMetrics 
+                        supplierId={selectedSupplier?.supplier_id || null}
+                        selectedYear={selectedYear}
+                        carouselPage={unifiedCarouselIndex - 1}
+                        singleMetricIndex={unifiedCarouselIndex - 1}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="unified-carousel-button next"
+                  onClick={() => setUnifiedCarouselIndex(prev => (prev === 4 ? 0 : prev + 1))}
+                  aria-label="Próximo gráfico"
+                >
+                  <ChevronRight size={24} />
+                </button>
+              </div>
+              
+              <div className="unified-carousel-indicators">
+                {['Performance', 'OTIF', 'NIL', 'Pickup', 'Package'].map((label, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className={`unified-carousel-dot ${index === unifiedCarouselIndex ? 'active' : ''}`}
+                    onClick={() => setUnifiedCarouselIndex(index)}
+                    aria-label={`Exibir gráfico ${label}`}
+                    title={label}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="charts-unified-layout">
+              <div className="chart-main">
+                <PerformanceChart 
+                  supplierId={selectedSupplier?.supplier_id || null}
+                  selectedYear={selectedYear}
+                />
+              </div>
+              <div className="charts-carousel-container">
+                <div className="charts-grid">
+                  <IndividualMetrics 
+                    supplierId={selectedSupplier?.supplier_id || null}
+                    selectedYear={selectedYear}
+                    carouselPage={carouselPage}
+                    isSmallHeight={isSmallHeight}
+                  />
+                </div>
+                <div className="carousel-indicators-vertical">
+                  {isSmallHeight ? (
+                    // Modo altura pequena: 4 páginas (1 gráfico por página)
+                    <>
+                      <button
+                        className={`carousel-indicator-vertical ${carouselPage === 0 ? 'active' : ''}`}
+                        onClick={() => setCarouselPage(0)}
+                        aria-label="OTIF"
+                      />
+                      <button
+                        className={`carousel-indicator-vertical ${carouselPage === 1 ? 'active' : ''}`}
+                        onClick={() => setCarouselPage(1)}
+                        aria-label="NIL"
+                      />
+                      <button
+                        className={`carousel-indicator-vertical ${carouselPage === 2 ? 'active' : ''}`}
+                        onClick={() => setCarouselPage(2)}
+                        aria-label="Pickup"
+                      />
+                      <button
+                        className={`carousel-indicator-vertical ${carouselPage === 3 ? 'active' : ''}`}
+                        onClick={() => setCarouselPage(3)}
+                        aria-label="Package"
+                      />
+                    </>
+                  ) : (
+                    // Modo altura normal: 2 páginas (2 gráficos por página)
+                    <>
+                      <button
+                        className={`carousel-indicator-vertical ${carouselPage === 0 ? 'active' : ''}`}
+                        onClick={() => setCarouselPage(0)}
+                        aria-label="Página 1"
+                      />
+                      <button
+                        className={`carousel-indicator-vertical ${carouselPage === 1 ? 'active' : ''}`}
+                        onClick={() => setCarouselPage(1)}
+                        aria-label="Página 2"
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
         )}
 
-        {activeTab === "individual" && (
-          <IndividualMetrics 
-            supplierId={selectedSupplier?.supplier_id || null}
-            selectedYear={selectedYear}
-          />
-        )}
 
-        {activeTab === "detalhado" && (
-          <DetailedRecordsRealData
-            supplierId={selectedSupplier?.supplier_id || null}
-            selectedYear={selectedYear}
-          />
-        )}
       </div>
 
       {/* Modal de informações do fornecedor */}
@@ -272,59 +416,3 @@ function Timeline() {
 }
 
 export default Timeline;
-
-// Componente auxiliar para buscar e exibir dados reais na tabela detalhada
-function DetailedRecordsRealData({ supplierId, selectedYear }: { supplierId: string | null, selectedYear: string }) {
-  const [supplier, setSupplier] = React.useState<any>(null);
-  const [userPermissions, setUserPermissions] = React.useState<any>(null);
-
-  // Buscar permissões do usuário
-  React.useEffect(() => {
-    const storedUser = sessionStorage.getItem('user');
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser);
-        setUserPermissions({
-          otif: user.permissions?.otif || '',
-          nil: user.permissions?.nil || '',
-          pickup: user.permissions?.pickup || '',
-          package: user.permissions?.package || ''
-        });
-      } catch (error) {
-        console.error('Erro ao parsear usuário:', error);
-      }
-    }
-  }, []);
-
-  // Buscar fornecedor
-  React.useEffect(() => {
-    if (!supplierId) {
-      setSupplier(null);
-      return;
-    }
-    const loadSupplier = async () => {
-      try {
-        const suppliers = await invoke<any[]>('search_suppliers', { query: supplierId });
-        if (suppliers && suppliers.length > 0) {
-          setSupplier(suppliers[0]);
-        }
-      } catch (error) {
-        console.error('Erro ao carregar fornecedor:', error);
-      }
-    };
-    loadSupplier();
-  }, [supplierId]);
-
-  if (!supplierId) {
-    return <div className="empty-state"><i className="bi bi-calendar3" style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.5 }}></i><p style={{ fontSize: '0.95rem', fontWeight: 400, color: 'var(--text-muted)', opacity: 0.85 }}>Selecione um fornecedor</p></div>;
-  }
-
-  return (
-    <DetailedRecordsTable 
-      supplierId={supplierId}
-      supplierName={supplier?.vendor_name || supplierId}
-      selectedYear={selectedYear}
-      userPermissions={userPermissions}
-    />
-  );
-}

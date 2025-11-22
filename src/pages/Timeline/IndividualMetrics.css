@@ -1,4 +1,4 @@
-/* Individual Metrics Container */
+/* Individual Metrics Container - Padrão */
 .individual-metrics-container {
   margin-top: 3rem;
   margin-bottom: 2rem;
@@ -7,7 +7,73 @@
   gap: 1.5rem;
   padding: 0;
   width: 100%;
+  height: auto;
+}
+
+/* Container para métrica única (usado no carousel unificado) */
+.single-metric-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+}
+
+.single-metric-container .metric-chart-card {
+  width: 100%;
+  max-width: none;
+  min-height: 400px;
+  margin: 0;
+}
+
+/* Layout Unificado - Grid 2x2 para 4 gráficos - TEM PRIORIDADE */
+.charts-grid .individual-metrics-container {
+  margin: 0 !important;
+  padding: 0 !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr 1fr !important;
+  gap: 1.5rem !important;
+  height: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.charts-grid .metric-chart-card {
+  min-height: 0 !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: var(--card-bg) !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 1.5rem !important;
+  border-radius: 12px !important;
+  margin: 0 !important;
+}
+
+/* Performance Chart no layout unificado - sem container extra */
+.chart-main {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: none;
   height: 100%;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+}
+
+.chart-main .metric-chart-header {
+  margin-bottom: 1rem;
+}
+
+.chart-main > div:not(.metric-chart-header):not(.regression-info-bar) {
+  flex: 1;
+  min-height: 0;
+}
+
+.chart-main .regression-info-bar {
+  margin-top: auto;
 }
 
 /* Modo Compacto - 2 cards com navegação */
@@ -212,7 +278,7 @@
 .metric-chart-card {
   background: var(--card-bg);
   border-radius: 12px;
-  padding: 1.5rem 1.5rem 0 1.5rem;
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-color);
@@ -268,8 +334,8 @@
   align-items: center;
   width: 100%;
   max-width: 100%;
-  height: min(560px, calc(100vh - 360px));
-  min-height: 360px;
+  height: 100%;
+  min-height: 0;
 }
 
 .performance-chart-centered .metric-chart-card {
@@ -438,16 +504,16 @@
   transform: scale(1.05);
 }
 
-/* Responsive Design */
-@media (max-width: 1400px) {
-  .individual-metrics-container {
+/* Responsive Design - NÃO APLICA para .charts-grid */
+@media (max-width: 1200px) {
+  .individual-metrics-container:not(.charts-grid *) {
     grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
     gap: 1.25rem;
   }
 }
 
 @media (max-width: 1200px) {
-  .individual-metrics-container {
+  .individual-metrics-container:not(.charts-grid *) {
     grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
     gap: 1rem;
     margin-top: 2rem;
@@ -459,21 +525,21 @@
 }
 
 @media (max-width: 1000px) {
-  .individual-metrics-container {
+  .individual-metrics-container:not(.charts-grid *) {
     grid-template-columns: 1fr;
     gap: 1rem;
   }
 }
 
 @media (max-width: 900px) {
-  .individual-metrics-container {
+  .individual-metrics-container:not(.charts-grid *) {
     grid-template-columns: 1fr;
     gap: 1rem;
   }
 }
 
 @media (max-width: 800px) {
-  .individual-metrics-container {
+  .individual-metrics-container:not(.charts-grid *) {
     grid-template-columns: 1fr;
     gap: 1rem;
     margin-top: 1.5rem;

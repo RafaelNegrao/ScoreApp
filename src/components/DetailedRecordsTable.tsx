@@ -243,18 +243,46 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
   // Função para calcular o total score
   const calculateTotalScore = (monthNumber: number, values: Map<string, any>) => {
     const rowKey = `${monthNumber}`;
-    const otif = parseFloat(values.get(`${rowKey}-otif`) || '0') || 0;
-    const nil = parseFloat(values.get(`${rowKey}-nil`) || '0') || 0;
-    const pickup = parseFloat(values.get(`${rowKey}-pickup`) || '0') || 0;
-    const packageScore = parseFloat(values.get(`${rowKey}-package`) || '0') || 0;
+    const scores: { value: number, weight: number }[] = [];
     
-    const total = 
-      (otif * criteriaWeights.otif) +
-      (nil * criteriaWeights.nil) +
-      (pickup * criteriaWeights.pickup) +
-      (packageScore * criteriaWeights.package);
+    const otifValue = values.get(`${rowKey}-otif`);
+    if (otifValue !== null && otifValue !== undefined && otifValue !== '') {
+      const otif = parseFloat(otifValue);
+      if (!isNaN(otif)) {
+        scores.push({ value: otif, weight: criteriaWeights.otif });
+      }
+    }
     
-    return total.toFixed(1);
+    const nilValue = values.get(`${rowKey}-nil`);
+    if (nilValue !== null && nilValue !== undefined && nilValue !== '') {
+      const nil = parseFloat(nilValue);
+      if (!isNaN(nil)) {
+        scores.push({ value: nil, weight: criteriaWeights.nil });
+      }
+    }
+    
+    const pickupValue = values.get(`${rowKey}-pickup`);
+    if (pickupValue !== null && pickupValue !== undefined && pickupValue !== '') {
+      const pickup = parseFloat(pickupValue);
+      if (!isNaN(pickup)) {
+        scores.push({ value: pickup, weight: criteriaWeights.pickup });
+      }
+    }
+    
+    const packageValue = values.get(`${rowKey}-package`);
+    if (packageValue !== null && packageValue !== undefined && packageValue !== '') {
+      const packageScore = parseFloat(packageValue);
+      if (!isNaN(packageScore)) {
+        scores.push({ value: packageScore, weight: criteriaWeights.package });
+      }
+    }
+    
+    if (scores.length === 0) return '0.0';
+    
+    const totalWeightedScore = scores.reduce((sum, s) => sum + (s.value * s.weight), 0);
+    const totalWeight = scores.reduce((sum, s) => sum + s.weight, 0);
+    
+    return (totalWeightedScore / totalWeight).toFixed(1);
   };
 
   // Função para salvar um score individual

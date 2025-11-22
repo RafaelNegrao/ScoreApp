@@ -70,6 +70,7 @@ function MainLayout() {
     { path: "/", icon: "bi-house", label: "Home", permission: permissions.canAccessHome },
     { path: "/score", icon: "bi-trophy", label: "Score", permission: permissions.canAccessScore },
     { path: "/timeline", icon: "bi-clock-history", label: "Timeline", permission: permissions.canAccessTimeline },
+    { path: "/contributors", icon: "bi-people", label: "Contributors", permission: permissions.canAccessContributors },
     { path: "/risks", icon: "bi-exclamation-triangle", label: "Risks", permission: permissions.canAccessRisks },
   ];
   

@@ -5,16 +5,20 @@ interface CommentModalProps {
   isOpen: boolean;
   onClose: () => void;
   month: string;
+  year?: string;
   comment: string;
   onSave: (comment: string) => void;
+  supplierName?: string;
 }
 
 export const CommentModal: React.FC<CommentModalProps> = ({ 
   isOpen, 
   onClose, 
   month, 
+  year,
   comment, 
-  onSave 
+  onSave,
+  supplierName 
 }) => {
   const [localComment, setLocalComment] = useState(comment);
 
@@ -39,7 +43,11 @@ export const CommentModal: React.FC<CommentModalProps> = ({
     <div className="comment-modal-overlay" onClick={handleCancel}>
       <div className="comment-modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="comment-modal-header">
-          <h3>Comentário - {month}</h3>
+          <h3>
+            Comentário
+            {supplierName && <><br />{supplierName}</>}
+            {(month || year) && <><br />{month}{year ? ` / ${year}` : ''}</>}
+          </h3>
           <button className="comment-modal-close" onClick={handleCancel}>
             <i className="bi bi-x-lg"></i>
           </button>

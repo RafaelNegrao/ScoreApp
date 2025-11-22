@@ -10,11 +10,14 @@ import BottomBar from "./components/BottomBar";
 import { ToastContainer } from "./components/ToastContainer";
 import { ToastProvider, useToastContext } from "./contexts/ToastContext";
 import { PermissionsProvider } from "./contexts/PermissionsContext";
+import { ScoreProvider } from "./contexts/ScoreContext";
+import { TimelineProvider } from "./contexts/TimelineContext";
 import Login from "./pages/Login";
 import MainLayout from "./components/MainLayout";
 import Home from "./pages/Home";
 import Score from "./pages/Score";
 import Timeline from "./pages/Timeline";
+import Contributors from "./pages/Contributors";
 import Risks from "./pages/Risks";
 import Settings from "./pages/Settings";
 
@@ -83,6 +86,7 @@ function AppContent() {
           <Route index element={<Home />} />
   <Route path="score" element={<Score />} />
           <Route path="timeline" element={<Timeline />} />
+          <Route path="contributors" element={<Contributors />} />
           <Route path="risks" element={<Risks />} />
           <Route path="settings" element={<Settings />} />
         </Route>
@@ -169,7 +173,11 @@ function App() {
   return (
     <ToastProvider>
       <PermissionsProvider>
-        <AppContent />
+        <ScoreProvider>
+          <TimelineProvider>
+            <AppContent />
+          </TimelineProvider>
+        </ScoreProvider>
       </PermissionsProvider>
     </ToastProvider>
   );

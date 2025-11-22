@@ -33,10 +33,10 @@
   color: var(--text-primary, #f1f5f9);
   border-radius: 18px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.28);
-  width: 900px;
+  width: 700px;
   max-width: 90vw;
-  min-height: 550px;
-  max-height: 92vh;
+  min-height: 450px;
+  max-height: 85vh;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -60,8 +60,8 @@
   align-items: center;
   justify-content: space-between;
   background: var(--bg-secondary, #0f172a);
-  padding: 16px 28px 10px 28px;
-  font-size: 1.13rem;
+  padding: 14px 24px 8px 24px;
+  font-size: 0.95rem;
   font-weight: 600;
   border-bottom: 1px solid var(--border-color, #334155);
 }
@@ -120,7 +120,7 @@
 }
 
 .supplier-info-scrollable {
-  padding: 24px 32px 24px 32px;
+  padding: 18px 24px 18px 24px;
   overflow-y: auto;
   flex-shrink: 0;
   max-height: 35vh;
@@ -128,7 +128,7 @@
 }
 .supplier-info-name {
   margin: 0 0 12px 0;
-  font-size: 1.1rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--accent-primary);
   letter-spacing: 0.01em;
@@ -149,7 +149,7 @@
   align-items: baseline;
   gap: 10px;
   min-width: 0;
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   color: var(--text-primary, #f1f5f9);
   flex: 1 1 220px;
 }
@@ -164,14 +164,14 @@
 .supplier-info-label {
   color: var(--accent-primary);
   font-weight: 600;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
   opacity: 0.92;
 }
 .supplier-info-value {
   color: var(--text-secondary, #cbd5e1);
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   line-height: 1.4;
   word-break: break-word;
 }
@@ -179,7 +179,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   color: var(--text-primary, #f1f5f9);
 }
 .supplier-info-email-box {
@@ -211,7 +211,7 @@
 
 /* Responsáveis */
 .supplier-info-responsibles {
-  padding: 24px 32px;
+  padding: 18px 24px;
   color: var(--text-primary, #f1f5f9);
   flex-shrink: 0;
   overflow: visible;
@@ -224,14 +224,14 @@
 .responsibles-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  grid-auto-rows: minmax(140px, auto);
+  gap: 10px;
+  grid-auto-rows: minmax(110px, auto);
 }
 .responsible-card {
   background: var(--bg-secondary);
   border: none;
   border-radius: 8px;
-  padding: 14px 16px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -248,20 +248,20 @@
   gap: 6px;
   font-weight: 600;
   color: var(--accent-primary);
-  font-size: 0.95rem;
+  font-size: 0.75rem;
   margin-bottom: 8px;
 }
 .responsible-label i {
-  font-size: 1.1rem;
+  font-size: 0.85rem;
 }
 .responsible-name {
   font-weight: 700;
   color: var(--text-primary);
-  font-size: 1.1rem;
+  font-size: 0.9rem;
   margin-bottom: 6px;
 }
 .responsible-info {
-  font-size: 0.88rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   display: flex;
   flex-direction: column;
@@ -273,7 +273,7 @@
   gap: 6px;
 }
 .responsible-info i {
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   opacity: 0.7;
   min-width: 14px;
 }

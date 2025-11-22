@@ -16,6 +16,7 @@ interface ScoreRecord {
   nil: number | null;
   quality_pickup: number | null;
   quality_package: number | null;
+  total_score?: number | null;
 }
 
 interface MetricsData {
@@ -82,18 +83,29 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
 
   const calculateMetrics = (records: ScoreRecord[], year: string): MetricsData => {
     // Função auxiliar para calcular total_score de um record
+    // Usa a média simples dos 4 critérios disponíveis
     const calculateTotalScore = (record: ScoreRecord): number => {
-      const scores = [
-        record.otif || 0,
-        record.nil || 0,
-        record.quality_pickup || 0,
-        record.quality_package || 0
-      ];
-      const validScores = scores.filter(s => s > 0);
-      return validScores.length > 0 ? validScores.reduce((a, b) => a + b, 0) / validScores.length : 0;
+      const scores: number[] = [];
+      
+      // Nota 0 é válida e deve ser incluída!
+      if (record.otif !== null && record.otif !== undefined && !isNaN(record.otif)) scores.push(record.otif);
+      if (record.nil !== null && record.nil !== undefined && !isNaN(record.nil)) scores.push(record.nil);
+      if (record.quality_pickup !== null && record.quality_pickup !== undefined && !isNaN(record.quality_pickup)) scores.push(record.quality_pickup);
+      if (record.quality_package !== null && record.quality_package !== undefined && !isNaN(record.quality_package)) scores.push(record.quality_package);
+      
+      if (scores.length === 0) return 0;
+      return scores.reduce((a, b) => a + b, 0) / scores.length;
     };
 
-    const allScores = records.map(r => calculateTotalScore(r));
+    // Usar total_score do banco se disponível
+    const getScore = (record: ScoreRecord): number => {
+      if (record.total_score !== null && record.total_score !== undefined && !isNaN(record.total_score)) {
+        return record.total_score;
+      }
+      return calculateTotalScore(record);
+    };
+
+    const allScores = records.map(r => getScore(r));
     
     // Overall Average (todos os dados)
     const overallAverage = allScores.length > 0
@@ -111,7 +123,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       return monthsDiff <= 12 && monthsDiff >= 0;
     });
     const twelveMonthsAverage = last12MonthsRecords.length > 0
-      ? last12MonthsRecords.reduce((sum, r) => sum + calculateTotalScore(r), 0) / last12MonthsRecords.length
+      ? last12MonthsRecords.reduce((sum, r) => sum + getScore(r), 0) / last12MonthsRecords.length
       : 0;
 
     // Year Average
@@ -119,7 +131,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       ? records.filter(r => r.year === year)
       : records;
     const yearAverage = yearRecords.length > 0
-      ? yearRecords.reduce((sum, r) => sum + calculateTotalScore(r), 0) / yearRecords.length
+      ? yearRecords.reduce((sum, r) => sum + getScore(r), 0) / yearRecords.length
       : 0;
 
     // Calcular médias trimestrais
@@ -137,16 +149,16 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     const q4Records = getQuarterRecords(4);
 
     const q1Average = q1Records.length > 0
-      ? q1Records.reduce((sum, r) => sum + calculateTotalScore(r), 0) / q1Records.length
+      ? q1Records.reduce((sum, r) => sum + getScore(r), 0) / q1Records.length
       : 0;
     const q2Average = q2Records.length > 0
-      ? q2Records.reduce((sum, r) => sum + calculateTotalScore(r), 0) / q2Records.length
+      ? q2Records.reduce((sum, r) => sum + getScore(r), 0) / q2Records.length
       : 0;
     const q3Average = q3Records.length > 0
-      ? q3Records.reduce((sum, r) => sum + calculateTotalScore(r), 0) / q3Records.length
+      ? q3Records.reduce((sum, r) => sum + getScore(r), 0) / q3Records.length
       : 0;
     const q4Average = q4Records.length > 0
-      ? q4Records.reduce((sum, r) => sum + calculateTotalScore(r), 0) / q4Records.length
+      ? q4Records.reduce((sum, r) => sum + getScore(r), 0) / q4Records.length
       : 0;
 
     // Calcular tendências (comparar com trimestre anterior)

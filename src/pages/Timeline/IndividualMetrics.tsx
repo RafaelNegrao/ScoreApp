@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 import { Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import RegressionModal from '../../components/RegressionModal';
 import './IndividualMetrics.css';
@@ -18,6 +18,9 @@ interface ScoreRecord {
 interface IndividualMetricsProps {
   supplierId: string | null;
   selectedYear: string;
+  carouselPage?: number;
+  singleMetricIndex?: number;
+  isSmallHeight?: boolean;
 }
 
 interface RegressionData {
@@ -31,16 +34,21 @@ interface RegressionData {
   realVsPredicted: { month: string; real: number; predicted: number; difference: number }[];
 }
 
+interface ChartDataPoint {
+  month: string;
+  score: number | null;
+}
+
 const months = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ];
 
-const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selectedYear }) => {
-  const [otifData, setOtifData] = useState<{ month: string; score: number }[]>([]);
-  const [nilData, setNilData] = useState<{ month: string; score: number }[]>([]);
-  const [pickupData, setPickupData] = useState<{ month: string; score: number }[]>([]);
-  const [packageData, setPackageData] = useState<{ month: string; score: number }[]>([]);
+const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selectedYear, carouselPage = 0, singleMetricIndex, isSmallHeight = false }) => {
+  const [otifData, setOtifData] = useState<ChartDataPoint[]>([]);
+  const [nilData, setNilData] = useState<ChartDataPoint[]>([]);
+  const [pickupData, setPickupData] = useState<ChartDataPoint[]>([]);
+  const [packageData, setPackageData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [currentMetric, setCurrentMetric] = useState<string>('');
@@ -116,8 +124,8 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
       }
       const width = window.innerWidth;
       setIsMobileCarousel(width <= 920);
-      // Modo compacto: mostra 2 cards quando a largura for menor que 1600px (para caber 4 gráficos confortavelmente)
-      setIsCompactCarousel(width < 1600 && width > 920);
+      // Modo compacto: mostra 2 cards quando a largura for menor que 1200px (para caber 4 gráficos confortavelmente)
+      setIsCompactCarousel(width < 1200 && width > 920);
     };
 
     detectMobile();
@@ -131,9 +139,9 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
     setCurrentCarouselIndex(0);
   }, [supplierId, selectedYear, isMobileCarousel]);
 
-  const calculateLinearRegression = (dataPoints: { month: string; score: number }[]): RegressionData => {
-    // Filtra apenas pontos com score > 0
-    const validPoints = dataPoints.filter(d => d.score > 0);
+  const calculateLinearRegression = (dataPoints: ChartDataPoint[]): RegressionData => {
+    // Filtra apenas pontos com score válido (incluindo 0) e não-null
+    const validPoints = dataPoints.filter(d => d.score !== null && d.score !== undefined && !isNaN(d.score as number));
     const n = validPoints.length;
 
     if (n === 0) {
@@ -149,10 +157,10 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
       };
     }
 
-    // Converte meses para números (1-12)
+    // Converte meses para números (1-12) e garante que score não seja null
     const points = validPoints.map((d, idx) => ({
       x: idx + 1,
-      y: d.score,
+      y: d.score as number, // Safe porque filtramos null acima
       month: d.month
     }));
 
@@ -214,15 +222,18 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
       console.log('📈 Individual Metrics - Selected Year:', selectedYear);
       
       // Processar dados para cada métrica
-      const processMetric = (metricField: keyof ScoreRecord) => {
+      const processMetric = (metricField: keyof ScoreRecord): ChartDataPoint[] => {
         return months.map((m, idx) => {
           const monthNumber = idx + 1; // Mês de 1 a 12
           // Busca registros que correspondem ao ano e mês específico
           const monthRecords = records.filter(r => r.year === selectedYear && r.month === monthNumber);
           
-          const scores = monthRecords.map(r => r[metricField] as number).filter(s => s !== undefined && s !== null && s > 0);
-          const avg = scores.length > 0 ? scores.reduce((sum, s) => sum + s, 0) / scores.length : 0;
-          return { month: m, score: parseFloat(avg.toFixed(2)) };
+          const scores = monthRecords.map(r => r[metricField] as number).filter(s => s !== undefined && s !== null);
+          if (scores.length > 0) {
+            const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+            return { month: m, score: parseFloat(avg.toFixed(2)) };
+          }
+          return { month: m, score: null };
         });
       };
 
@@ -259,14 +270,8 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
     );
   }
 
-  const renderChart = (data: { month: string; score: number }[], title: string, color: string) => {
+  const renderChart = (data: ChartDataPoint[], title: string, color: string) => {
     const regression = calculateLinearRegression(data);
-    
-    // Adiciona linha de tendência aos dados
-    const dataWithTrend = data.map((item, index) => ({
-      ...item,
-      trend: parseFloat((regression.slope * (index + 1) + regression.intercept).toFixed(1))
-    }));
     
     const handleOpenModal = () => {
       setCurrentMetric(title);
@@ -274,8 +279,6 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
       setShowModal(true);
     };
 
-    // Target dinâmico - mesmo valor para todas as métricas
-    const targetLine = targetValue !== null ? data.map(d => ({ month: d.month, target: targetValue })) : [];
     return (
       <div className="metric-chart-card" key={title}>
         <div className="metric-chart-header">
@@ -283,22 +286,26 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
           <div className="metric-chart-info">
             <span className="metric-chart-label">Média:</span>
             <span className="metric-chart-value" style={{ color }}>
-              {data.length > 0 ? (data.reduce((sum, d) => sum + d.score, 0) / data.filter(d => d.score > 0).length || 0).toFixed(1) : '0.0'}
+              {data.length > 0 ? (() => {
+                const validData = data.filter(d => d.score !== null && d.score !== undefined && !isNaN(d.score as number));
+                return validData.length > 0 ? (validData.reduce((sum, d) => sum + (d.score as number), 0) / validData.length).toFixed(1) : '0.0';
+              })() : '0.0'}
             </span>
           </div>
         </div>
         <div style={{ width: '100%', height: getChartHeight(), boxSizing: 'border-box' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={dataWithTrend.map((d, i) => ({ ...d, target: targetLine[i]?.target }))} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            <BarChart data={data} margin={{ top: 25, right: 10, left: -10, bottom: 0 }}>
               <CartesianGrid 
                 strokeDasharray="3 3" 
                 stroke="rgba(148, 163, 184, 0.15)" 
-                vertical={true}
+                vertical={false}
                 horizontal={true}
               />
               <XAxis dataKey="month" stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
               <YAxis domain={[0, 10]} stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
               <Tooltip
+                active={false}
                 contentStyle={{
                   background: 'var(--card-bg)',
                   color: 'var(--text-primary)',
@@ -307,6 +314,9 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
                   padding: '8px 12px'
                 }}
                 formatter={(value: any, name: string) => {
+                  if (value === null || value === undefined) {
+                    return 'Sem dados';
+                  }
                   if (typeof value === 'number') {
                     return value.toFixed(1);
                   }
@@ -315,37 +325,44 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
               />
               {/* Linha de Target */}
               {targetValue !== null && (
-                <Line
-                  type="monotone"
-                  dataKey="target"
+                <ReferenceLine
+                  y={targetValue}
                   stroke="#FFD600"
                   strokeWidth={2}
-                  dot={false}
-                  legendType="none"
-                  name="Target"
-                  strokeDasharray="2 2"
+                  strokeDasharray="5 5"
                 />
               )}
-              {/* Linha de tendência da regressão */}
-              <Line
-                type="monotone"
-                dataKey="trend"
-                stroke={color}
-                strokeWidth={1.5}
-                strokeDasharray="5 5"
-                dot={false}
-                opacity={0.3}
-                legendType="none"
-              />
-              <Line
-                type="monotone"
-                dataKey="score"
-                stroke={color}
-                strokeWidth={2.5}
-                dot={{ r: 4, stroke: color, strokeWidth: 2, fill: 'var(--card-bg)' }}
-                activeDot={{ r: 6 }}
-              />
-            </LineChart>
+              <Bar 
+                dataKey="score" 
+                radius={[4, 4, 0, 0]} 
+                label={(props: any) => {
+                  const { x, y, width, value } = props;
+                  if (value === null || value === undefined) return null;
+                  return (
+                    <text 
+                      x={x + width / 2} 
+                      y={y - 5} 
+                      fill="var(--text-secondary)" 
+                      textAnchor="middle" 
+                      fontSize={10}
+                    >
+                      {value.toFixed(1)}
+                    </text>
+                  );
+                }}
+              >
+                {data.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={
+                      entry.score === null ? 'transparent' : 
+                      entry.score === 0 ? '#fbbf24' : 
+                      (targetValue !== null && entry.score < targetValue ? '#ef4444' : '#22c55e')
+                    }
+                  />
+                ))}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </div>
 
@@ -414,9 +431,36 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
     return 'zoom-100';
   };
 
+  // Determinar quais métricas mostrar baseado na página do carousel
+  const getVisibleMetrics = () => {
+    // Modo de métrica única (carousel unificado)
+    if (singleMetricIndex !== undefined) {
+      return [metricsConfig[singleMetricIndex]];
+    }
+    if (carouselPage !== undefined) {
+      if (isSmallHeight) {
+        // Modo altura pequena: mostra 1 métrica por página
+        return metricsConfig.slice(carouselPage, carouselPage + 1);
+      } else {
+        // Modo carousel normal: mostra 2 métricas por página
+        const startIndex = carouselPage * 2;
+        return metricsConfig.slice(startIndex, startIndex + 2);
+      }
+    }
+    // Modo normal: mostra todas as 4 métricas
+    return metricsConfig;
+  };
+
   return (
     <>
-      {isMobileCarousel ? (
+      {singleMetricIndex !== undefined ? (
+        // Modo de métrica única para carousel unificado
+        renderChart(
+          metricsConfig[singleMetricIndex].data,
+          metricsConfig[singleMetricIndex].title,
+          metricsConfig[singleMetricIndex].color
+        )
+      ) : isMobileCarousel ? (
         <div className="individual-metrics-carousel">
           <button
             type="button"
@@ -474,37 +518,7 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
         </div>
       ) : (
         <div className={`individual-metrics-container ${getZoomClass()}`}>
-          {metricsConfig.map(metric => renderChart(metric.data, metric.title, metric.color))}
-        </div>
-      )}
-
-      {(isMobileCarousel || isCompactCarousel) && (
-        <div className="individual-carousel-indicators" role="tablist" aria-label="Métricas Individuais">
-          {isCompactCarousel ? (
-            // Modo compacto: 2 páginas (0-1, 2-3)
-            Array.from({ length: 2 }).map((_, pageIndex) => (
-              <button
-                type="button"
-                key={`page-${pageIndex}`}
-                className={`individual-carousel-dot ${currentCarouselIndex === pageIndex * 2 ? 'active' : ''}`}
-                onClick={() => setCurrentCarouselIndex(pageIndex * 2)}
-                aria-label={`Exibir página ${pageIndex + 1}`}
-                aria-selected={currentCarouselIndex === pageIndex * 2}
-              />
-            ))
-          ) : (
-            // Modo mobile: 4 páginas (uma para cada métrica)
-            metricsConfig.map((metric, index) => (
-              <button
-                type="button"
-                key={metric.key}
-                className={`individual-carousel-dot ${index === currentCarouselIndex ? 'active' : ''}`}
-                onClick={() => setCurrentCarouselIndex(index)}
-                aria-label={`Exibir métrica ${metric.title}`}
-                aria-selected={index === currentCarouselIndex}
-              />
-            ))
-          )}
+          {getVisibleMetrics().map(metric => renderChart(metric.data, metric.title, metric.color))}
         </div>
       )}
 

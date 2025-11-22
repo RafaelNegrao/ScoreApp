@@ -608,6 +608,167 @@
   }
 }
 
+/* Layout Unificado de Gráficos */
+.charts-unified-layout {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 1.5rem !important;
+  padding: 1.5rem 2rem !important;
+  height: calc(100vh - 280px) !important;
+  min-height: 0 !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+}
+
+/* Quando a altura da tela for pequena, ajusta para 1 gráfico por página */
+@media (max-height: 700px) {
+  .charts-carousel-container {
+    height: 100% !important;
+  }
+  
+  .charts-grid {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .charts-grid .individual-metrics-container {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    margin: 0 !important;
+    grid-template-rows: unset !important;
+    gap: 0 !important;
+  }
+  
+  .charts-grid .metric-chart-card {
+    flex: 1 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 1.5rem !important;
+    margin: 0 !important;
+  }
+  
+  .charts-grid .metric-chart-card > div:not(.metric-chart-header):not(.regression-info-bar) {
+    flex: 1 !important;
+    min-height: 0 !important;
+  }
+  
+  .charts-grid .regression-info-bar {
+    margin-top: 0.5rem !important;
+    padding: 0.25rem 0 0 0 !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .performance-chart-centered {
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+  }
+  
+  .chart-main {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .chart-main .performance-chart-centered {
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .chart-main .performance-chart-centered .metric-chart-card {
+    height: 100% !important;
+    padding: 1.5rem !important;
+  }
+  
+  .chart-main .performance-chart-centered > div:not(.metric-chart-header):not(.regression-info-bar) {
+    flex: 1 !important;
+    min-height: 0 !important;
+  }
+  
+  .chart-main .regression-info-bar {
+    margin-top: 0.5rem !important;
+    padding: 0.25rem 0 0 0 !important;
+    flex-shrink: 0 !important;
+  }
+}
+
+.chart-main {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+.charts-carousel-container {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 12px !important;
+  position: relative !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+.charts-grid {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  min-height: 0 !important;
+}
+
+.carousel-indicators-vertical {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+}
+
+.carousel-indicator-vertical {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-color);
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.carousel-indicator-vertical:hover {
+  background: var(--text-secondary);
+}
+
+.carousel-indicator-vertical.active {
+  background: var(--accent-primary);
+  height: 32px;
+  border-radius: 4px;
+}
+
+/* Responsividade do layout unificado - REMOVIDO porque estava causando conflito */
+/* O layout normal (lado a lado) deve permanecer em telas grandes */
+
+@media (max-width: 768px) {
+  .charts-unified-layout {
+    padding: 1rem;
+    gap: 1.5rem;
+  }
+  
+  .chart-main {
+    padding: 1rem;
+    min-height: 350px;
+  }
+}
+
 /* Tema Branco - Cor específica para campos de pesquisa */
 [data-theme="cummins"] .search-container,
 [data-theme="cummins"] .timeline-search,
@@ -625,4 +786,193 @@
 [data-theme="cummins"] .timeline-filters .filter-select:focus-visible,
 [data-theme="cummins"] .timeline-filters .filter-select:active {
   background: #ededed;
+}
+
+/* Carousel Unificado - Todos os 5 gráficos */
+.unified-charts-carousel {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+  height: calc(100vh - 320px);
+  min-height: 500px;
+  padding: 0 2rem;
+}
+
+.unified-carousel-button {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.unified-carousel-button:hover {
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+  transform: scale(1.1);
+}
+
+.unified-carousel-track {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  max-width: 900px;
+  height: 100%;
+}
+
+.unified-carousel-slide {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  animation: fadeSlideIn 0.4s ease-out;
+}
+
+.unified-chart-card {
+  width: 100%;
+  max-width: 800px;
+  height: 100% !important;
+  animation: slideUp 0.3s ease-out;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Força altura igual para todos os gráficos no carousel unificado */
+.unified-carousel-slide .metric-chart-card {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.unified-carousel-slide .metric-chart-card > div:not(.metric-chart-header):not(.regression-info-bar) {
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+.unified-carousel-indicators {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 1rem 0 2rem 0;
+  padding: 0 2rem;
+}
+
+.unified-carousel-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  background: var(--border-color);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.unified-carousel-dot:hover {
+  background: var(--text-secondary);
+  transform: scale(1.2);
+}
+
+.unified-carousel-dot.active {
+  background: var(--accent-primary);
+  width: 40px;
+  border-radius: 6px;
+}
+
+/* Animações para carousel unificado */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Container para métrica única no carousel unificado */
+.single-metric-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.single-metric-container .metric-chart-card {
+  width: 100%;
+  max-width: none;
+  min-height: 400px;
+}
+
+/* Responsividade do carousel unificado */
+@media (max-width: 1024px) {
+  .unified-charts-carousel {
+    padding: 0 1rem;
+    gap: 1rem;
+    height: calc(100vh - 300px);
+    min-height: 450px;
+  }
+  
+  .unified-carousel-button {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 768px) {
+  .unified-charts-carousel {
+    padding: 0 0.5rem;
+    gap: 0.5rem;
+    height: calc(100vh - 280px);
+    min-height: 400px;
+  }
+  
+  .unified-carousel-button {
+    width: 44px;
+    height: 44px;
+  }
+  
+  .unified-carousel-button svg {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .unified-carousel-indicators {
+    gap: 8px;
+    padding: 0 1rem;
+  }
+  
+  .unified-carousel-dot {
+    width: 10px;
+    height: 10px;
+  }
+  
+  .unified-carousel-dot.active {
+    width: 32px;
+  }
 }

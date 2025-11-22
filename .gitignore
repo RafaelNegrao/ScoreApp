@@ -54,3 +54,18 @@ Thumbs.db
 *.sw?
 *.db
 
+# Database files
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Temporary files
+*.tmp
+*.temp
+comandos.txt
+
+# Generated files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

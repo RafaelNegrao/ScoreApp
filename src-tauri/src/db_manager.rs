@@ -3446,5 +3446,855 @@ impl DatabaseManager {
         println!("✅ {} usuários mais ativos encontrados", users.len());
         Ok(users)
     }
+
+    /// Busca contribuições dos usuários com data do último input
+    pub fn get_user_contributions() -> Result<Vec<(String, String, i32, String)>, String> {
+        println!("📊 Buscando contribuições dos usuários...");
+        
+        let conn_guard = Self::get_connection()?;
+        
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+
+        let conn = conn_guard.as_ref().unwrap();
+        
+        let mut stmt = conn
+            .prepare(
+                "SELECT u.user_wwid, 
+                        u.user_name, 
+                        COUNT(l.wwid) as contribution_count,
+                        MAX(l.date || ' ' || l.time) as last_input_date
+                 FROM users_table u
+                 LEFT JOIN log_table l ON u.user_wwid = l.wwid
+                 WHERE l.wwid IS NOT NULL AND l.wwid != 'Unknown' AND l.wwid != ''
+                 GROUP BY u.user_wwid, u.user_name
+                 ORDER BY contribution_count DESC"
+            )
+            .map_err(|e| format!("Erro ao preparar query: {}", e))?;
+
+        let contributors = stmt
+            .query_map([], |row| {
+                let wwid: String = row.get(0)?;
+                let name: String = row.get(1)?;
+                let count: i32 = row.get(2)?;
+                let last_date: String = row.get(3).unwrap_or_else(|_| "".to_string());
+                Ok((wwid, name, count, last_date))
+            })
+            .map_err(|e| format!("Erro ao executar query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Erro ao coletar resultados: {}", e))?;
+
+        println!("✅ {} contribuidores encontrados", contributors.len());
+        Ok(contributors)
+    }
+
+    /// Busca contribuições dos usuários por mês/ano específico
+    pub fn get_user_contributions_by_month(month: i32, year: i32) -> Result<Vec<(String, String, i32, String)>, String> {
+        println!("📊 Buscando contribuições dos usuários para {}/{}", month, year);
+        
+        let conn_guard = Self::get_connection()?;
+        
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+
+        let conn = conn_guard.as_ref().unwrap();
+        
+        // Construir padrões de data para o mês/ano especificado
+        let date_patterns = vec![
+            format!("{:04}-{:02}-%", year, month),  // YYYY-MM-DD
+            format!("{:02}/{:02}/{:04}%", month, month, year),  // MM/DD/YYYY or DD/MM/YYYY
+        ];
+        
+        let mut stmt = conn
+            .prepare(
+                "SELECT u.user_wwid, 
+                        u.user_name, 
+                        COUNT(l.wwid) as contribution_count,
+                        MAX(l.date || ' ' || l.time) as last_input_date
+                 FROM users_table u
+                 LEFT JOIN log_table l ON u.user_wwid = l.wwid
+                 WHERE l.wwid IS NOT NULL 
+                   AND l.wwid != 'Unknown' 
+                   AND l.wwid != ''
+                   AND (l.date LIKE ?1 OR l.date LIKE ?2)
+                 GROUP BY u.user_wwid, u.user_name
+                 HAVING contribution_count > 0
+                 ORDER BY contribution_count DESC"
+            )
+            .map_err(|e| format!("Erro ao preparar query: {}", e))?;
+
+        let contributors = stmt
+            .query_map([&date_patterns[0], &date_patterns[1]], |row| {
+                let wwid: String = row.get(0)?;
+                let name: String = row.get(1)?;
+                let count: i32 = row.get(2)?;
+                let last_date: String = row.get(3).unwrap_or_else(|_| "".to_string());
+                Ok((wwid, name, count, last_date))
+            })
+            .map_err(|e| format!("Erro ao executar query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Erro ao coletar resultados: {}", e))?;
+
+        println!("✅ {} contribuidores encontrados para {}/{}", contributors.len(), month, year);
+        Ok(contributors)
+    }
+
+    /// Exporta formulário de avaliação para Excel
+    /// criteria: "otif", "nil", "pickup", "package"
+    /// include_score: se true, preenche com notas existentes
+    /// month: mês da nota (1-12)
+    /// year: ano da nota
+    pub fn export_evaluation_form(
+        criteria: String,
+        include_score: bool,
+        month: Option<i32>,
+        year: Option<i32>,
+    ) -> Result<Vec<u8>, String> {
+        println!("\n📤 ========================================");
+        println!("📤 EXPORT_EVALUATION_FORM CHAMADO!");
+        println!("📤 Critério: {}", criteria);
+        println!("📤 Incluir Score: {}", include_score);
+        println!("📤 Mês: {:?}, Ano: {:?}", month, year);
+        println!("📤 ========================================\n");
+
+        // Validação: se include_score é true, mês e ano são obrigatórios
+        if include_score {
+            if month.is_none() || year.is_none() {
+                return Err("Mês e ano são obrigatórios quando incluir notas existentes".to_string());
+            }
+
+            // Verifica se existe pelo menos um registro para o período
+            let conn_guard = Self::get_connection()?;
+            if conn_guard.is_none() {
+                return Err("Conexão não inicializada".to_string());
+            }
+            let conn = conn_guard.as_ref().unwrap();
+
+            let check_query = "SELECT COUNT(*) FROM supplier_score_records_table WHERE month = ?1 AND year = ?2";
+            let count: i32 = conn
+                .query_row(check_query, [&month.unwrap(), &year.unwrap()], |row| row.get(0))
+                .map_err(|e| format!("Erro ao verificar período: {}", e))?;
+
+            if count == 0 {
+                return Err(format!(
+                    "Não existem registros de notas para o período {}/{}",
+                    month.unwrap(),
+                    year.unwrap()
+                ));
+            }
+        }
+
+        let conn_guard = Self::get_connection()?;
+        
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+
+        let conn = conn_guard.as_ref().unwrap();
+
+        // Mapeia o nome do critério para o nome da coluna no banco
+        let score_column = match criteria.as_str() {
+            "otif" => "otif",
+            "nil" => "nil",
+            "pickup" => "quality_pickup",
+            "package" => "quality_package",
+            _ => return Err(format!("Critério inválido: {}", criteria)),
+        };
+
+        println!("📊 Coluna de score selecionada: {}", score_column);
+
+        // Busca todos os fornecedores
+        let suppliers_query = String::from(
+            "SELECT DISTINCT 
+                COALESCE(CAST(supplier_id AS TEXT), '') as supplier_id,
+                COALESCE(vendor_name, '') as vendor_name,
+                COALESCE(bu, '') as bu,
+                COALESCE(CAST(supplier_po AS TEXT), '') as supplier_po
+             FROM supplier_database_table
+             ORDER BY vendor_name"
+        );
+
+        let mut stmt = conn
+            .prepare(&suppliers_query)
+            .map_err(|e| format!("Erro ao preparar query de fornecedores: {}", e))?;
+
+        #[derive(Debug)]
+        struct ExportRow {
+            record_id: Option<i32>,
+            supplier_id: String,
+            vendor_name: String,
+            bu: String,
+            supplier_po: String,
+            score: Option<f64>,
+        }
+
+        let mut export_data: Vec<ExportRow> = Vec::new();
+
+        let suppliers = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| format!("Erro ao executar query: {}", e))?;
+
+        for supplier_result in suppliers {
+            let (supplier_id, vendor_name, bu, supplier_po) = supplier_result
+                .map_err(|e| format!("Erro ao processar fornecedor: {}", e))?;
+
+            let mut score: Option<f64> = None;
+            let mut record_id: Option<i32> = None;
+
+            // Se deve incluir scores, busca da tabela de scores
+            if include_score && month.is_some() && year.is_some() {
+                let score_query = format!(
+                    "SELECT id, {} FROM supplier_score_records_table 
+                     WHERE lower(trim(supplier_id)) = lower(trim(?1)) 
+                     AND month = ?2 
+                     AND year = ?3",
+                    score_column
+                );
+
+                println!("🔍 Query de busca: {}", score_query);
+                println!("🔍 Parâmetros: supplier_id='{}', month={}, year={}", 
+                         supplier_id, month.unwrap(), year.unwrap());
+
+                if let Ok(mut score_stmt) = conn.prepare(&score_query) {
+                    match score_stmt.query_row(
+                        [&supplier_id, &month.unwrap().to_string(), &year.unwrap().to_string()],
+                        |row| {
+                            let id = row.get::<_, i32>(0)?;
+                            
+                            // quality_pickup e quality_package são TEXT, outros são REAL
+                            let score_val = if score_column == "quality_pickup" || score_column == "quality_package" {
+                                row.get::<_, Option<String>>(1)?
+                                    .and_then(|s| s.parse::<f64>().ok())
+                            } else {
+                                row.get::<_, Option<f64>>(1)?
+                            };
+                            
+                            println!("   ✅ Encontrado: id={}, score={:?}", id, score_val);
+                            Ok((Some(id), score_val))
+                        }
+                    ) {
+                        Ok(result) => {
+                            record_id = result.0;
+                            score = result.1;
+                        }
+                        Err(e) => {
+                            println!("   ⚠️ Nenhum registro encontrado: {}", e);
+                        }
+                    }
+                }
+            }
+
+            export_data.push(ExportRow {
+                record_id,
+                supplier_id,
+                vendor_name,
+                bu,
+                supplier_po,
+                score,
+            });
+        }
+
+        println!("✅ {} fornecedores preparados para exportação", export_data.len());
+
+        // Cria o arquivo Excel usando rust_xlsxwriter
+        use rust_xlsxwriter::{Workbook, Format, Color, FormatAlign, DataValidation, DataValidationRule};
+
+        let mut workbook = Workbook::new();
+        let worksheet = workbook.add_worksheet();
+        
+        // Formatos
+        let header_format = Format::new()
+            .set_bold()
+            .set_font_size(12)
+            .set_background_color(Color::RGB(0x4472C4))
+            .set_font_color(Color::White)
+            .set_align(FormatAlign::Center)
+            .set_locked(); // Cabeçalho bloqueado
+
+        // Formato para colunas bloqueadas (A e B - Record ID e Supplier ID)
+        let locked_format = Format::new()
+            .set_align(FormatAlign::Left)
+            .set_background_color(Color::RGB(0xF2F2F2))
+            .set_locked(); // Explicitamente bloqueado
+
+        // Formato para colunas desbloqueadas (C e D - Vendor Name e Supplier PO)
+        let unlocked_format = Format::new()
+            .set_align(FormatAlign::Left)
+            .set_unlocked(); // Explicitamente desbloqueado
+
+        // Formato para coluna de score (E) - desbloqueada e com formato numérico
+        let score_format = Format::new()
+            .set_align(FormatAlign::Center)
+            .set_num_format("0.0")
+            .set_unlocked(); // Permite edição
+
+        // Define largura das colunas
+        if include_score {
+            worksheet.set_column_width(0, 12).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(1, 15).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(2, 40).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(3, 18).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(4, 15).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(5, 12).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+        } else {
+            worksheet.set_column_width(0, 15).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(1, 40).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(2, 18).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(3, 15).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(4, 12).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+        }
+
+        // Cabeçalhos
+        if include_score {
+            worksheet.write_with_format(0, 0, "Record ID", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 1, "Supplier ID", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 2, "Vendor Name", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 3, "BU", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 4, "Supplier PO", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 5, criteria.to_uppercase().as_str(), &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+        } else {
+            worksheet.write_with_format(0, 0, "Supplier ID", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 1, "Vendor Name", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 2, "BU", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 3, "Supplier PO", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 4, criteria.to_uppercase().as_str(), &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+        }
+
+        // Dados
+        for (idx, row) in export_data.iter().enumerate() {
+            let row_num = (idx + 1) as u32;
+            
+            if include_score {
+                // Coluna A: Record ID (bloqueada)
+                if let Some(rid) = row.record_id {
+                    worksheet.write_with_format(row_num, 0, rid, &locked_format)
+                        .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                } else {
+                    worksheet.write_with_format(row_num, 0, "", &locked_format)
+                        .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                }
+
+                // Coluna B: Supplier ID (bloqueada)
+                worksheet.write_with_format(row_num, 1, &row.supplier_id, &locked_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                
+                // Coluna C: Vendor Name (desbloqueada)
+                worksheet.write_with_format(row_num, 2, &row.vendor_name, &unlocked_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                
+                // Coluna D: BU (desbloqueada)
+                worksheet.write_with_format(row_num, 3, &row.bu, &unlocked_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                
+                // Coluna E: Supplier PO (desbloqueada)
+                worksheet.write_with_format(row_num, 4, &row.supplier_po, &unlocked_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+
+                // Coluna F: Score (desbloqueada com validação)
+                if let Some(score_val) = row.score {
+                    worksheet.write_with_format(row_num, 5, score_val, &score_format)
+                        .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                } else {
+                    worksheet.write_with_format(row_num, 5, "", &score_format)
+                        .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                }
+            } else {
+                // Modo sem score (não usado mais, mas mantido por compatibilidade)
+                worksheet.write_with_format(row_num, 0, &row.supplier_id, &locked_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                worksheet.write_with_format(row_num, 1, &row.vendor_name, &unlocked_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                worksheet.write_with_format(row_num, 2, &row.bu, &unlocked_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                worksheet.write_with_format(row_num, 3, &row.supplier_po, &unlocked_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                worksheet.write_with_format(row_num, 4, "", &score_format)
+                    .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+            }
+        }
+
+        // Aplica validação de dados na coluna de score (coluna E ou coluna D dependendo do modo)
+        let last_row = export_data.len() as u32;
+        let score_col = if include_score { 5 } else { 4 };
+        
+        let validation = DataValidation::new()
+            .allow_decimal_number(DataValidationRule::Between(0.0, 10.0))
+            .set_error_title("Valor inválido")
+            .map_err(|e| format!("Erro ao definir título de erro: {}", e))?
+            .set_error_message("O valor deve ser um número entre 0.0 e 10.0 com uma casa decimal.")
+            .map_err(|e| format!("Erro ao definir mensagem de erro: {}", e))?
+            .set_input_title("Nota do Fornecedor")
+            .map_err(|e| format!("Erro ao definir título de entrada: {}", e))?
+            .set_input_message("Digite uma nota de 0.0 a 10.0")
+            .map_err(|e| format!("Erro ao definir mensagem de entrada: {}", e))?;
+
+        worksheet.add_data_validation(1, score_col as u16, last_row, score_col as u16, &validation)
+            .map_err(|e| format!("Erro ao adicionar validação: {}", e))?;
+
+        // Protege a planilha com senha
+        worksheet.protect_with_password("30625629");
+
+        println!("🔒 Planilha protegida com senha: 30625629");
+        println!("🔒 Colunas A e B bloqueadas para edição");
+        println!("✅ Validação aplicada na coluna de score (0.0 a 10.0)");
+
+        // Cria aba oculta com dados de controle para validação na importação
+        let control_sheet = workbook.add_worksheet();
+        control_sheet.set_name("_control_")
+            .map_err(|e| format!("Erro ao definir nome da aba: {}", e))?;
+        control_sheet.set_hidden(true);
+
+        // Formato para a aba de controle
+        let control_header_format = Format::new()
+            .set_bold()
+            .set_background_color(Color::RGB(0x808080))
+            .set_font_color(Color::White);
+
+        let control_data_format = Format::new()
+            .set_align(FormatAlign::Left);
+
+        // Cabeçalhos da aba de controle
+        control_sheet.write_with_format(0, 0, "Export Info", &control_header_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+        control_sheet.write_with_format(0, 1, "Value", &control_header_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+
+        // Dados de controle
+        control_sheet.write_with_format(1, 0, "Criteria", &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+        control_sheet.write_with_format(1, 1, criteria.as_str(), &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+
+        control_sheet.write_with_format(2, 0, "Month", &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+        control_sheet.write_with_format(2, 1, month.unwrap_or(0), &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+
+        control_sheet.write_with_format(3, 0, "Year", &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+        control_sheet.write_with_format(3, 1, year.unwrap_or(0), &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+
+        control_sheet.write_with_format(4, 0, "Total Records", &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+        control_sheet.write_with_format(4, 1, export_data.len() as i32, &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+
+        // Adiciona timestamp da exportação
+        use chrono::Local;
+        let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        control_sheet.write_with_format(5, 0, "Export Date", &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+        control_sheet.write_with_format(5, 1, now.as_str(), &control_data_format)
+            .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
+
+        println!("📋 Aba de controle '_control_' criada e ocultada");
+
+        // Salva em buffer
+        let buffer = workbook
+            .save_to_buffer()
+            .map_err(|e| format!("Erro ao salvar workbook: {}", e))?;
+
+        println!("✅ Arquivo Excel gerado com sucesso ({} bytes)", buffer.len());
+        Ok(buffer)
+    }
+
+    /// Valida arquivo de importação verificando a aba de controle
+    pub fn validate_import_file(
+        file_path: String,
+        expected_criteria: String,
+    ) -> Result<serde_json::Value, String> {
+        println!("\n🔍 ========================================");
+        println!("🔍 VALIDATE_IMPORT_FILE");
+        println!("🔍 Arquivo: {}", file_path);
+        println!("🔍 Critério esperado: {}", expected_criteria);
+        println!("🔍 ========================================\n");
+
+        use calamine::{Reader, open_workbook, Xlsx};
+
+        // Abre o arquivo Excel
+        let mut workbook: Xlsx<_> = open_workbook(&file_path)
+            .map_err(|e| format!("Erro ao abrir arquivo: {}", e))?;
+
+        // Busca a aba _control_
+        let range = workbook.worksheet_range("_control_")
+            .map_err(|e| format!("Erro ao ler aba '_control_': {}", e))?;
+
+        println!("✅ Aba '_control_' encontrada");
+
+            // Lê os dados de controle
+            let mut criteria = String::new();
+            let mut month: i32 = 0;
+            let mut year: i32 = 0;
+            let mut total_records: i32 = 0;
+            let mut export_date = String::new();
+
+            // Lê cada linha
+            for row in range.rows() {
+                if row.len() >= 2 {
+                    let key = row[0].to_string();
+                    let value = row[1].to_string();
+
+                    match key.as_str() {
+                        "Criteria" => criteria = value,
+                        "Month" => month = value.parse().unwrap_or(0),
+                        "Year" => year = value.parse().unwrap_or(0),
+                        "Total Records" => total_records = value.parse().unwrap_or(0),
+                        "Export Date" => export_date = value,
+                        _ => {}
+                    }
+                }
+            }
+
+            println!("📋 Dados lidos:");
+            println!("   Critério: {}", criteria);
+            println!("   Mês: {}", month);
+            println!("   Ano: {}", year);
+            println!("   Total Registros: {}", total_records);
+            println!("   Data Export: {}", export_date);
+
+            // Valida o critério
+            if criteria.to_lowercase() != expected_criteria.to_lowercase() {
+                return Err(format!(
+                    "Critério inválido. Esperado: {}, Encontrado: {}",
+                    expected_criteria, criteria
+                ));
+            }
+
+        println!("✅ Validação concluída com sucesso!");
+
+        // Retorna resultado da validação
+        Ok(serde_json::json!({
+            "valid": true,
+            "criteria": criteria,
+            "month": month,
+            "year": year,
+            "total_records": total_records,
+            "export_date": export_date,
+        }))
+    }
+
+    /// Importa notas do arquivo Excel
+    pub fn import_scores_from_file(
+        file_path: String,
+        criteria: String,
+    ) -> Result<String, String> {
+        println!("\n📥 ========================================");
+        println!("📥 IMPORT_SCORES_FROM_FILE");
+        println!("📥 Arquivo: {}", file_path);
+        println!("📥 Critério: {}", criteria);
+        println!("📥 ========================================\n");
+
+        use calamine::{Reader, open_workbook, Xlsx};
+        use rusqlite::params;
+
+        // Abre o arquivo Excel
+        let mut workbook: Xlsx<_> = open_workbook(&file_path)
+            .map_err(|e| format!("Erro ao abrir arquivo: {}", e))?;
+
+        // Busca a primeira aba (Sheet1)
+        let sheet_names = workbook.sheet_names().to_owned();
+        if sheet_names.is_empty() {
+            return Err("Nenhuma aba encontrada no arquivo".to_string());
+        }
+
+        let sheet_name = &sheet_names[0];
+        println!("📄 Lendo aba: {}", sheet_name);
+
+        let range = workbook
+            .worksheet_range(sheet_name)
+            .map_err(|e| format!("Erro ao processar aba: {}", e))?;
+
+        let mut updated_count = 0;
+        let mut error_count = 0;
+        let conn_guard = Self::get_connection()?;
+        let conn = conn_guard.as_ref().ok_or_else(|| "Conexão não inicializada".to_string())?;
+
+        // Define qual coluna atualizar baseado no critério
+        let score_column = match criteria.to_lowercase().as_str() {
+            "otif" => "otif",
+            "nil" => "nil",
+            "pickup" => "quality_pickup",
+            "package" => "quality_package",
+            _ => return Err(format!("Critério inválido: {}", criteria)),
+        };
+
+        println!("📊 Atualizando coluna: {}", score_column);
+
+        // Busca os pesos dos critérios para calcular total_score
+        let criteria_weights = Self::get_criteria_weights(conn)?;
+        println!("⚖️ Pesos dos critérios: OTIF={}, NIL={}, Pickup={}, Package={}", 
+                 criteria_weights.0, criteria_weights.1, criteria_weights.2, criteria_weights.3);
+
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+        fn cell_to_string<T: ToString>(cell: &T) -> String {
+            cell.to_string().trim().to_string()
+        }
+
+        fn cell_to_i32<T: ToString>(cell: &T) -> Option<i32> {
+            let value = cell.to_string();
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+
+            let normalized = trimmed.replace(',', ".");
+            normalized
+                .parse::<f64>()
+                .ok()
+                .map(|v| v.round() as i32)
+        }
+
+        fn cell_to_f64<T: ToString>(cell: &T) -> Option<f64> {
+            let value = cell.to_string();
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+
+            let normalized = trimmed.replace(',', ".");
+            normalized.parse::<f64>().ok()
+        }
+
+        // Itera sobre as linhas (pulando o cabeçalho na linha 0)
+        for (row_idx, row) in range.rows().enumerate() {
+            if row_idx == 0 {
+                println!("📋 Cabeçalho:");
+                for (col_idx, cell) in row.iter().enumerate() {
+                    println!("   Coluna {}: {}", col_idx, cell);
+                }
+                continue; // Pula cabeçalho
+            }
+
+            println!("\n📝 Linha {} - Total de colunas: {}", row_idx + 1, row.len());
+
+            if row.len() < 5 {
+                println!("⚠️ Linha {} ignorada: estrutura incompleta ({} colunas)", row_idx + 1, row.len());
+            }
+
+            // Lê os dados da linha usando índices atualizados
+            let record_id_opt = row.get(0).and_then(|cell| cell_to_i32(cell));
+            let supplier_id_str = row.get(1).map(|cell| cell_to_string(cell)).unwrap_or_default();
+            let vendor_name_str = row.get(2).map(|cell| cell_to_string(cell)).unwrap_or_default();
+            let _bu_str = row.get(3).map(|cell| cell_to_string(cell)).unwrap_or_default();
+            let supplier_po_str = row.get(4).map(|cell| cell_to_string(cell)).unwrap_or_default();
+            let score_opt = row.get(5).and_then(|cell| cell_to_f64(cell));
+
+            println!("   [0] record_id: {:?}", record_id_opt);
+            println!("   [1] supplier_id: '{}'", supplier_id_str);
+            println!("   [2] vendor_name: '{}'", vendor_name_str);
+            println!("   [3] bu: '{}'", _bu_str);
+            println!("   [4] supplier_po: '{}'", supplier_po_str);
+            println!("   [5] score: {:?}", score_opt);
+
+            // Valida record_id
+            let record_id = match record_id_opt {
+                Some(id) if id > 0 => id,
+                _ => {
+                    println!("⚠️ record_id inválido na linha {}", row_idx + 1);
+                    error_count += 1;
+                    continue;
+                }
+            };
+
+            // Valida nota
+            let score = match score_opt {
+                Some(value) => value,
+                None => {
+                    println!("⚠️ Score inválido/vazio na linha {}, pulando", row_idx + 1);
+                    error_count += 1;
+                    continue;
+                }
+            };
+
+            // Valida range (0.0 a 10.0)
+            if score < 0.0 || score > 10.0 {
+                println!("⚠️ Score fora do range (0-10) na linha {}: {}", row_idx + 1, score);
+                error_count += 1;
+                continue;
+            }
+
+            // Busca o registro atual para pegar todos os scores existentes
+            let current_record = conn.query_row(
+                "SELECT otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE id = ?",
+                params![record_id],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<f64>>(0)?,
+                        row.get::<_, Option<f64>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                }
+            );
+
+            let (mut otif, mut nil, mut pickup, mut package) = match current_record {
+                Ok(data) => {
+                    println!("📊 Scores atuais do record {}: OTIF={:?}, NIL={:?}, Pickup={:?}, Package={:?}", 
+                             record_id, data.0, data.1, data.2, data.3);
+                    data
+                },
+                Err(e) => {
+                    println!("⚠️ Record {} não encontrado no banco: {}", record_id, e);
+                    error_count += 1;
+                    continue;
+                }
+            };
+
+            // Atualiza APENAS o score do critério específico que está sendo importado
+            match criteria.to_lowercase().as_str() {
+                "otif" => {
+                    println!("🔄 Atualizando OTIF: {} → {}", otif.unwrap_or(0.0), score);
+                    otif = Some(score);
+                },
+                "nil" => {
+                    println!("🔄 Atualizando NIL: {} → {}", nil.unwrap_or(0.0), score);
+                    nil = Some(score);
+                },
+                "pickup" => {
+                    println!("🔄 Atualizando Pickup: {:?} → {}", pickup, score);
+                    pickup = Some(score.to_string());
+                },
+                "package" => {
+                    println!("🔄 Atualizando Package: {:?} → {}", package, score);
+                    package = Some(score.to_string());
+                },
+                _ => {}
+            }
+
+            // Recalcula o total_score usando TODAS as 4 notas (a nova + as antigas)
+            let otif_val = otif.unwrap_or(0.0);
+            let nil_val = nil.unwrap_or(0.0);
+            let pickup_val = pickup.as_ref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+            let package_val = package.as_ref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+
+            println!("📐 Calculando total_score:");
+            println!("   OTIF: {} × {} = {}", otif_val, criteria_weights.0, otif_val * criteria_weights.0);
+            println!("   NIL: {} × {} = {}", nil_val, criteria_weights.1, nil_val * criteria_weights.1);
+            println!("   Pickup: {} × {} = {}", pickup_val, criteria_weights.2, pickup_val * criteria_weights.2);
+            println!("   Package: {} × {} = {}", package_val, criteria_weights.3, package_val * criteria_weights.3);
+
+            let total_score = 
+                (otif_val * criteria_weights.0) +
+                (nil_val * criteria_weights.1) +
+                (pickup_val * criteria_weights.2) +
+                (package_val * criteria_weights.3);
+
+            let total_score_str = format!("{:.2}", total_score);
+            println!("   Total Score: {}", total_score_str);
+
+            // Atualiza o registro no banco
+            let update_query = format!(
+                "UPDATE supplier_score_records_table 
+                 SET {} = ?, total_score = ?, change_date = ?, changed_by = ? 
+                 WHERE id = ?",
+                score_column
+            );
+
+            println!("🔧 Query SQL: {}", update_query);
+            println!("🔧 Parâmetros:");
+            println!("   {} = {}", score_column, score);
+            println!("   total_score = {}", total_score_str);
+            println!("   change_date = {}", now);
+            println!("   changed_by = Import System");
+            println!("   id = {}", record_id);
+
+            let exec_result = if score_column == "quality_pickup" || score_column == "quality_package" {
+                conn.execute(
+                    &update_query,
+                    params![score.to_string(), total_score_str.clone(), now.clone(), "Import System", record_id]
+                )
+            } else {
+                conn.execute(
+                    &update_query,
+                    params![score, total_score_str.clone(), now.clone(), "Import System", record_id]
+                )
+            };
+
+            match exec_result {
+                Ok(rows_affected) => {
+                    println!("🔍 Linhas afetadas: {}", rows_affected);
+                    if rows_affected > 0 {
+                        println!("✅ Record {} atualizado: {} = {}, total_score = {}", 
+                                 record_id, score_column, score, total_score_str);
+                        updated_count += 1;
+                    } else {
+                        println!("⚠️ Record {} não foi atualizado (0 linhas afetadas)", record_id);
+                        println!("   Possível causa: ID {} não existe na tabela", record_id);
+                        error_count += 1;
+                    }
+                }
+                Err(e) => {
+                    println!("❌ Erro ao atualizar record {}: {}", record_id, e);
+                    error_count += 1;
+                }
+            }
+        }
+
+        println!("✅ Importação concluída:");
+        println!("   {} registros atualizados", updated_count);
+        println!("   {} erros encontrados", error_count);
+
+        if error_count > 0 {
+            Ok(format!(
+                "Atualizados: {} registros\nErros: {} registros",
+                updated_count, error_count
+            ))
+        } else {
+            Ok(format!("✅ {} registros atualizados com sucesso!", updated_count))
+        }
+    }
+
+    // Função auxiliar para buscar os pesos dos critérios
+    fn get_criteria_weights(conn: &Connection) -> Result<(f64, f64, f64, f64), String> {
+        let mut stmt = conn
+            .prepare("SELECT criteria_id, criteria_category, value FROM criteria_table WHERE criteria_id <= 4 ORDER BY criteria_id")
+            .map_err(|e| format!("Erro ao buscar pesos: {}", e))?;
+
+        let mut weights = vec![0.0; 4];
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i32>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| format!("Erro ao processar pesos: {}", e))?;
+
+        for row_result in rows {
+            if let Ok((criteria_id, category, value_str)) = row_result {
+                let value = value_str.parse::<f64>().unwrap_or(0.0);
+                let idx = (criteria_id - 1) as usize;
+                if idx < 4 {
+                    weights[idx] = value;
+                    println!("  ⚖️ Critério {} ({}): peso = {}", criteria_id, category, value);
+                }
+            }
+        }
+
+        Ok((weights[0], weights[1], weights[2], weights[3]))
+    }
 }
 

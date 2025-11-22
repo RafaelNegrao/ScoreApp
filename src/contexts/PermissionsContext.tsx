@@ -12,6 +12,7 @@ interface Permissions {
   canAccessHome: boolean;
   canAccessScore: boolean;
   canAccessTimeline: boolean;
+  canAccessContributors: boolean;
   canAccessRisks: boolean;
   canAccessEmail: boolean;
   canAccessLists: boolean;
@@ -53,6 +54,7 @@ const defaultPermissions: Permissions = {
   canAccessHome: false,
   canAccessScore: false,
   canAccessTimeline: false,
+  canAccessContributors: false,
   canAccessRisks: false,
   canAccessEmail: false,
   canAccessLists: false,
@@ -83,6 +85,7 @@ const getPermissionsForRole = (role: string): Permissions => {
         canAccessHome: true,
         canAccessScore: true,
         canAccessTimeline: true,
+        canAccessContributors: true,
         canAccessRisks: true,
         canAccessEmail: true,
         canAccessLists: true,
@@ -111,6 +114,7 @@ const getPermissionsForRole = (role: string): Permissions => {
         canAccessHome: true,
         canAccessScore: true,
         canAccessTimeline: true,
+        canAccessContributors: false,
         canAccessRisks: true,
         canAccessEmail: true,
         canAccessLists: true,
@@ -139,6 +143,7 @@ const getPermissionsForRole = (role: string): Permissions => {
         canAccessHome: true,
         canAccessScore: false, // User NÃO acessa Score
         canAccessTimeline: true, // User acessa Timeline
+        canAccessContributors: false,
         canAccessRisks: false,
         canAccessEmail: false,
         canAccessLists: false,

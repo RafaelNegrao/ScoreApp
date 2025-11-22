@@ -31,11 +31,31 @@
 
 /* Top Cards - Médias Gerais */
 .metrics-top-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(clamp(180px, 22vw, 280px), 1fr));
+  display: flex;
   gap: clamp(0.5rem, 1vw, 1rem);
   margin-bottom: 1rem;
   width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.metrics-top-cards::-webkit-scrollbar {
+  height: 6px;
+}
+
+.metrics-top-cards::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.metrics-top-cards::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.metrics-top-cards::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
 
 .metric-card {
@@ -49,6 +69,7 @@
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   min-height: 80px;
+  flex: 1 0 auto;
 }
 
 .metric-card:hover {
@@ -123,10 +144,30 @@
 
 /* Quarterly Cards */
 .metrics-quarterly-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(clamp(150px, 20vw, 200px), 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: clamp(0.75rem, 1.25vw, 1.25rem);
   width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.metrics-quarterly-cards::-webkit-scrollbar {
+  height: 6px;
+}
+
+.metrics-quarterly-cards::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.metrics-quarterly-cards::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.metrics-quarterly-cards::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
 
 .quarterly-card {
@@ -140,6 +181,7 @@
   transition: all 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   min-height: 120px;
+  flex: 1 0 auto;
 }
 
 .quarterly-card:hover {
@@ -251,13 +293,7 @@
 
 /* Responsive */
 @media (max-width: 1400px) {
-  .metrics-top-cards {
-    grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
-  }
-  
-  .metrics-quarterly-cards {
-    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
-  }
+  /* Cards permanecem em linha única com scroll */
 }
 
 @media (max-width: 1024px) {
@@ -266,12 +302,10 @@
   }
   
   .metrics-top-cards {
-    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
     gap: 1rem;
   }
 
   .metrics-quarterly-cards {
-    grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
   }
   
@@ -281,13 +315,7 @@
 }
 
 @media (max-width: 900px) {
-  .metrics-top-cards {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .metrics-quarterly-cards {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  /* Cards permanecem em linha única com scroll */
 }
 
 @media (max-width: 800px) {
@@ -296,12 +324,10 @@
   }
   
   .metrics-top-cards {
-    grid-template-columns: 1fr;
     gap: 1rem;
   }
   
   .metrics-quarterly-cards {
-    grid-template-columns: repeat(2, 1fr);
     gap: 0.85rem;
   }
   
@@ -320,12 +346,10 @@
   }
   
   .metrics-top-cards {
-    grid-template-columns: 1fr;
     gap: 1rem;
   }
 
   .metrics-quarterly-cards {
-    grid-template-columns: repeat(2, 1fr);
     gap: 0.75rem;
   }
 
@@ -347,6 +371,17 @@
   }
 }
 
+@media (max-width: 900px) {
+  .metrics-quarterly-cards {
+    flex-wrap: wrap;
+  }
+  
+  .quarterly-card {
+    flex: 1 0 calc(50% - 0.625rem);
+    min-width: calc(50% - 0.625rem);
+  }
+}
+
 @media (max-width: 480px) {
   .metrics-overview {
     padding: 0 0.75rem 0.75rem;
@@ -357,8 +392,13 @@
   }
   
   .metrics-quarterly-cards {
-    grid-template-columns: 1fr;
     gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  
+  .quarterly-card {
+    flex: 1 0 calc(50% - 0.375rem);
+    min-width: calc(50% - 0.375rem);
   }
   
   .metric-card {

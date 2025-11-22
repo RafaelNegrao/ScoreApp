@@ -498,10 +498,61 @@ fn get_logs_by_date_range(start_date: String, end_date: String) -> Result<Vec<db
     DatabaseManager::get_logs_by_date_range(start_date, end_date)
 }
 
-/// Comando para buscar usuários mais ativos
+/// Comando Tauri para obter usuários mais ativos
 #[tauri::command]
 fn get_most_active_users(limit: i32) -> Result<Vec<(String, String, i32)>, String> {
     DatabaseManager::get_most_active_users(limit)
+}
+
+/// Comando Tauri para obter contribuições dos usuários com data do último input
+#[tauri::command]
+fn get_user_contributions() -> Result<Vec<(String, String, i32, String)>, String> {
+    DatabaseManager::get_user_contributions()
+}
+
+/// Comando Tauri para obter contribuições dos usuários por mês/ano
+#[tauri::command]
+fn get_user_contributions_by_month(month: i32, year: i32) -> Result<Vec<(String, String, i32, String)>, String> {
+    DatabaseManager::get_user_contributions_by_month(month, year)
+}
+
+/// Comando para exportar formulário de avaliação
+#[tauri::command]
+async fn export_evaluation_form(
+    criteria: String,
+    include_score: bool,
+    month: Option<i32>,
+    year: Option<i32>,
+) -> Result<Vec<u8>, String> {
+    println!("🟢 [MAIN.RS] Comando export_evaluation_form recebido!");
+    println!("🟢 Params: criteria={}, include_score={}, month={:?}, year={:?}", 
+             criteria, include_score, month, year);
+    let result = DatabaseManager::export_evaluation_form(criteria, include_score, month, year);
+    match &result {
+        Ok(buffer) => println!("🟢 [MAIN.RS] Buffer retornado com {} bytes", buffer.len()),
+        Err(e) => println!("🔴 [MAIN.RS] Erro: {}", e),
+    }
+    result
+}
+
+/// Comando para validar arquivo de importação
+#[tauri::command]
+async fn validate_import_file(
+    file_path: String,
+    expected_criteria: String,
+) -> Result<serde_json::Value, String> {
+    println!("🟢 [MAIN.RS] Comando validate_import_file recebido!");
+    DatabaseManager::validate_import_file(file_path, expected_criteria)
+}
+
+/// Comando para importar notas do arquivo
+#[tauri::command]
+async fn import_scores_from_file(
+    file_path: String,
+    criteria: String,
+) -> Result<String, String> {
+    println!("🟢 [MAIN.RS] Comando import_scores_from_file recebido!");
+    DatabaseManager::import_scores_from_file(file_path, criteria)
 }
 
 fn main() {
@@ -568,6 +619,8 @@ fn main() {
             get_logs_by_date_range,
             log_bulk_generation,
             get_most_active_users,
+            get_user_contributions,
+            get_user_contributions_by_month,
             // Lists management
             get_sqie_list,
             add_sqie_item,
@@ -602,6 +655,9 @@ fn main() {
             send_email_via_outlook,
             get_supplier_responsibles,
             delete_all_logs,
+            export_evaluation_form,
+            validate_import_file,
+            import_scores_from_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
