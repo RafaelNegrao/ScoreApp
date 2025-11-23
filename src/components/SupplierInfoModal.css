@@ -159,7 +159,7 @@
   border: none;
   border-radius: 6px;
   padding: 8px 12px;
-  background: var(--input-bg);
+  background: #d1d5db;
 }
 .supplier-info-label {
   color: var(--accent-primary);
@@ -197,7 +197,7 @@
 /* Tema Cummins - email box com borda */
 [data-theme="cummins"] .supplier-info-email-box {
   border: none;
-  background: var(--input-bg);
+  background: #d1d5db;
 }
 .supplier-info-email-value {
   color: var(--text-primary, #f1f5f9);
@@ -241,6 +241,14 @@
 .responsible-card:hover {
   background: var(--bg-hover);
   opacity: 0.95;
+}
+
+/* Tema Cummins - cards dos responsáveis com mesma cor dos campos */
+[data-theme="cummins"] .responsible-card {
+  background: #d1d5db;
+}
+[data-theme="cummins"] .responsible-card:hover {
+  background: #c1c5cb;
 }
 .responsible-label {
   display: flex;

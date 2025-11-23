@@ -2000,7 +2000,7 @@ function Score() {
                             <span>Gerar nota cheia</span>
                           </button>
 
-                          {allowImportExport && (
+                          {(isSuperAdmin || allowImportExport) && (
                             <>
                               <div className="options-menu-divider"></div>
 

@@ -51,7 +51,7 @@ function ThemeSelector() {
             <div className="theme-info">
               <span className="theme-name">{theme.name}</span>
               {currentTheme === key && (
-                <Check size={18} className="theme-check" />
+                <Check size={24} className="theme-check" />
               )}
             </div>
           </button>

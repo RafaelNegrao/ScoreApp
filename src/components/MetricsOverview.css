@@ -34,6 +34,7 @@
   display: flex;
   gap: clamp(0.5rem, 1vw, 1rem);
   margin-bottom: 1rem;
+  padding: 8px;
   width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -60,7 +61,7 @@
 
 .metric-card {
   background: var(--card-bg);
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: 10px;
   padding: clamp(0.75rem, 1.2vw, 1.2rem);
   display: flex;
@@ -75,7 +76,6 @@
 .metric-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: var(--accent-primary);
 }
 
 .metric-icon {
@@ -147,6 +147,7 @@
   display: flex;
   flex-wrap: nowrap;
   gap: clamp(0.75rem, 1.25vw, 1.25rem);
+  padding: 8px;
   width: 100%;
   overflow-x: auto;
   scrollbar-width: thin;
@@ -172,7 +173,7 @@
 
 .quarterly-card {
   background: var(--card-bg);
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: 12px;
   padding: clamp(1rem, 1.5vw, 1.5rem);
   display: flex;
@@ -187,7 +188,6 @@
 .quarterly-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: var(--accent-primary);
 }
 
 .quarterly-header {

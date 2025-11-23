@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { TrendingUp, TrendingDown, BarChart2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { BarChart, Bar, ReferenceLine, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, ReferenceLine, ResponsiveContainer, Cell, XAxis } from "recharts";
 import "../pages/Page.css";
 import "./Score.css";
 import "./Risks.css";
@@ -30,6 +30,7 @@ function Risks() {
   const [loading, setLoading] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [target, setTarget] = useState(8.7);
+  const [hoveredQuarter, setHoveredQuarter] = useState<{supplierId: string, quarter: string} | null>(null);
   const navigate = useNavigate();
 
   // Carregar target do banco ao montar o componente
@@ -194,26 +195,44 @@ function Risks() {
 
                     {/* Mini Chart */}
                     <div className="risk-mini-chart">
-                      <ResponsiveContainer width="100%" height={60}>
+                      <ResponsiveContainer width="100%" height={140}>
                         <BarChart 
                           data={
                             supplier.monthly_scores 
                               ? supplier.monthly_scores.map((score, index) => ({
-                                  month: index + 1,
+                                  month: ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][index],
+                                  monthIndex: index,
                                   score: score
                                 }))
                               : []
                           }
-                          margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+                          margin={{ top: 5, right: 5, left: 5, bottom: 18 }}
                         >
+                          <XAxis 
+                            dataKey="month" 
+                            tick={{ fill: 'var(--text-muted)', fontSize: 9 }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
                           <ReferenceLine y={target} stroke="rgba(128, 128, 128, 0.3)" strokeDasharray="3 3" strokeWidth={1} />
                           <Bar dataKey="score" radius={[2, 2, 0, 0]}>
-                            {supplier.monthly_scores?.map((score, index) => (
-                              <Cell 
-                                key={`cell-${index}`} 
-                                fill={score !== null && score >= target ? "rgba(34, 197, 94, 0.5)" : "rgba(239, 68, 68, 0.5)"} 
-                              />
-                            ))}
+                            {supplier.monthly_scores?.map((score, index) => {
+                              // Determinar o quarter do mês
+                              const quarter = Math.floor(index / 3) + 1;
+                              const isHovered = hoveredQuarter?.supplierId === supplier.supplier_id && 
+                                                hoveredQuarter?.quarter === `Q${quarter}`;
+                              const baseOpacity = isHovered ? 0.8 : 0.5;
+                              
+                              return (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={score !== null && score >= target 
+                                    ? `rgba(34, 197, 94, ${baseOpacity})` 
+                                    : `rgba(239, 68, 68, ${baseOpacity})`
+                                  } 
+                                />
+                              );
+                            })}
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
@@ -233,7 +252,12 @@ function Risks() {
                   ].map((quarter) => {
                     const trend = getQuarterTrend(quarter.value, quarter.prev);
                     return (
-                      <div key={quarter.label} className="risk-quarter">
+                      <div 
+                        key={quarter.label} 
+                        className="risk-quarter"
+                        onMouseEnter={() => setHoveredQuarter({supplierId: supplier.supplier_id, quarter: quarter.label})}
+                        onMouseLeave={() => setHoveredQuarter(null)}
+                      >
                         <span className="quarter-label">{quarter.label}</span>
                         <div className="quarter-value-row">
                           <span

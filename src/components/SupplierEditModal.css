@@ -142,12 +142,6 @@
   background: var(--bg-primary);
 }
 
-.form-input:focus {
-  outline: none;
-  border-color: var(--accent-primary);
-  background: var(--bg-primary, #1e293b);
-}
-
 .form-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -278,7 +272,15 @@
 [data-theme="cummins"] .form-textarea,
 [data-theme="cummins"] .custom-select-wrapper select {
   border: none;
-  background: var(--input-bg);
+  background: #d1d5db;
+}
+
+[data-theme="cummins"] .form-input:focus,
+[data-theme="cummins"] .form-textarea:focus,
+[data-theme="cummins"] .custom-select-wrapper select:focus {
+  background: #d1d5db;
+  border: none;
+  outline: none;
 }
 
 [data-theme="cummins"] .supplier-edit-footer {

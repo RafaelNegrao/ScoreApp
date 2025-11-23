@@ -441,7 +441,7 @@ function Settings() {
           {/* TAB: SYSTEM */}
           {activeTab === 'system' && permissions.canAccessSystemSettings && (
             <div className="tab-content">
-              <div className="settings-section">
+              <div className="settings-section theme-section">
                 <h3><i className="bi bi-palette"></i> Theme</h3>
                 <ThemeSelector />
               </div>

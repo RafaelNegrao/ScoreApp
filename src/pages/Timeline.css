@@ -73,7 +73,8 @@
 /* Year Select */
 .year-select-wrapper {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
 }
 
@@ -81,29 +82,32 @@
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  padding: 12px 36px 12px 16px;
-  border: none;
+  padding: 0.75rem 2.5rem 0.75rem 1rem !important;
+  border: none !important;
   border-radius: 8px;
-  background: var(--input-bg);
+  background: var(--input-bg) !important;
   background-image: none;
   color: var(--text-primary);
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.2s ease;
   min-width: 100px;
   outline: none;
-  height: 48px;
   box-sizing: border-box;
   white-space: nowrap;
+  line-height: 1.5;
+  height: auto !important;
 }
 
 .year-select:hover,
 .year-select:focus,
 .year-select:focus-visible,
 .year-select:active {
-  outline: none;
-  background: var(--input-bg);
+  outline: none !important;
+  background: var(--input-bg) !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .year-select::-moz-focus-inner {
@@ -454,7 +458,8 @@
   
   .year-select {
     min-width: 90px;
-    padding: 12px 32px 12px 12px;
+    padding: 0.75rem 2.5rem 0.75rem 1rem !important;
+    height: auto !important;
   }
   
   .timeline-tabs {
@@ -569,9 +574,9 @@
   }
   
   .year-select {
-    height: 44px;
     font-size: 14px;
-    padding: 10px 32px 10px 14px;
+    padding: 0.6rem 2.5rem 0.6rem 0.85rem !important;
+    height: auto !important;
   }
   
   .timeline-tabs {
@@ -774,7 +779,7 @@
 [data-theme="cummins"] .timeline-search,
 [data-theme="cummins"] .year-select,
 [data-theme="cummins"] .timeline-filters .filter-select {
-  background: #ededed;
+  background: var(--input-bg) !important;
 }
 
 [data-theme="cummins"] .year-select:hover,
@@ -785,7 +790,9 @@
 [data-theme="cummins"] .timeline-filters .filter-select:focus,
 [data-theme="cummins"] .timeline-filters .filter-select:focus-visible,
 [data-theme="cummins"] .timeline-filters .filter-select:active {
-  background: #ededed;
+  background: var(--input-bg) !important;
+  border: none !important;
+  outline: none !important;
 }
 
 /* Carousel Unificado - Todos os 5 gráficos */

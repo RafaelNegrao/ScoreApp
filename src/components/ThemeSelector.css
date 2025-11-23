@@ -30,7 +30,7 @@
 
 .theme-card {
   background: var(--card-bg);
-  border: 2px solid rgba(128, 128, 128, 0.2);
+  border: 2px solid transparent;
   border-radius: 12px;
   padding: 1rem;
   cursor: pointer;
@@ -42,7 +42,6 @@
 }
 
 .theme-card:hover {
-  border-color: var(--accent-primary);
   transform: translateY(-4px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }

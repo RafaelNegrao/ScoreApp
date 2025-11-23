@@ -58,7 +58,7 @@ export const themes: Record<string, Theme> = {
       sidebarHover: "#CE1126",
       sidebarActive: "rgba(206, 17, 38, 0.25)",
       barBg: "#262626",
-      inputBg: "#ffffff",
+      inputBg: "#e5e7eb",
     },
   },
   dark: {
@@ -77,7 +77,7 @@ export const themes: Record<string, Theme> = {
       textPrimary: "#ffffff",
       textSecondary: "#9ca3af",
       textMuted: "#6b7280",
-      borderColor: "transparent",
+      borderColor: "#3d4451",
       success: "#10b981",
       error: "#ef4444",
       warning: "#f59e0b",

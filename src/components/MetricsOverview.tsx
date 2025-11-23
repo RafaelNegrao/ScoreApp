@@ -247,7 +247,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
                 </div>
                 <div className="metric-content">
                   <div className="metric-label">Overall Average</div>
-                  <div className="metric-value">{metrics.overallAverage}</div>
+                  <div className="metric-value">{metrics.overallAverage.toFixed(1)}</div>
                   <div className="metric-description">Média Geral</div>
                 </div>
               </div>
@@ -258,7 +258,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
                 </div>
                 <div className="metric-content">
                   <div className="metric-label">12 Months Avg</div>
-                  <div className="metric-value">{metrics.twelveMonthsAverage}</div>
+                  <div className="metric-value">{metrics.twelveMonthsAverage.toFixed(1)}</div>
                   <div className="metric-description">Últimos 12 meses</div>
                 </div>
               </div>
@@ -269,7 +269,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
                 </div>
                 <div className="metric-content">
                   <div className="metric-label">Year Average</div>
-                  <div className="metric-value">{metrics.yearAverage}</div>
+                  <div className="metric-value">{metrics.yearAverage.toFixed(1)}</div>
                   <div className="metric-description">Média do ano</div>
                 </div>
               </div>
@@ -288,7 +288,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               </div>
               <div className="metric-content">
                 <div className="metric-label">Overall Average</div>
-                <div className="metric-value">{metrics.overallAverage}</div>
+                <div className="metric-value">{metrics.overallAverage.toFixed(1)}</div>
                 <div className="metric-description">Média Geral</div>
               </div>
             </div>
@@ -299,7 +299,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               </div>
               <div className="metric-content">
                 <div className="metric-label">12 Months Avg</div>
-                <div className="metric-value">{metrics.twelveMonthsAverage}</div>
+                <div className="metric-value">{metrics.twelveMonthsAverage.toFixed(1)}</div>
                 <div className="metric-description">Últimos 12 meses</div>
               </div>
             </div>
@@ -310,7 +310,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               </div>
               <div className="metric-content">
                 <div className="metric-label">Year Average</div>
-                <div className="metric-value">{metrics.yearAverage}</div>
+                <div className="metric-value">{metrics.yearAverage.toFixed(1)}</div>
                 <div className="metric-description">Média do ano</div>
               </div>
             </div>
@@ -329,7 +329,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               {metrics.q1Trend === 'up' && <TrendingUp size={20} className="trend-icon trend-up" />}
               {metrics.q1Trend === 'down' && <TrendingDown size={20} className="trend-icon trend-down" />}
             </div>
-            <div className="quarterly-value">{metrics.q1Average}</div>
+            <div className="quarterly-value">{metrics.q1Average.toFixed(1)}</div>
             <div className="quarterly-period">Jan - Mar</div>
           </div>
 
@@ -339,7 +339,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               {metrics.q2Trend === 'up' && <TrendingUp size={20} className="trend-icon trend-up" />}
               {metrics.q2Trend === 'down' && <TrendingDown size={20} className="trend-icon trend-down" />}
             </div>
-            <div className="quarterly-value">{metrics.q2Average}</div>
+            <div className="quarterly-value">{metrics.q2Average.toFixed(1)}</div>
             <div className="quarterly-period">Apr - Jun</div>
           </div>
 
@@ -349,7 +349,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               {metrics.q3Trend === 'up' && <TrendingUp size={20} className="trend-icon trend-up" />}
               {metrics.q3Trend === 'down' && <TrendingDown size={20} className="trend-icon trend-down" />}
             </div>
-            <div className="quarterly-value">{metrics.q3Average}</div>
+            <div className="quarterly-value">{metrics.q3Average.toFixed(1)}</div>
             <div className="quarterly-period">Jul - Sep</div>
           </div>
 
@@ -359,7 +359,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               {metrics.q4Trend === 'up' && <TrendingUp size={20} className="trend-icon trend-up" />}
               {metrics.q4Trend === 'down' && <TrendingDown size={20} className="trend-icon trend-down" />}
             </div>
-            <div className="quarterly-value">{metrics.q4Average}</div>
+            <div className="quarterly-value">{metrics.q4Average.toFixed(1)}</div>
             <div className="quarterly-period">Oct - Dec</div>
           </div>
         </div>

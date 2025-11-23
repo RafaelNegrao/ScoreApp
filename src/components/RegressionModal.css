@@ -19,7 +19,7 @@
   border-radius: 12px;
   max-width: 600px;
   width: 100%;
-  max-height: 85vh;
+  max-height: 75vh;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-color);
@@ -31,19 +31,20 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.1rem 1.5rem;
+  padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border-color);
-  background: var(--bg-primary);
+  background: var(--section-bg);
   border-radius: 12px 12px 0 0;
 }
 
 .regression-modal-header h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--accent-primary);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .regression-modal-close {
@@ -66,7 +67,7 @@
 
 /* Modal Body */
 .regression-modal-body {
-  padding: 1.5rem 1.75rem;
+  padding: 1.25rem 1.5rem;
   overflow-y: auto;
   flex: 1;
 }
@@ -75,7 +76,7 @@
 .regression-section {
   margin-bottom: 1rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.1);
 }
 
 .regression-section:last-child {
@@ -85,42 +86,45 @@
 }
 
 .regression-section h3 {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 0.6rem 0;
+  margin: 0 0 0.5rem 0;
   display: flex;
   align-items: center;
+  gap: 6px;
 }
 
 .regression-section p {
   color: var(--text-secondary);
-  line-height: 1.4;
-  margin: 0.3rem 0;
-  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0.25rem 0;
+  font-size: 0.75rem;
 }
 
 /* Summary */
 .regression-summary {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  padding: 0.8rem 0.9rem;
-  background: var(--bg-secondary);
-  border-radius: 6px;
-  border-left: none;
+  padding: 0.65rem 0.85rem;
+  background: var(--section-bg);
+  border-radius: 8px;
+  border: none;
 }
 
 /* Explanation Text */
 .regression-explanation {
   font-weight: 500;
-  color: var(--accent-primary) !important;
-  font-style: italic;
+  color: var(--text-secondary) !important;
+  font-style: normal;
+  font-size: 0.75rem;
 }
 
 .regression-note {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
   font-style: italic;
+  margin-top: 0.5rem;
 }
 
 /* Lists */
@@ -131,11 +135,11 @@
 }
 
 .regression-list li {
-  padding: 0.4rem 0;
-  padding-left: 1.2rem;
+  padding: 0.35rem 0;
+  padding-left: 1.1rem;
   position: relative;
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
 }
 
 .regression-list li:before {
@@ -148,26 +152,26 @@
 
 /* Indicator Bar */
 .regression-indicator {
-  margin: 1.2rem 0;
-  padding: 1.1rem 1.4rem;
-  background: var(--bg-secondary);
-  border-radius: 10px;
+  margin: 1rem 0;
+  padding: 1rem 1.2rem;
+  background: var(--section-bg);
+  border-radius: 8px;
   border: none;
 }
 
 .regression-indicator > p {
   font-weight: 600;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .regression-bar {
   position: relative;
   width: 100%;
-  height: 35px;
+  height: 28px;
   background: linear-gradient(to right, #f87171, #fbbf24, #4ade80);
-  border-radius: 20px;
+  border-radius: 14px;
   margin-bottom: 0.5rem;
 }
 
@@ -183,16 +187,16 @@
 
 .regression-bar-value {
   position: absolute;
-  top: -30px;
+  top: -26px;
   left: 0;
   transform: translateX(-50%);
   background: var(--accent-primary);
   color: white;
-  padding: 0.2rem 0.6rem;
-  border-radius: 6px;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
   font-weight: 600;
-  font-size: 0.8rem;
-  box-shadow: none;
+  font-size: 0.7rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   white-space: nowrap;
 }
 
