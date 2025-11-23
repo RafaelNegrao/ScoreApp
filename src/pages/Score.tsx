@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import styles from "./YearlyPageTransition.module.css";
 import SupplierInfoModal from "../components/SupplierInfoModal";
 import { CommentModal } from "../components/CommentModal";
-import ExportFormModal from "../components/ExportFormModal";
+import ExportFormModal, { CriteriaOption } from "../components/ExportFormModal";
 import ImportScoreModal from "../components/ImportScoreModal";
 import { invoke } from '@tauri-apps/api/tauri';
 import { save } from '@tauri-apps/api/dialog';
@@ -1742,7 +1742,7 @@ function Score() {
 
   // Função para exportar formulário de avaliação
   const handleExportForm = async (
-    criteria: string,
+    criteria: CriteriaOption,
     includeScore: boolean,
     month?: string,
     year?: string

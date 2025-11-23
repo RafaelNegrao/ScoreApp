@@ -836,6 +836,37 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  width: 100%;
+}
+
+.supplier-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.supplier-actions .btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.supplier-actions .btn-secondary:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.supplier-actions .btn-secondary i {
+  font-size: 1rem;
 }
 
 .supplier-search-box {

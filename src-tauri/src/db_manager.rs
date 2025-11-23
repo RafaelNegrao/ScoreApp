@@ -3554,10 +3554,15 @@ impl DatabaseManager {
     ) -> Result<Vec<u8>, String> {
         println!("\n📤 ========================================");
         println!("📤 EXPORT_EVALUATION_FORM CHAMADO!");
-        println!("📤 Critério: {}", criteria);
+        println!("📤 Critério recebido: {}", criteria);
         println!("📤 Incluir Score: {}", include_score);
         println!("📤 Mês: {:?}, Ano: {:?}", month, year);
         println!("📤 ========================================\n");
+
+        let trimmed_criteria = criteria.trim().to_string();
+        let criteria_key = trimmed_criteria.to_lowercase();
+        let criteria_label = criteria_key.to_uppercase();
+        println!("📤 Critério normalizado: {}", criteria_key);
 
         // Validação: se include_score é true, mês e ano são obrigatórios
         if include_score {
@@ -3595,12 +3600,12 @@ impl DatabaseManager {
         let conn = conn_guard.as_ref().unwrap();
 
         // Mapeia o nome do critério para o nome da coluna no banco
-        let score_column = match criteria.as_str() {
+        let score_column = match criteria_key.as_str() {
             "otif" => "otif",
             "nil" => "nil",
             "pickup" => "quality_pickup",
             "package" => "quality_package",
-            _ => return Err(format!("Critério inválido: {}", criteria)),
+            _ => return Err(format!("Critério inválido: {}", trimmed_criteria)),
         };
 
         println!("📊 Coluna de score selecionada: {}", score_column);
@@ -3610,7 +3615,10 @@ impl DatabaseManager {
             "SELECT DISTINCT 
                 COALESCE(CAST(supplier_id AS TEXT), '') as supplier_id,
                 COALESCE(vendor_name, '') as vendor_name,
-                COALESCE(bu, '') as bu,
+                CASE 
+                    WHEN bu = 'N/A' THEN ''
+                    ELSE COALESCE(bu, '')
+                END as bu,
                 COALESCE(CAST(supplier_po AS TEXT), '') as supplier_po
              FROM supplier_database_table
              ORDER BY vendor_name"
@@ -3765,7 +3773,7 @@ impl DatabaseManager {
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
             worksheet.write_with_format(0, 4, "Supplier PO", &header_format)
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
-            worksheet.write_with_format(0, 5, criteria.to_uppercase().as_str(), &header_format)
+            worksheet.write_with_format(0, 5, criteria_label.as_str(), &header_format)
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
         } else {
             worksheet.write_with_format(0, 0, "Supplier ID", &header_format)
@@ -3776,7 +3784,7 @@ impl DatabaseManager {
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
             worksheet.write_with_format(0, 3, "Supplier PO", &header_format)
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
-            worksheet.write_with_format(0, 4, criteria.to_uppercase().as_str(), &header_format)
+            worksheet.write_with_format(0, 4, criteria_label.as_str(), &header_format)
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
         }
 
@@ -3833,7 +3841,25 @@ impl DatabaseManager {
             }
         }
 
-        // Aplica validação de dados na coluna de score (coluna E ou coluna D dependendo do modo)
+        // Busca lista de BUs disponíveis no banco (da tabela business_unit_table)
+        let bu_query = "SELECT DISTINCT bu FROM business_unit_table WHERE bu IS NOT NULL AND bu != '' ORDER BY bu";
+        let mut bu_stmt = conn.prepare(bu_query)
+            .map_err(|e| format!("Erro ao preparar query de BUs: {}", e))?;
+        
+        let bu_list: Vec<String> = bu_stmt.query_map([], |row| row.get(0))
+            .map_err(|e| format!("Erro ao buscar BUs: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+        
+        println!("📋 BUs disponíveis: {:?}", bu_list);
+
+        // Fixa o header (congela primeira linha)
+        worksheet.set_freeze_panes(1, 0)
+            .map_err(|e| format!("Erro ao fixar header: {}", e))?;
+        
+        println!("📌 Header fixado (primeira linha congelada)");
+
+        // Aplica validação de dados na coluna de score (coluna F com score ou coluna E sem score)
         let last_row = export_data.len() as u32;
         let score_col = if include_score { 5 } else { 4 };
         
@@ -3850,6 +3876,27 @@ impl DatabaseManager {
 
         worksheet.add_data_validation(1, score_col as u16, last_row, score_col as u16, &validation)
             .map_err(|e| format!("Erro ao adicionar validação: {}", e))?;
+
+        // Aplica validação de lista na coluna BU (coluna D com score ou coluna C sem score)
+        if !bu_list.is_empty() {
+            let bu_col = if include_score { 3 } else { 2 };
+            let bu_validation = DataValidation::new()
+                .allow_list_strings(&bu_list)
+                .map_err(|e| format!("Erro ao criar validação de BU: {}", e))?
+                .set_error_title("BU inválida")
+                .map_err(|e| format!("Erro ao definir título de erro BU: {}", e))?
+                .set_error_message("Selecione uma BU da lista disponível.")
+                .map_err(|e| format!("Erro ao definir mensagem de erro BU: {}", e))?
+                .set_input_title("Selecione a BU")
+                .map_err(|e| format!("Erro ao definir título de entrada BU: {}", e))?
+                .set_input_message("Escolha uma BU da lista")
+                .map_err(|e| format!("Erro ao definir mensagem de entrada BU: {}", e))?;
+
+            worksheet.add_data_validation(1, bu_col as u16, last_row, bu_col as u16, &bu_validation)
+                .map_err(|e| format!("Erro ao adicionar validação de BU: {}", e))?;
+            
+            println!("✅ Validação de lista aplicada na coluna BU");
+        }
 
         // Protege a planilha com senha
         worksheet.protect_with_password("30625629");
@@ -3882,7 +3929,7 @@ impl DatabaseManager {
         // Dados de controle
         control_sheet.write_with_format(1, 0, "Criteria", &control_data_format)
             .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
-        control_sheet.write_with_format(1, 1, criteria.as_str(), &control_data_format)
+        control_sheet.write_with_format(1, 1, criteria_key.as_str(), &control_data_format)
             .map_err(|e| format!("Erro ao escrever controle: {}", e))?;
 
         control_sheet.write_with_format(2, 0, "Month", &control_data_format)
@@ -4295,6 +4342,629 @@ impl DatabaseManager {
         }
 
         Ok((weights[0], weights[1], weights[2], weights[3]))
+    }
+
+    /// Exporta todos os suppliers para Excel com validações
+    pub fn export_suppliers() -> Result<Vec<u8>, String> {
+        println!("\n📤 ========================================");
+        println!("📤 EXPORT_SUPPLIERS CHAMADO!");
+        println!("📤 ========================================\n");
+
+        let conn_guard = Self::get_connection()?;
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+        let conn = conn_guard.as_ref().unwrap();
+
+        // Busca todos os suppliers
+        let query = "SELECT 
+            CAST(supplier_id AS TEXT) as supplier_id, 
+            vendor_name, 
+            CASE WHEN bu = 'N/A' THEN '' ELSE COALESCE(bu, '') END as bu,
+            CAST(supplier_po AS TEXT) as supplier_po, 
+            CASE WHEN country = 'N/A' THEN '' ELSE COALESCE(country, '') END as origem,
+            COALESCE(supplier_status, '') as supplier_status 
+            FROM supplier_database_table ORDER BY vendor_name";
+        let mut stmt = conn.prepare(query)
+            .map_err(|e| format!("Erro ao preparar query: {}", e))?;
+
+        let suppliers = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+            ))
+        })
+        .map_err(|e| format!("Erro ao buscar suppliers: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Erro ao processar suppliers: {}", e))?;
+
+        println!("✅ {} suppliers encontrados", suppliers.len());
+
+        // Busca lista de BUs
+        let bu_query = "SELECT DISTINCT bu FROM business_unit_table WHERE bu IS NOT NULL AND bu != '' ORDER BY bu";
+        let mut bu_stmt = conn.prepare(bu_query)
+            .map_err(|e| format!("Erro ao buscar BUs: {}", e))?;
+        let bu_list: Vec<String> = bu_stmt.query_map([], |row| row.get(0))
+            .map_err(|e| format!("Erro ao processar BUs: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        use rust_xlsxwriter::{Workbook, Format, Color, FormatAlign, DataValidation};
+
+        let mut workbook = Workbook::new();
+        
+        // Formatos
+        let header_format = Format::new()
+            .set_bold()
+            .set_font_size(12)
+            .set_background_color(Color::RGB(0x4472C4))
+            .set_font_color(Color::White)
+            .set_align(FormatAlign::Center);
+
+        let locked_format = Format::new()
+            .set_align(FormatAlign::Left)
+            .set_background_color(Color::RGB(0xF2F2F2))
+            .set_locked();
+
+        let unlocked_format = Format::new()
+            .set_align(FormatAlign::Left)
+            .set_unlocked();
+
+        // Cria planilha principal
+        let worksheet = workbook.add_worksheet();
+
+        // Define larguras e formatos das colunas inteiras
+        worksheet.set_column_width(0, 15).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_width(1, 40).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_width(2, 15).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_width(3, 15).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_width(4, 20).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_width(5, 15).map_err(|e| format!("Erro: {}", e))?;
+
+        // Desbloqueia as colunas B até F inteiras
+        worksheet.set_column_format(1, &unlocked_format).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_format(2, &unlocked_format).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_format(3, &unlocked_format).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_format(4, &unlocked_format).map_err(|e| format!("Erro: {}", e))?;
+        worksheet.set_column_format(5, &unlocked_format).map_err(|e| format!("Erro: {}", e))?;
+
+        // Fixa header
+        worksheet.set_freeze_panes(1, 0)
+            .map_err(|e| format!("Erro ao fixar header: {}", e))?;
+
+        // Cabeçalhos
+        worksheet.write_with_format(0, 0, "Supplier ID", &header_format)
+            .map_err(|e| format!("Erro: {}", e))?;
+        worksheet.write_with_format(0, 1, "Vendor Name", &header_format)
+            .map_err(|e| format!("Erro: {}", e))?;
+        worksheet.write_with_format(0, 2, "BU", &header_format)
+            .map_err(|e| format!("Erro: {}", e))?;
+        worksheet.write_with_format(0, 3, "Supplier PO", &header_format)
+            .map_err(|e| format!("Erro: {}", e))?;
+        worksheet.write_with_format(0, 4, "Origem", &header_format)
+            .map_err(|e| format!("Erro: {}", e))?;
+        worksheet.write_with_format(0, 5, "Supplier Status", &header_format)
+            .map_err(|e| format!("Erro: {}", e))?;
+
+        // Dados
+        for (idx, (supplier_id, vendor_name, bu, supplier_po, origem, supplier_status)) in suppliers.iter().enumerate() {
+            let row = (idx + 1) as u32;
+            // Apenas coluna A (Supplier ID) fica bloqueada
+            worksheet.write_with_format(row, 0, supplier_id, &locked_format)
+                .map_err(|e| format!("Erro: {}", e))?;
+            // Colunas B a E ficam desbloqueadas para edição
+            worksheet.write_with_format(row, 1, vendor_name, &unlocked_format)
+                .map_err(|e| format!("Erro: {}", e))?;
+            worksheet.write_with_format(row, 2, bu.as_deref().unwrap_or(""), &unlocked_format)
+                .map_err(|e| format!("Erro: {}", e))?;
+            worksheet.write_with_format(row, 3, supplier_po.as_deref().unwrap_or(""), &unlocked_format)
+                .map_err(|e| format!("Erro: {}", e))?;
+            worksheet.write_with_format(row, 4, origem.as_deref().unwrap_or(""), &unlocked_format)
+                .map_err(|e| format!("Erro: {}", e))?;
+            worksheet.write_with_format(row, 5, supplier_status.as_deref().unwrap_or(""), &unlocked_format)
+                .map_err(|e| format!("Erro: {}", e))?;
+        }
+
+        let last_row = suppliers.len() as u32;
+        let validation_end_row = last_row + 1000; // 1000 linhas extras para validação
+
+        // Validação BU
+        if !bu_list.is_empty() {
+            let bu_validation = DataValidation::new()
+                .allow_list_strings(&bu_list)
+                .map_err(|e| format!("Erro: {}", e))?
+                .set_error_title("BU inválida")
+                .map_err(|e| format!("Erro: {}", e))?
+                .set_error_message("Selecione uma BU da lista.")
+                .map_err(|e| format!("Erro: {}", e))?;
+
+            worksheet.add_data_validation(1, 2, validation_end_row, 2, &bu_validation)
+                .map_err(|e| format!("Erro: {}", e))?;
+        }
+
+        // Validação Origem
+        let origem_list = vec!["Importado", "Nacional"];
+        let origem_validation = DataValidation::new()
+            .allow_list_strings(&origem_list)
+            .map_err(|e| format!("Erro: {}", e))?
+            .set_error_title("Origem inválida")
+            .map_err(|e| format!("Erro: {}", e))?
+            .set_error_message("Selecione Importado ou Nacional.")
+            .map_err(|e| format!("Erro: {}", e))?;
+
+        worksheet.add_data_validation(1, 4, validation_end_row, 4, &origem_validation)
+            .map_err(|e| format!("Erro: {}", e))?;
+
+        // Validação Supplier Status
+        let status_list = vec!["Active", "Inactive"];
+        let status_validation = DataValidation::new()
+            .allow_list_strings(&status_list)
+            .map_err(|e| format!("Erro: {}", e))?
+            .set_error_title("Status inválido")
+            .map_err(|e| format!("Erro: {}", e))?
+            .set_error_message("Selecione Active ou Inactive.")
+            .map_err(|e| format!("Erro: {}", e))?;
+
+        worksheet.add_data_validation(1, 5, validation_end_row, 5, &status_validation)
+            .map_err(|e| format!("Erro: {}", e))?;
+
+        // Protege planilha principal
+        worksheet.protect_with_password("30625629");
+
+        // Cria aba oculta de controle para validação
+        let control_sheet = workbook.add_worksheet();
+        control_sheet.set_name("_control").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.set_hidden(true);
+        
+        // Armazena informações de controle
+        control_sheet.write_string(0, 0, "VERSION").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.write_string(0, 1, "1.0").map_err(|e| format!("Erro: {}", e))?;
+        
+        control_sheet.write_string(1, 0, "EXPECTED_COLUMNS").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.write_string(1, 1, "6").map_err(|e| format!("Erro: {}", e))?;
+        
+        control_sheet.write_string(2, 0, "COL_0").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.write_string(2, 1, "Supplier ID").map_err(|e| format!("Erro: {}", e))?;
+        
+        control_sheet.write_string(3, 0, "COL_1").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.write_string(3, 1, "Vendor Name").map_err(|e| format!("Erro: {}", e))?;
+        
+        control_sheet.write_string(4, 0, "COL_2").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.write_string(4, 1, "BU").map_err(|e| format!("Erro: {}", e))?;
+        
+        control_sheet.write_string(5, 0, "COL_3").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.write_string(5, 1, "Supplier PO").map_err(|e| format!("Erro: {}", e))?;
+        
+        control_sheet.write_string(6, 0, "COL_4").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.write_string(6, 1, "Origem").map_err(|e| format!("Erro: {}", e))?;
+        
+        control_sheet.write_string(7, 0, "COL_5").map_err(|e| format!("Erro: {}", e))?;
+        control_sheet.write_string(7, 1, "Supplier Status").map_err(|e| format!("Erro: {}", e))?;
+
+        println!("✅ Validações aplicadas e planilha protegida");
+
+        let buffer = workbook.save_to_buffer()
+            .map_err(|e| format!("Erro ao salvar: {}", e))?;
+
+        println!("✅ Excel gerado ({} bytes)", buffer.len());
+        Ok(buffer)
+    }
+
+    /// Valida arquivo de importação de suppliers
+    pub fn validate_supplier_import(file_content: Vec<u8>) -> Result<String, String> {
+        use calamine::{Reader, Xlsx, open_workbook_from_rs};
+        use std::io::Cursor;
+
+        let cursor = Cursor::new(file_content);
+        let mut workbook: Xlsx<_> = open_workbook_from_rs(cursor)
+            .map_err(|e| format!("❌ Erro ao abrir Excel: {}", e))?;
+
+        // Valida aba de controle
+        let sheet_names = workbook.sheet_names();
+        if !sheet_names.iter().any(|name| name == "_control") {
+            return Err("Aba de controle '_control' não encontrada. Use um arquivo exportado pelo sistema.".to_string());
+        }
+
+        // Valida estrutura das colunas na aba de controle
+        if let Ok(control_range) = workbook.worksheet_range("_control") {
+            let expected_columns = vec!["Supplier ID", "Vendor Name", "BU", "Supplier PO", "Origem", "Supplier Status"];
+            let mut found_columns = Vec::new();
+            
+            for row in control_range.rows() {
+                if row.len() >= 2 {
+                    let key = row[0].to_string();
+                    let value = row[1].to_string();
+                    if key.starts_with("COL_") {
+                        found_columns.push(value);
+                    }
+                }
+            }
+            
+            if found_columns != expected_columns {
+                return Err(format!(
+                    "Estrutura de colunas inválida.\n\nEsperado: {:?}\n\nEncontrado: {:?}",
+                    expected_columns, found_columns
+                ));
+            }
+        } else {
+            return Err("Erro ao ler aba de controle.".to_string());
+        }
+
+        let sheet_name = workbook.sheet_names()[0].clone();
+        let range = workbook.worksheet_range(&sheet_name)
+            .map_err(|e| format!("Erro ao ler planilha: {}", e))?;
+
+        // Valida header da planilha principal
+        if let Some(header_row) = range.rows().next() {
+            let expected_header = vec!["Supplier ID", "Vendor Name", "BU", "Supplier PO", "Origem", "Supplier Status"];
+            let actual_header: Vec<String> = header_row.iter().map(|cell| cell.to_string()).collect();
+            
+            if actual_header != expected_header {
+                return Err(format!(
+                    "Cabeçalho inválido.\n\nEsperado: {:?}\n\nEncontrado: {:?}",
+                    expected_header, actual_header
+                ));
+            }
+        }
+
+        let total_rows = range.rows().count() - 1; // Subtrai o header
+        Ok(format!("Arquivo válido! {} registros encontrados.", total_rows))
+    }
+
+    /// Importa suppliers do Excel (UPDATE ou INSERT)
+    pub fn import_suppliers(file_content: Vec<u8>) -> Result<String, String> {
+        println!("\n📥 ========================================");
+        println!("📥 IMPORT_SUPPLIERS CHAMADO!");
+        println!("📥 ========================================\n");
+
+        use calamine::{Reader, Xlsx, open_workbook_from_rs};
+        use std::io::Cursor;
+
+        let cursor = Cursor::new(file_content);
+        let mut workbook: Xlsx<_> = open_workbook_from_rs(cursor)
+            .map_err(|e| format!("Erro ao abrir Excel: {}", e))?;
+
+        // Valida aba de controle
+        let sheet_names = workbook.sheet_names();
+        if !sheet_names.iter().any(|name| name == "_control") {
+            return Err("❌ Arquivo inválido: aba de controle não encontrada. Use um arquivo exportado pelo sistema.".to_string());
+        }
+
+        // Valida estrutura das colunas na aba de controle
+        if let Ok(control_range) = workbook.worksheet_range("_control") {
+            let expected_columns = vec!["Supplier ID", "Vendor Name", "BU", "Supplier PO", "Origem", "Supplier Status"];
+            let mut found_columns = Vec::new();
+            
+            for row in control_range.rows() {
+                if row.len() >= 2 {
+                    let key = row[0].to_string();
+                    let value = row[1].to_string();
+                    if key.starts_with("COL_") {
+                        found_columns.push(value);
+                    }
+                }
+            }
+            
+            if found_columns != expected_columns {
+                return Err(format!(
+                    "❌ Estrutura de colunas inválida.\nEsperado: {:?}\nEncontrado: {:?}",
+                    expected_columns, found_columns
+                ));
+            }
+            
+            println!("✅ Validação de estrutura OK");
+        } else {
+            return Err("❌ Erro ao ler aba de controle".to_string());
+        }
+
+        let sheet_name = workbook.sheet_names()[0].clone();
+        let range = workbook.worksheet_range(&sheet_name)
+            .map_err(|e| format!("Erro ao ler planilha: {}", e))?;
+
+        // Valida header da planilha principal
+        if let Some(header_row) = range.rows().next() {
+            let expected_header = vec!["Supplier ID", "Vendor Name", "BU", "Supplier PO", "Origem", "Supplier Status"];
+            let actual_header: Vec<String> = header_row.iter().map(|cell| cell.to_string()).collect();
+            
+            if actual_header != expected_header {
+                return Err(format!(
+                    "❌ Cabeçalho inválido.\nEsperado: {:?}\nEncontrado: {:?}",
+                    expected_header, actual_header
+                ));
+            }
+            println!("✅ Cabeçalho validado");
+        }
+
+        let conn_guard = Self::get_connection()?;
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+        let conn = conn_guard.as_ref().unwrap();
+
+        let mut updated = 0;
+        let mut inserted = 0;
+        let mut errors = 0;
+
+        for (idx, row) in range.rows().enumerate() {
+            if idx == 0 { continue; } // Pula header
+
+            if row.len() < 6 {
+                println!("⚠️ Linha {} ignorada: menos de 6 colunas", idx + 1);
+                errors += 1;
+                continue;
+            }
+
+            let supplier_id = row[0].to_string().trim().to_string();
+            let vendor_name = row[1].to_string().trim().to_string();
+            let bu = row[2].to_string().trim().to_string();
+            let supplier_po_str = row[3].to_string().trim().to_string();
+            let origem = row[4].to_string().trim().to_string();
+            let supplier_status = row[5].to_string().trim().to_string();
+            
+            // Converter supplier_po para INTEGER
+            let supplier_po: Option<i32> = if supplier_po_str.is_empty() {
+                None
+            } else {
+                match supplier_po_str.parse::<i32>() {
+                    Ok(val) => Some(val),
+                    Err(_) => {
+                        println!("⚠️ Linha {}: supplier_po '{}' não é um número válido, usando None", idx + 1, supplier_po_str);
+                        None
+                    }
+                }
+            };
+
+            // DEBUG: Mostrar valores lidos da linha
+            println!("🔍 Linha {}: supplier_id='{}', vendor_name='{}', bu='{}', supplier_po_str='{}', origem='{}', supplier_status='{}'", 
+                idx + 1, supplier_id, vendor_name, bu, supplier_po_str, origem, supplier_status);
+            println!("🔍 Linha {}: supplier_po parsed = {:?}", idx + 1, supplier_po);
+
+            // Se supplier_id está vazio, cria novo registro (obriga vendor_name e supplier_status)
+            if supplier_id.is_empty() {
+                println!("🔍 Linha {}: supplier_id VAZIO - tentando INSERT", idx + 1);
+                
+                if vendor_name.is_empty() {
+                    println!("⚠️ Linha {} ignorada: vendor_name vazio", idx + 1);
+                    errors += 1;
+                    continue;
+                }
+
+                if supplier_po.is_none() {
+                    println!("ℹ️ Linha {}: supplier_po vazio ou inválido, valor será mantido como NULL", idx + 1);
+                } else if let Some(po_val) = supplier_po {
+                    let existing_po_owner: Option<String> = conn
+                        .query_row(
+                            "SELECT CAST(supplier_id AS TEXT) FROM supplier_database_table WHERE supplier_po = ?1 LIMIT 1",
+                            [po_val],
+                            |row| row.get(0)
+                        )
+                        .optional()
+                        .map_err(|e| format!("Erro ao verificar duplicidade de supplier_po: {}", e))?;
+
+                    if let Some(existing_id) = existing_po_owner {
+                        println!(
+                            "⚠️ Linha {} ignorada: supplier_po '{}' já está em uso pelo supplier_id {}",
+                            idx + 1,
+                            po_val,
+                            existing_id
+                        );
+                        errors += 1;
+                        continue;
+                    }
+                }
+                
+                if supplier_status.is_empty() {
+                    println!("⚠️ Linha {} ignorada: supplier_status vazio (obrigatório)", idx + 1);
+                    errors += 1;
+                    continue;
+                }
+
+                println!(
+                    "📝 Linha {}: INSERT - vendor_name='{}', supplier_po='{:?}'",
+                    idx + 1,
+                    vendor_name,
+                    supplier_po
+                );
+
+                // Prepara valores seguindo padrão da criação manual
+                let vendor_name_val = vendor_name.as_str();
+                let country_orig_val = if origem.is_empty() { "N/A" } else { origem.as_str() };  // origem vai para country
+                let bu_val = if bu.is_empty() { "N/A" } else { bu.as_str() };
+                let category_val = "N/A";  // supplier_category sempre N/A
+                let email_val = "";
+                let status_val = if supplier_status.is_empty() { "" } else { supplier_status.as_str() };
+                let supplier_name_val = "N/A";
+                let planner_val = "";
+                let continuity_val = "";
+                let sourcing_val = "";
+                let sqie_val = "";
+                let ssid_val = "";
+
+                let has_supplier_name = Self::supplier_table_has_column(conn, "supplier_name")?;
+
+                println!("📝 Linha {}: Executando INSERT com valores:", idx + 1);
+                println!("   - vendor_name: '{}'", vendor_name_val);
+                println!("   - country (origem): '{}'", country_orig_val);
+                println!("   - bu: '{}'", bu_val);
+                println!("   - supplier_category: '{}'", category_val);
+                println!("   - supplier_email: '{}'", email_val);
+                println!("   - supplier_po: {:?}", supplier_po);
+                println!("   - supplier_status: '{}'", status_val);
+                println!("   - has_supplier_name column: {}", has_supplier_name);
+
+                let result = if has_supplier_name {
+                    println!("   ➡️ Usando INSERT com supplier_name");
+                    conn.execute(
+                        "INSERT INTO supplier_database_table (
+                            vendor_name,
+                            supplier_name,
+                            bu,
+                            supplier_category,
+                            supplier_email,
+                            supplier_po,
+                            supplier_status,
+                            planner,
+                            country,
+                            continuity,
+                            sourcing,
+                            sqie,
+                            ssid
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                        rusqlite::params![
+                            vendor_name_val,
+                            supplier_name_val,
+                            bu_val,
+                            category_val,
+                            email_val,
+                            supplier_po,
+                            status_val,
+                            planner_val,
+                            country_orig_val,
+                            continuity_val,
+                            sourcing_val,
+                            sqie_val,
+                            ssid_val,
+                        ]
+                    )
+                } else {
+                    println!("   ➡️ Usando INSERT sem supplier_name");
+                    conn.execute(
+                        "INSERT INTO supplier_database_table (
+                            vendor_name,
+                            bu,
+                            supplier_category,
+                            supplier_email,
+                            supplier_po,
+                            supplier_status,
+                            planner,
+                            country,
+                            continuity,
+                            sourcing,
+                            sqie,
+                            ssid
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                        rusqlite::params![
+                            vendor_name_val,
+                            bu_val,
+                            category_val,
+                            email_val,
+                            supplier_po,
+                            status_val,
+                            planner_val,
+                            country_orig_val,
+                            continuity_val,
+                            sourcing_val,
+                            sqie_val,
+                            ssid_val,
+                        ]
+                    )
+                };
+
+                match result {
+                    Ok(rows_affected) => {
+                        let new_supplier_id = conn.last_insert_rowid();
+                        println!("   ✅ Novo supplier inserido com ID: {} ({} linhas afetadas)", new_supplier_id, rows_affected);
+                        inserted += 1;
+                    }
+                    Err(e) => {
+                        println!("   ❌ Erro ao inserir: {}", e);
+                        errors += 1;
+                    }
+                }
+
+                continue;
+            }
+
+            // Se supplier_id existe, faz UPDATE
+            println!("🔄 Linha {}: UPDATE - supplier_id='{}' (não vazio, tentando atualizar)", idx + 1, supplier_id);
+            
+            // Verifica se o supplier_id existe no banco
+            let check_query = "SELECT COUNT(*) FROM supplier_database_table WHERE supplier_id = ?1";
+            let exists: i32 = conn.query_row(check_query, [&supplier_id], |row| row.get(0))
+                .unwrap_or(0);
+
+            println!("🔍 Linha {}: Supplier ID '{}' existe no banco? {}", idx + 1, supplier_id, exists > 0);
+
+            if exists > 0 {
+                // Verifica se a coluna supplier_name existe
+                let has_supplier_name = Self::supplier_table_has_column(conn, "supplier_name")?;
+                
+                // Prepara valores
+                if let Some(po_val) = supplier_po {
+                    let existing_po_owner: Option<String> = conn
+                        .query_row(
+                            "SELECT CAST(supplier_id AS TEXT) FROM supplier_database_table WHERE supplier_po = ?1 LIMIT 1",
+                            [po_val],
+                            |row| row.get(0)
+                        )
+                        .optional()
+                        .map_err(|e| format!("Erro ao verificar duplicidade de supplier_po: {}", e))?;
+
+                    if let Some(existing_id) = existing_po_owner {
+                        if existing_id != supplier_id {
+                            println!(
+                                "⚠️ Linha {} ignorada: supplier_po '{}' já está em uso pelo supplier_id {}",
+                                idx + 1,
+                                po_val,
+                                existing_id
+                            );
+                            errors += 1;
+                            continue;
+                        }
+                    }
+                }
+
+                let bu_val = if bu.is_empty() { "N/A" } else { bu.as_str() };
+                let origem_val = if origem.is_empty() { "N/A" } else { origem.as_str() };
+                let status_val = if supplier_status.is_empty() { "" } else { supplier_status.as_str() };
+                
+                println!("📝 Linha {}: Executando UPDATE com valores:", idx + 1);
+                println!("   - vendor_name: '{}'", vendor_name);
+                println!("   - bu: '{}'", bu_val);
+                println!("   - supplier_po: {:?}", supplier_po);
+                println!("   - origem: '{}'", origem_val);
+                println!("   - supplier_status: '{}'", status_val);
+                println!("   - supplier_id: '{}'", supplier_id);
+                println!("   - has_supplier_name: {}", has_supplier_name);
+                
+                let result = {
+                    println!("   ➡️ Usando UPDATE com country (origem)");
+                    conn.execute(
+                        "UPDATE supplier_database_table SET vendor_name = ?1, bu = ?2, supplier_po = ?3, country = ?4, supplier_status = ?5 WHERE supplier_id = ?6",
+                        rusqlite::params![vendor_name.as_str(), bu_val, supplier_po, origem_val, status_val, &supplier_id]
+                    )
+                };
+                
+                match result {
+                    Ok(rows_affected) => {
+                        println!("   ✅ Supplier {} atualizado ({} linhas afetadas)", supplier_id, rows_affected);
+                        updated += 1;
+                    },
+                    Err(e) => {
+                        println!("   ❌ Erro ao atualizar {}: {}", supplier_id, e);
+                        errors += 1;
+                    }
+                }
+            } else {
+                println!("   ⚠️ Supplier ID {} não encontrado no banco, ignorado", supplier_id);
+                errors += 1;
+            }
+        }
+
+        println!("\n✅ Importação concluída:");
+        println!("   📊 Atualizados: {}", updated);
+        println!("   ➕ Inseridos: {}", inserted);
+        println!("   ❌ Erros: {}", errors);
+
+        if errors > 0 {
+            Ok(format!("Atualizados: {}\nInseridos: {}\nErros: {}", updated, inserted, errors))
+        } else {
+            Ok(format!("✅ {} suppliers atualizados e {} inseridos com sucesso!", updated, inserted))
+        }
     }
 }
 

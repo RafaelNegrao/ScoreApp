@@ -658,6 +658,9 @@ fn main() {
             export_evaluation_form,
             validate_import_file,
             import_scores_from_file,
+            export_suppliers,
+            validate_supplier_import,
+            import_suppliers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -668,6 +671,25 @@ fn main() {
 fn delete_all_logs() -> Result<(), String> {
     DatabaseManager::delete_all_logs()
 }
+
+/// Comando Tauri para exportar suppliers
+#[tauri::command]
+fn export_suppliers() -> Result<Vec<u8>, String> {
+    DatabaseManager::export_suppliers()
+}
+
+/// Comando Tauri para validar arquivo de importação de suppliers
+#[tauri::command]
+fn validate_supplier_import(file_content: Vec<u8>) -> Result<String, String> {
+    DatabaseManager::validate_supplier_import(file_content)
+}
+
+/// Comando Tauri para importar suppliers
+#[tauri::command]
+fn import_suppliers(file_content: Vec<u8>) -> Result<String, String> {
+    DatabaseManager::import_suppliers(file_content)
+}
+
 /// Comando Tauri para buscar responsáveis de um fornecedor
 #[tauri::command]
 fn get_supplier_responsibles(supplier_id: String) -> Result<SupplierResponsibles, String> {

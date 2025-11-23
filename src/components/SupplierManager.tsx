@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { useToastContext } from '../contexts/ToastContext';
 import SupplierEditModal from './SupplierEditModal';
+import ImportSupplierModal from './ImportSupplierModal';
 
 
 interface Supplier {
@@ -58,6 +59,7 @@ function SupplierManager() {
   const [savingSuppliers, setSavingSuppliers] = useState<Set<string>>(new Set());
   const saveTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToastContext();
 
@@ -301,6 +303,47 @@ function SupplierManager() {
     }
   };
 
+  const handleExportSuppliers = async () => {
+    try {
+      console.log('📤 Iniciando exportação de suppliers...');
+      
+      const excelBuffer = await invoke<number[]>('export_suppliers');
+      const uint8Array = new Uint8Array(excelBuffer);
+      
+      const fileName = `Suppliers_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      const { save } = await import('@tauri-apps/api/dialog');
+      const filePath = await save({
+        defaultPath: fileName,
+        filters: [{
+          name: 'Excel',
+          extensions: ['xlsx']
+        }]
+      });
+
+      if (filePath) {
+        const { writeBinaryFile } = await import('@tauri-apps/api/fs');
+        await writeBinaryFile(filePath, uint8Array);
+        showToast('Suppliers exportados com sucesso!', 'success');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao exportar suppliers:', error);
+      showToast(`Erro ao exportar: ${error}`, 'error');
+    }
+  };
+
+  const handleImportSuppliers = () => {
+    setIsImportModalOpen(true);
+  };
+
+  const handleImportSuccess = async () => {
+    // Atualiza a busca se houver
+    if (searchQuery.trim().length >= 1) {
+      await handleSearch();
+    }
+    showToast('Suppliers importados com sucesso!', 'success');
+  };
+
   return (
     <div className="supplier-manager">
       {/* Header com Busca */}
@@ -324,6 +367,16 @@ function SupplierManager() {
               {suppliers.length > 0 && !isSearching && (
                 <span className="count-inside-input">{suppliers.length}</span>
               )}
+            </div>
+            <div className="supplier-actions">
+              <button className="btn-secondary" onClick={handleExportSuppliers}>
+                <i className="bi bi-download"></i>
+                Exportar
+              </button>
+              <button className="btn-secondary" onClick={handleImportSuppliers}>
+                <i className="bi bi-upload"></i>
+                Importar
+              </button>
             </div>
           </div>
         </div>
@@ -682,6 +735,13 @@ function SupplierManager() {
             handleSearch();
           }
         }}
+      />
+
+      {/* Modal de Importação */}
+      <ImportSupplierModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={handleImportSuccess}
       />
     </div>
   );

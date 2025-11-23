@@ -4,19 +4,42 @@ import { Download, X } from 'lucide-react';
 import { useToastContext } from '../contexts/ToastContext';
 import './ExportFormModal.css';
 
+export type CriteriaOption = 'otif' | 'nil' | 'pickup' | 'package';
+
 interface ExportFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (criteria: string, includeScore: boolean, month?: string, year?: string) => void;
+  onExport: (criteria: CriteriaOption, includeScore: boolean, month?: string, year?: string) => void;
 }
+
+const normalizeCriteria = (value: string): CriteriaOption => {
+  switch (value.trim().toLowerCase()) {
+    case 'nil':
+      return 'nil';
+    case 'pickup':
+      return 'pickup';
+    case 'package':
+      return 'package';
+    default:
+      return 'otif';
+  }
+};
 
 const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onExport }) => {
   const { showToast } = useToastContext();
-  const [selectedCriteria, setSelectedCriteria] = useState<string>('otif');
+  const [selectedCriteria, setSelectedCriteria] = useState<CriteriaOption>('otif');
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [selectedYear, setSelectedYear] = useState<string>('');
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [userPermissions, setUserPermissions] = useState<{otif: string, nil: string, pickup: string, package: string}>({otif: '', nil: '', pickup: '', package: ''});
+
+  const getDefaultCriteria = (permissions: {otif: string, nil: string, pickup: string, package: string}): CriteriaOption => {
+    if (isPermissionActive(permissions.otif)) return 'otif';
+    if (isPermissionActive(permissions.nil)) return 'nil';
+    if (isPermissionActive(permissions.pickup)) return 'pickup';
+    if (isPermissionActive(permissions.package)) return 'package';
+    return 'otif';
+  };
 
   const isPermissionActive = (permission: string): boolean => {
     return permission === 'Sim' || permission === 'Yes' || permission === '1' || permission === 'true' || permission === 'read' || permission === 'write';
@@ -38,10 +61,7 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
         setUserPermissions(permissions);
         
         // Define o primeiro critério disponível como selecionado
-        if (permissions.otif !== '') setSelectedCriteria('otif');
-        else if (permissions.nil !== '') setSelectedCriteria('nil');
-        else if (permissions.pickup !== '') setSelectedCriteria('pickup');
-        else if (permissions.package !== '') setSelectedCriteria('package');
+        setSelectedCriteria(getDefaultCriteria(permissions));
       } catch (error) {
         console.error('Erro ao parsear usuário:', error);
       }
@@ -51,7 +71,6 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
   // Reseta os campos quando o modal fecha e define mês/ano atual quando abre
   useEffect(() => {
     if (!isOpen) {
-      setSelectedCriteria('otif');
       setSelectedMonth('');
       setSelectedYear('');
       setIsExporting(false);
@@ -60,8 +79,10 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
       const today = new Date();
       setSelectedMonth(String(today.getMonth() + 1));
       setSelectedYear(String(today.getFullYear()));
+      // Redefine o critério baseado nas permissões quando o modal abre
+      setSelectedCriteria(getDefaultCriteria(userPermissions));
     }
-  }, [isOpen]);
+  }, [isOpen, userPermissions]);
 
   const handleExport = async () => {
     if (!selectedMonth || !selectedYear) {
@@ -71,7 +92,8 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
 
     setIsExporting(true);
     try {
-      await onExport(selectedCriteria, true, selectedMonth, selectedYear);
+      const criteriaToExport = normalizeCriteria(selectedCriteria);
+      await onExport(criteriaToExport, true, selectedMonth, selectedYear);
     } finally {
       setIsExporting(false);
     }
@@ -108,7 +130,7 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
             <select 
               id="criteria-select"
               value={selectedCriteria}
-              onChange={(e) => setSelectedCriteria(e.target.value)}
+              onChange={(e) => setSelectedCriteria(normalizeCriteria(e.target.value))}
               disabled={isExporting}
               className="form-select"
             >
@@ -167,26 +189,6 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
             </div>
           </div>
 
-          {/* Informações do que será exportado */}
-          <div className="export-info">
-            <i className="bi bi-info-circle"></i>
-            <div className="export-info-content">
-              <strong>O arquivo conterá:</strong>
-              <ul>
-                <li>Record ID (se existir)</li>
-                <li>Supplier ID</li>
-                <li>Vendor Name</li>
-                <li>BU</li>
-                <li>Supplier PO</li>
-                <li>Coluna para nota de {selectedCriteria.toUpperCase()}</li>
-                {selectedMonth && selectedYear && (
-                  <li className="highlight">
-                    Notas existentes de {getMonthName(selectedMonth)}/{selectedYear}
-                  </li>
-                )}
-              </ul>
-            </div>
-          </div>
         </div>
 
         <div className="export-form-footer">

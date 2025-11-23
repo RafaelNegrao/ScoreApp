@@ -5,6 +5,8 @@ import { Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { useToastContext } from '../contexts/ToastContext';
 import './ImportScoreModal.css';
 
+type CriteriaOption = 'otif' | 'nil' | 'pickup' | 'package';
+
 interface ImportScoreModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,9 +23,22 @@ interface ValidationResult {
   error?: string;
 }
 
+const normalizeCriteria = (value: string): CriteriaOption => {
+  switch (value.trim().toLowerCase()) {
+    case 'nil':
+      return 'nil';
+    case 'pickup':
+      return 'pickup';
+    case 'package':
+      return 'package';
+    default:
+      return 'otif';
+  }
+};
+
 const ImportScoreModal: React.FC<ImportScoreModalProps> = ({ isOpen, onClose, onImportSuccess }) => {
   const { showToast } = useToastContext();
-  const [selectedCriteria, setSelectedCriteria] = useState<string>('otif');
+  const [selectedCriteria, setSelectedCriteria] = useState<CriteriaOption>('otif');
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [isValidating, setIsValidating] = useState<boolean>(false);
@@ -33,6 +48,14 @@ const ImportScoreModal: React.FC<ImportScoreModalProps> = ({ isOpen, onClose, on
 
   const isPermissionActive = (permission: string): boolean => {
     return permission === 'Sim' || permission === 'Yes' || permission === '1' || permission === 'true' || permission === 'read' || permission === 'write';
+  };
+
+  const getDefaultCriteria = (permissions: {otif: string, nil: string, pickup: string, package: string}): CriteriaOption => {
+    if (isPermissionActive(permissions.otif)) return 'otif';
+    if (isPermissionActive(permissions.nil)) return 'nil';
+    if (isPermissionActive(permissions.pickup)) return 'pickup';
+    if (isPermissionActive(permissions.package)) return 'package';
+    return 'otif';
   };
 
   // Buscar permissões do usuário
@@ -51,10 +74,7 @@ const ImportScoreModal: React.FC<ImportScoreModalProps> = ({ isOpen, onClose, on
         setUserPermissions(permissions);
         
         // Define o primeiro critério disponível como selecionado
-        if (permissions.otif !== '') setSelectedCriteria('otif');
-        else if (permissions.nil !== '') setSelectedCriteria('nil');
-        else if (permissions.pickup !== '') setSelectedCriteria('pickup');
-        else if (permissions.package !== '') setSelectedCriteria('package');
+        setSelectedCriteria(getDefaultCriteria(permissions));
       } catch (error) {
         console.error('Erro ao parsear usuário:', error);
       }
@@ -64,13 +84,15 @@ const ImportScoreModal: React.FC<ImportScoreModalProps> = ({ isOpen, onClose, on
   // Reseta os campos quando o modal fecha
   useEffect(() => {
     if (!isOpen) {
-      setSelectedCriteria('otif');
       setSelectedFile('');
       setValidationResult(null);
       setIsValidating(false);
       setIsImporting(false);
+    } else {
+      // Redefine o critério baseado nas permissões quando o modal abre
+      setSelectedCriteria(getDefaultCriteria(userPermissions));
     }
-  }, [isOpen]);
+  }, [isOpen, userPermissions]);
 
   const handleFileSelect = async () => {
     try {
@@ -204,7 +226,7 @@ const ImportScoreModal: React.FC<ImportScoreModalProps> = ({ isOpen, onClose, on
               id="criteria-select"
               value={selectedCriteria}
               onChange={(e) => {
-                setSelectedCriteria(e.target.value);
+                setSelectedCriteria(normalizeCriteria(e.target.value));
                 setValidationResult(null);
                 // Revalida se já tem arquivo selecionado
                 if (selectedFile) {
