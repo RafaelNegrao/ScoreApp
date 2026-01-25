@@ -219,7 +219,6 @@
   line-height: 1;
   flex-shrink: 0;
   letter-spacing: -0.02em;
-  color: var(--accent-primary) !important;
 }
 
 /* Card Info - sem fundo */

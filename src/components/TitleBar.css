@@ -121,6 +121,15 @@ body.login-page .titlebar-controls {
   justify-content: center;
 }
 
+.titlebar-button.minimize i,
+.titlebar-button.close i {
+  font-size: 18px;
+}
+
+.titlebar-button.maximize i {
+  font-size: 13px;
+}
+
 .titlebar-button.minimize:hover {
   background: var(--sidebar-hover);
   color: var(--sidebar-text);

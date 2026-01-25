@@ -83,8 +83,8 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
 
   const calculateMetrics = (records: ScoreRecord[], year: string): MetricsData => {
     // Função auxiliar para calcular total_score de um record
-    // Usa a média simples dos 4 critérios disponíveis
-    const calculateTotalScore = (record: ScoreRecord): number => {
+    // Mesma lógica do Risks.tsx - retorna null se não houver dados
+    const calculateTotalScore = (record: ScoreRecord): number | null => {
       const scores: number[] = [];
       
       // Nota 0 é válida e deve ser incluída!
@@ -93,19 +93,17 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       if (record.quality_pickup !== null && record.quality_pickup !== undefined && !isNaN(record.quality_pickup)) scores.push(record.quality_pickup);
       if (record.quality_package !== null && record.quality_package !== undefined && !isNaN(record.quality_package)) scores.push(record.quality_package);
       
-      if (scores.length === 0) return 0;
+      if (scores.length === 0) return null;
       return scores.reduce((a, b) => a + b, 0) / scores.length;
     };
 
-    // Usar total_score do banco se disponível
-    const getScore = (record: ScoreRecord): number => {
-      if (record.total_score !== null && record.total_score !== undefined && !isNaN(record.total_score)) {
-        return record.total_score;
-      }
+    // Usar cálculo baseado nos critérios individuais (mesma lógica do Risks)
+    const getScore = (record: ScoreRecord): number | null => {
       return calculateTotalScore(record);
     };
 
-    const allScores = records.map(r => getScore(r));
+    // Filtrar apenas registros com scores válidos
+    const allScores = records.map(r => getScore(r)).filter((s): s is number => s !== null);
     
     // Overall Average (todos os dados)
     const overallAverage = allScores.length > 0
@@ -122,44 +120,35 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       const monthsDiff = (currentYear - recordYear) * 12 + (currentMonth - recordMonth);
       return monthsDiff <= 12 && monthsDiff >= 0;
     });
-    const twelveMonthsAverage = last12MonthsRecords.length > 0
-      ? last12MonthsRecords.reduce((sum, r) => sum + getScore(r), 0) / last12MonthsRecords.length
+    const last12MonthsScores = last12MonthsRecords.map(r => getScore(r)).filter((s): s is number => s !== null);
+    const twelveMonthsAverage = last12MonthsScores.length > 0
+      ? last12MonthsScores.reduce((a, b) => a + b, 0) / last12MonthsScores.length
       : 0;
 
     // Year Average
     const yearRecords = year
       ? records.filter(r => r.year === year)
       : records;
-    const yearAverage = yearRecords.length > 0
-      ? yearRecords.reduce((sum, r) => sum + getScore(r), 0) / yearRecords.length
+    const yearScores = yearRecords.map(r => getScore(r)).filter((s): s is number => s !== null);
+    const yearAverage = yearScores.length > 0
+      ? yearScores.reduce((a, b) => a + b, 0) / yearScores.length
       : 0;
 
     // Calcular médias trimestrais
-    const getQuarterRecords = (quarter: number) => {
+    const getQuarterAverage = (quarter: number): number => {
       const startMonth = (quarter - 1) * 3 + 1;
       const endMonth = startMonth + 2;
-      return yearRecords.filter(r => {
-        return r.month >= startMonth && r.month <= endMonth;
-      });
+      const quarterRecords = yearRecords.filter(r => r.month >= startMonth && r.month <= endMonth);
+      const quarterScores = quarterRecords.map(r => getScore(r)).filter((s): s is number => s !== null);
+      
+      if (quarterScores.length === 0) return 0;
+      return quarterScores.reduce((a, b) => a + b, 0) / quarterScores.length;
     };
 
-    const q1Records = getQuarterRecords(1);
-    const q2Records = getQuarterRecords(2);
-    const q3Records = getQuarterRecords(3);
-    const q4Records = getQuarterRecords(4);
-
-    const q1Average = q1Records.length > 0
-      ? q1Records.reduce((sum, r) => sum + getScore(r), 0) / q1Records.length
-      : 0;
-    const q2Average = q2Records.length > 0
-      ? q2Records.reduce((sum, r) => sum + getScore(r), 0) / q2Records.length
-      : 0;
-    const q3Average = q3Records.length > 0
-      ? q3Records.reduce((sum, r) => sum + getScore(r), 0) / q3Records.length
-      : 0;
-    const q4Average = q4Records.length > 0
-      ? q4Records.reduce((sum, r) => sum + getScore(r), 0) / q4Records.length
-      : 0;
+    const q1Average = getQuarterAverage(1);
+    const q2Average = getQuarterAverage(2);
+    const q3Average = getQuarterAverage(3);
+    const q4Average = getQuarterAverage(4);
 
     // Calcular tendências (comparar com trimestre anterior)
     const getTrend = (current: number, previous: number): 'up' | 'down' | 'neutral' => {

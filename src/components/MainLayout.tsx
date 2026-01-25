@@ -17,8 +17,6 @@ function MainLayout() {
     return localStorage.getItem('menuOpen') === 'true';
   });
 
-  console.log('🔍 MainLayout renderizado - permissions:', permissions);
-
   // Efeito para aplicar estado inicial do menu
   useEffect(() => {
     if (menuOpen) {
@@ -74,13 +72,8 @@ function MainLayout() {
     { path: "/risks", icon: "bi-exclamation-triangle", label: "Risks", permission: permissions.canAccessRisks },
   ];
   
-  console.log('🎨 MainLayout - permissions:', permissions);
-  console.log('📋 MainLayout - allMenuItems:', allMenuItems);
-  
   // Filtra apenas os itens que o usuário tem permissão
   const menuItems = allMenuItems.filter(item => item.permission);
-  
-  console.log('✅ MainLayout - menuItems filtrados:', menuItems);
 
   const isActive = (path: string) => {
     return location.pathname === path;

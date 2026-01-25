@@ -57,7 +57,17 @@ function Timeline() {
 
   // Buscar automaticamente quando vindo de outra página
   useEffect(() => {
-    const state = location.state as { searchSupplier?: string } | null;
+    const state = location.state as { searchSupplier?: string; supplier?: Supplier } | null;
+    
+    // Se veio com supplier completo (do Risks), usa diretamente
+    if (state?.supplier) {
+      setSelectedSupplier(state.supplier);
+      setSearchTerm(state.supplier.vendor_name);
+      setShowDropdown(false);
+      return;
+    }
+    
+    // Se veio apenas com nome (fallback), busca e seleciona o primeiro
     if (state?.searchSupplier) {
       const searchAndSelect = async () => {
         try {
@@ -232,7 +242,7 @@ function Timeline() {
             className="year-select"
           >
             <option value="">Ano</option>
-            {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() + i).map((year) => (
+            {[2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040].map((year) => (
               <option key={year} value={year.toString()}>{year}</option>
             ))}
           </select>

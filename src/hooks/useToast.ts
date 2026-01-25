@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 export interface ToastData {
   id: string;
@@ -7,18 +7,23 @@ export interface ToastData {
   duration?: number;
 }
 
+let toastIdCounter = 0;
+
 /**
  * Hook customizado para gerenciar notificações toast
  */
 export function useToast() {
   const [toasts, setToasts] = useState<ToastData[]>([]);
+  const counterRef = useRef(0);
 
   const showToast = useCallback((
     message: string,
     type: 'success' | 'error' | 'warning' | 'info' = 'info',
     duration = 3000
   ) => {
-    const id = Date.now().toString();
+    // Combina timestamp com contador incremental para garantir unicidade
+    counterRef.current += 1;
+    const id = `${Date.now()}-${counterRef.current}`;
     const newToast: ToastData = { id, message, type, duration };
     
     setToasts((prev) => [...prev, newToast]);

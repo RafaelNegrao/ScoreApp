@@ -78,11 +78,11 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
     console.log('Aplicando altura para zoom:', zoomLevel);
     // Se estiver no modo compacto (2 cards), aumenta a altura
     if (isCompactCarousel) {
-      return 'clamp(200px, 28vh, 300px)';
+      return 'clamp(230px, 32vh, 350px)';
     }
-    if (zoomLevel >= 140) return 'clamp(130px, 16vh, 170px)';
-    if (zoomLevel >= 120) return 'clamp(145px, 18vh, 190px)';
-    return 'clamp(160px, 20vh, 220px)';
+    if (zoomLevel >= 140) return 'clamp(160px, 20vh, 210px)';
+    if (zoomLevel >= 120) return 'clamp(180px, 22vh, 230px)';
+    return 'clamp(200px, 24vh, 270px)';
   };
 
   // Calcular tamanho de fonte baseado no zoom
@@ -323,15 +323,6 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
                   return value;
                 }}
               />
-              {/* Linha de Target */}
-              {targetValue !== null && (
-                <ReferenceLine
-                  y={targetValue}
-                  stroke="#FFD600"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                />
-              )}
               <Bar 
                 dataKey="score" 
                 radius={[4, 4, 0, 0]} 
@@ -362,30 +353,17 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
                   />
                 ))}
               </Bar>
+              {/* Linha de Target - renderizada após as barras para ficar sobreposta */}
+              {targetValue !== null && (
+                <ReferenceLine
+                  y={targetValue}
+                  stroke="var(--accent-primary)"
+                  strokeWidth={2.5}
+                  strokeDasharray="5 5"
+                />
+              )}
             </BarChart>
           </ResponsiveContainer>
-        </div>
-
-        {/* Barra de Informações de Regressão */}
-        <div className="regression-info-bar">
-          <div className="regression-info-content">
-            <div className="regression-info-item">
-              <span className="regression-info-label">y={regression.slope.toFixed(2)}x{regression.intercept >= 0 ? '+' : ''}{regression.intercept.toFixed(1)}</span>
-            </div>
-            <div className="regression-info-item">
-              <span className={`regression-trend ${regression.trend.toLowerCase()}`}>
-                {regression.trend === 'Crescente' && '↗'}
-                {regression.trend === 'Decrescente' && '↘'}
-                {regression.trend === 'Estável' && '→'}
-              </span>
-            </div>
-            <div className="regression-info-item">
-              <span className="regression-info-label">R²={regression.r2.toFixed(2)}</span>
-            </div>
-          </div>
-          <button className="regression-info-button" onClick={handleOpenModal}>
-            <Info size={14} />
-          </button>
         </div>
       </div>
     );

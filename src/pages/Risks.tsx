@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
-import { TrendingUp, TrendingDown, BarChart2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { BarChart, Bar, ReferenceLine, ResponsiveContainer, Cell, XAxis } from "recharts";
 import "../pages/Page.css";
@@ -18,7 +18,18 @@ interface RiskSupplier {
   q2: number | null;
   q3: number | null;
   q4: number | null;
-  monthly_scores?: number[];
+  monthly_scores?: (number | null)[];
+}
+
+interface ScoreRecord {
+  supplier_id: string;
+  month: number;
+  year: string;
+  otif: number | null;
+  nil: number | null;
+  quality_pickup: number | null;
+  quality_package: number | null;
+  total_score?: number | null;
 }
 
 /**
@@ -61,27 +72,81 @@ function Risks() {
       });
       console.log('📊 Fornecedores em risco carregados:', data);
       
-      // Buscar dados mensais para cada fornecedor
+      // Função auxiliar para calcular total_score de um record
+      // Mesma lógica do MetricsOverview - média simples dos critérios disponíveis
+      const calculateTotalScore = (record: ScoreRecord): number | null => {
+        const scores: number[] = [];
+        
+        // Nota 0 é válida e deve ser incluída!
+        if (record.otif !== null && record.otif !== undefined && !isNaN(record.otif)) {
+          scores.push(record.otif);
+        }
+        if (record.nil !== null && record.nil !== undefined && !isNaN(record.nil)) {
+          scores.push(record.nil);
+        }
+        if (record.quality_pickup !== null && record.quality_pickup !== undefined && !isNaN(record.quality_pickup)) {
+          scores.push(record.quality_pickup);
+        }
+        if (record.quality_package !== null && record.quality_package !== undefined && !isNaN(record.quality_package)) {
+          scores.push(record.quality_package);
+        }
+        
+        if (scores.length === 0) return null;
+        return scores.reduce((a, b) => a + b, 0) / scores.length;
+      };
+      
+      // Buscar dados mensais para cada fornecedor e recalcular quarters
       const suppliersWithMonthly = await Promise.all(
         data.map(async (supplier) => {
           try {
-            const records = await invoke<any[]>("get_supplier_score_records", {
+            const records = await invoke<ScoreRecord[]>("get_supplier_score_records", {
               supplierId: supplier.supplier_id,
             });
             
-            // Filtrar pelo ano selecionado e criar array de 12 meses
-            const monthlyScores = Array(12).fill(null);
-            records
-              .filter((r) => r.year === selectedYear.toString())
-              .forEach((record) => {
-                const monthIndex = parseInt(record.month) - 1;
-                const score = record.total_score ? parseFloat(record.total_score) : null;
-                if (monthIndex >= 0 && monthIndex < 12 && score !== null) {
-                  monthlyScores[monthIndex] = score;
-                }
-              });
+            // Filtrar pelo ano selecionado
+            const yearRecords = records.filter((r) => r.year === selectedYear.toString());
             
-            return { ...supplier, monthly_scores: monthlyScores };
+            // Criar array de 12 meses
+            const monthlyScores: (number | null)[] = Array(12).fill(null);
+            yearRecords.forEach((record) => {
+              // month já vem como número do backend
+              const monthIndex = record.month - 1;
+              const score = calculateTotalScore(record);
+              if (monthIndex >= 0 && monthIndex < 12 && score !== null) {
+                monthlyScores[monthIndex] = score;
+              }
+            });
+            
+            // Calcular médias trimestrais (mesma lógica do MetricsOverview)
+            const getQuarterAverage = (startMonth: number, endMonth: number): number | null => {
+              const quarterScores = monthlyScores
+                .slice(startMonth - 1, endMonth)
+                .filter((s): s is number => s !== null);
+              
+              if (quarterScores.length === 0) return null;
+              return quarterScores.reduce((a, b) => a + b, 0) / quarterScores.length;
+            };
+            
+            const q1 = getQuarterAverage(1, 3);   // Jan-Mar
+            const q2 = getQuarterAverage(4, 6);   // Apr-Jun
+            const q3 = getQuarterAverage(7, 9);   // Jul-Sep
+            const q4 = getQuarterAverage(10, 12); // Oct-Dec
+            
+            // Recalcular avg_score com base nos dados mensais
+            const validScores = monthlyScores.filter((s): s is number => s !== null);
+            const recalculatedAvg = validScores.length > 0
+              ? validScores.reduce((a, b) => a + b, 0) / validScores.length
+              : supplier.avg_score;
+            
+            return { 
+              ...supplier, 
+              monthly_scores: monthlyScores,
+              q1,
+              q2,
+              q3,
+              q4,
+              avg_score: recalculatedAvg
+            };
           } catch (error) {
             console.error(`Erro ao buscar dados mensais para ${supplier.supplier_id}:`, error);
             return { ...supplier, monthly_scores: Array(12).fill(null) };
@@ -110,14 +175,13 @@ function Risks() {
     return "var(--text-error)";
   };
 
-  const handleViewTimeline = (supplierName: string) => {
-    // Navegar para Timeline e passar o nome do fornecedor via state
-    navigate('/timeline', { state: { searchSupplier: supplierName } });
+  const handleViewTimeline = (supplier: RiskSupplier) => {
+    // Navegar para Timeline e passar o fornecedor completo via state
+    navigate('/timeline', { state: { supplier: supplier } });
   };
 
-  // Gerar anos dinamicamente: ano atual até ano atual + 5
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 6 }, (_, i) => currentYear + i);
+  // Lista fixa de anos: 2025 até 2040
+  const years = [2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040];
 
   return (
     <div className="page-container">
@@ -175,10 +239,10 @@ function Risks() {
                     <h3>{supplier.vendor_name.replace(/\.\.\./g, '')}</h3>
                     <button 
                       className="chart-button"
-                      onClick={() => handleViewTimeline(supplier.vendor_name)}
+                      onClick={() => handleViewTimeline(supplier)}
                       title="Ver Timeline"
                     >
-                      <BarChart2 size={18} />
+                      <Activity size={18} />
                     </button>
                     <div className="risk-score-large" style={{ color: getScoreColor(supplier.avg_score) }}>
                       {supplier.avg_score.toFixed(2)}
@@ -209,8 +273,27 @@ function Risks() {
                           margin={{ top: 5, right: 5, left: 5, bottom: 18 }}
                         >
                           <XAxis 
-                            dataKey="month" 
-                            tick={{ fill: 'var(--text-muted)', fontSize: 9 }}
+                            dataKey="month"
+                            interval={0}
+                            tick={(props) => {
+                              const { x, y, payload } = props;
+                              const monthIndex = payload.index;
+                              const quarter = Math.floor(monthIndex / 3) + 1;
+                              const isHovered = hoveredQuarter?.supplierId === supplier.supplier_id && 
+                                                hoveredQuarter?.quarter === `Q${quarter}`;
+                              
+                              return (
+                                <text 
+                                  x={x} 
+                                  y={y + 4} 
+                                  textAnchor="middle" 
+                                  fill={isHovered ? 'var(--accent-primary)' : 'var(--text-muted)'} 
+                                  fontSize={9}
+                                >
+                                  {payload.value}
+                                </text>
+                              );
+                            }}
                             axisLine={false}
                             tickLine={false}
                           />

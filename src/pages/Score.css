@@ -964,14 +964,6 @@
   cursor: not-allowed;
 }
 
-.remove-btn i {
-  transition: color 0.2s ease;
-}
-
-.remove-btn:hover i {
-  color: var(--accent-primary) !important;
-}
-
 /* Criteria Tab */
 .settings-section {
   background: var(--section-bg);
@@ -2315,7 +2307,7 @@ input:checked+.slider:before {
 .supplier-info-icon-btn {
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--text-secondary) !important;
   cursor: pointer;
   padding: 4px;
   border-radius: 6px;
@@ -2326,12 +2318,8 @@ input:checked+.slider:before {
   flex-shrink: 0;
 }
 
-.supplier-info-icon-btn:hover {
-  color: var(--accent-primary) !important;
-}
-
-.supplier-info-icon-btn:hover i {
-  color: var(--accent-primary) !important;
+.supplier-info-icon-btn i {
+  color: var(--text-secondary) !important;
 }
 
 .yearly-table-wrapper {

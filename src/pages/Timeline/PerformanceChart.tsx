@@ -269,16 +269,6 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
                 <XAxis dataKey="month" stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
                 <YAxis domain={[0, 10]} stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
                 {/* Tooltip removido para não mostrar hover */}
-                {/* Linha de Target */}
-                {target !== null && (
-                  <ReferenceLine
-                    y={target}
-                    stroke="#FFD600"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    label={{ value: 'Target', position: 'right', fill: '#FFD600', fontSize: 12 }}
-                  />
-                )}
                 <Bar 
                   dataKey="score" 
                   radius={[6, 6, 0, 0]} 
@@ -309,6 +299,16 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
                     />
                   ))}
                 </Bar>
+                {/* Linha de Target - renderizada após as barras para ficar sobreposta */}
+                {target !== null && (
+                  <ReferenceLine
+                    y={target}
+                    stroke="var(--accent-primary)"
+                    strokeWidth={2.5}
+                    strokeDasharray="5 5"
+                    label={{ value: 'Target', position: 'right', fill: 'var(--accent-primary)', fontSize: 12 }}
+                  />
+                )}
               </BarChart>
             </ResponsiveContainer>
           )}

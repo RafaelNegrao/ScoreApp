@@ -19,7 +19,7 @@ interface RegressionModalProps {
   metricName: string;
 }
 
-const RegressionModal: React.FC<RegressionModalProps> = ({ isOpen, onClose, data }) => {
+const RegressionModal: React.FC<RegressionModalProps> = ({ isOpen, onClose, data, metricName }) => {
   if (!isOpen) return null;
 
   const getRegressionQuality = (r2: number): string => {
@@ -41,7 +41,7 @@ const RegressionModal: React.FC<RegressionModalProps> = ({ isOpen, onClose, data
         <div className="regression-modal-header">
           <h2>
             <i className="bi bi-graph-up" style={{ marginRight: '8px' }}></i>
-            Análise de Regressão Linear
+            Análise de Regressão Linear - {metricName}
           </h2>
           <button className="regression-modal-close" onClick={onClose}>
             <X size={20} />

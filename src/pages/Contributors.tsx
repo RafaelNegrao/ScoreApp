@@ -90,7 +90,7 @@ function Contributors() {
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
   ];
 
-  const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
+  const years = [2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040];
 
   return (
     <div className="contributors-page">

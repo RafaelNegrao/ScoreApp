@@ -546,17 +546,17 @@ function Settings() {
           {activeTab === 'info' && permissions.canAccessInfo && (
             <div className="tab-content">
               <div className="settings-section info-compact">
-                <h3><i className="bi bi-info-circle"></i> Informações sobre o App</h3>
+                <h3><i className="bi bi-info-circle"></i> About the App</h3>
                 
                 <div className="info-layout-grid">
                   <div className="info-section-group">
                     <div className="info-section-header">
                       <i className="bi bi-code-slash"></i>
-                      <h4>Desenvolvimento</h4>
+                      <h4>Development</h4>
                     </div>
                     
                     <div className="info-dev-item">
-                      <strong>Desenvolvido por:</strong>
+                      <strong>Developed by:</strong>
                       <p>Rafael Negrão de Souza</p>
                       <a href="mailto:rafael.negrao.souza@cummins.com" className="info-link">
                         <i className="bi bi-envelope"></i> rafael.negrao.souza@cummins.com
@@ -565,34 +565,34 @@ function Settings() {
                     </div>
 
                     <div className="info-dev-item">
-                      <strong>Autor intelectual:</strong>
+                      <strong>Intellectual author:</strong>
                       <p>Cleiton Bianchi dos Santos</p>
                       <a href="mailto:Cleiton.Bianchi.Santos@cummins.com" className="info-link">
                         <i className="bi bi-envelope"></i> Cleiton.Bianchi.Santos@cummins.com
                       </a>
-                      <span className="info-code">IV338</span>
+                      <span className="info-code">IV838</span>
                     </div>
                   </div>
 
                   <div className="info-section-group">
                     <div className="info-section-header">
                       <i className="bi bi-star"></i>
-                      <h4>Funcionalidades</h4>
+                      <h4>Features</h4>
                     </div>
                     <ul className="info-features-list">
-                      <li><i className="bi bi-check-circle-fill"></i> Consolidação de notas por período</li>
-                      <li><i className="bi bi-check-circle-fill"></i> Gestão completa de fornecedores</li>
-                      <li><i className="bi bi-check-circle-fill"></i> Análise de riscos e tendências</li>
-                      <li><i className="bi bi-check-circle-fill"></i> Timeline de performance</li>
-                      <li><i className="bi bi-check-circle-fill"></i> Controle de permissões de usuários</li>
-                      <li><i className="bi bi-check-circle-fill"></i> Geração automática de relatórios</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Score consolidation by period</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Complete supplier management</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Risk and trend analysis</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Performance timeline</li>
+                      <li><i className="bi bi-check-circle-fill"></i> User permissions control</li>
+                      <li><i className="bi bi-check-circle-fill"></i> Automatic report generation</li>
                     </ul>
                   </div>
 
                   <div className="info-section-group">
                     <div className="info-section-header">
                       <i className="bi bi-cpu"></i>
-                      <h4>Tecnologias Utilizadas</h4>
+                      <h4>Technologies Used</h4>
                     </div>
                     <ul className="info-features-list">
                       <li><i className="bi bi-check-circle-fill"></i> React + TypeScript</li>
@@ -607,25 +607,25 @@ function Settings() {
                 <div className="info-grid">
                   <div className="info-card-settings">
                     <i className="bi bi-app"></i>
-                    <h4>Sistema</h4>
+                    <h4>System</h4>
                     <p>Score App</p>
                   </div>
                   
                   <div className="info-card-settings">
                     <i className="bi bi-tag"></i>
-                    <h4>Versão</h4>
+                    <h4>Version</h4>
                     <p>1.1.5</p>
                   </div>
                   
                   <div className="info-card-settings">
                     <i className="bi bi-calendar"></i>
-                    <h4>Data</h4>
-                    <p>Out/2025</p>
+                    <h4>Date</h4>
+                    <p>Oct/2025</p>
                   </div>
                   
                   <div className="info-card-settings">
                     <i className="bi bi-building"></i>
-                    <h4>Empresa</h4>
+                    <h4>Company</h4>
                     <p>Cummins</p>
                   </div>
                 </div>

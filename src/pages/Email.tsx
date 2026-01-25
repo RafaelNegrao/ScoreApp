@@ -316,8 +316,7 @@ Equipe de Qualidade`);
     { value: '12', label: 'Dezembro' },
   ];
 
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 5 }, (_, i) => (currentYear - i).toString());
+  const years = ['2025', '2026', '2027', '2028', '2029', '2030', '2031', '2032', '2033', '2034', '2035', '2036', '2037', '2038', '2039', '2040'];
 
   // Função para enviar email via Outlook
   const handleSendEmail = async () => {

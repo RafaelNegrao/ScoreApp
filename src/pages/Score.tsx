@@ -348,6 +348,7 @@ interface YearlyViewTableProps {
   criteriaWeights: { otif: number; nil: number; pickup: number; package: number };
   showToast: (message: string, type?: 'success' | 'error' | 'warning' | 'info', duration?: number) => void;
   handleRemoveSupplier: (supplierId: string) => void;
+  autoSave: boolean;
 }
 
 interface YearlyMonthData {
@@ -361,7 +362,7 @@ interface YearlyMonthData {
   comment: string | null;
 }
 
-function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, permissions, criteriaWeights, showToast, handleRemoveSupplier }: YearlyViewTableProps) {
+function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, permissions, criteriaWeights, showToast, handleRemoveSupplier, autoSave }: YearlyViewTableProps) {
   const [yearlyData, setYearlyData] = useState<Map<string, YearlyMonthData[]>>(new Map());
   const [fadeKey, setFadeKey] = useState(0);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
@@ -566,24 +567,31 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
 
   const handleInputBlur = async (supplierId: string, month: number, field?: string) => {
     const rowKey = `${supplierId}-${month}`;
+    
+    // Cria cópia dos inputValues para usar/modificar
+    let currentValues = new Map(inputValues);
 
     // Formata o número para ter 1 casa decimal se for um campo numérico
     if (field && field !== 'comments') {
       const key = `${rowKey}-${field}`;
-      const value = inputValues.get(key);
+      const value = currentValues.get(key);
 
       if (value && value !== '') {
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
           const formatted = numValue.toFixed(1);
-          const newInputValues = new Map(inputValues);
-          newInputValues.set(key, formatted);
-          setInputValues(newInputValues);
+          currentValues.set(key, formatted);
+          setInputValues(currentValues);
 
           // Recalcula o total com o valor formatado
-          updateTotal(supplierId, month, newInputValues);
+          updateTotal(supplierId, month, currentValues);
         }
       }
+    }
+
+    // Se autoSave não está ativo, não salva automaticamente
+    if (!autoSave) {
+      return;
     }
 
     // Verifica se houve mudanças reais comparando com valores originais
@@ -592,7 +600,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
 
     for (const f of fields) {
       const key = `${rowKey}-${f}`;
-      const currentValue = inputValues.get(key) || '';
+      const currentValue = currentValues.get(key) || '';
       const originalValue = originalValues.get(key) || '';
 
       if (currentValue !== originalValue) {
@@ -601,19 +609,13 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
       }
     }
 
-    // Se nenhum campo foi alterado ou se todos estão vazios, não salva
-    const allEmpty = fields.every(f => {
-      const value = inputValues.get(`${rowKey}-${f}`) || '';
-      return value === '';
-    });
-
-    if (!hasChanges && allEmpty) {
-      console.log('🚫 Nenhuma mudança detectada ou todos os campos vazios - não salvando');
+    // Se não houve mudanças, não precisa salvar
+    if (!hasChanges) {
       return;
     }
 
-    // Salva quando o campo perde o foco
-    await saveScore(supplierId, month);
+    console.log('💾 [SALVANDO] Mês:', month, 'Supplier:', supplierId);
+    await saveScore(supplierId, month, currentValues);
   };
 
   const updateTotal = (supplierId: string, month: number, values: Map<string, any>) => {
@@ -670,8 +672,33 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
     }
   };
 
-  const saveScore = async (supplierId: string, month: number) => {
-    if (isSaving) return;
+  const saveScore = async (supplierId: string, month: number, updatedValues?: Map<string, any>) => {
+    if (isSaving) {
+      return;
+    }
+
+    const valuesToUse = updatedValues || inputValues;
+    const rowKey = `${supplierId}-${month}`;
+
+    const currentOtif = valuesToUse.get(`${rowKey}-otif`) ?? '';
+    const currentNil = valuesToUse.get(`${rowKey}-nil`) ?? '';
+    const currentPickup = valuesToUse.get(`${rowKey}-pickup`) ?? '';
+    const currentPackage = valuesToUse.get(`${rowKey}-package`) ?? '';
+    const currentComment = valuesToUse.get(`${rowKey}-comments`) ?? '';
+
+    const hasCurrentScores = [currentOtif, currentNil, currentPickup, currentPackage].some(val => val !== '' && val !== null && val !== undefined);
+    const hadPreviousScores = ['otif', 'nil', 'pickup', 'package'].some(field => {
+      const prev = originalValues.get(`${rowKey}-${field}`) || '';
+      return prev !== '' && prev !== null;
+    });
+    const previousComment = originalValues.get(`${rowKey}-comments`) || '';
+    const commentChanged = currentComment !== previousComment;
+
+    if (!hasCurrentScores && !hadPreviousScores && !commentChanged) {
+      return;
+    }
+
+    console.log('💾 [SALVANDO] OTIF:', currentOtif, 'NIL:', currentNil, 'Pickup:', currentPickup, 'Package:', currentPackage);
 
     try {
       setIsSaving(true);
@@ -688,11 +715,24 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
       const supplierName = supplier?.vendor_name || '';
 
       const rowKey = `${supplierId}-${month}`;
-      const otif = inputValues.get(`${rowKey}-otif`) || null;
-      const nil = inputValues.get(`${rowKey}-nil`) || null;
-      const pickup = inputValues.get(`${rowKey}-pickup`) || null;
-      const packageScore = inputValues.get(`${rowKey}-package`) || null;
-      const comments = inputValues.get(`${rowKey}-comments`) || null;
+      const otifRaw = valuesToUse.get(`${rowKey}-otif`);
+      const nilRaw = valuesToUse.get(`${rowKey}-nil`);
+      const pickupRaw = valuesToUse.get(`${rowKey}-pickup`);
+      const packageRaw = valuesToUse.get(`${rowKey}-package`);
+      const comments = valuesToUse.get(`${rowKey}-comments`) || null;
+
+      // Envia string vazia quando o campo está vazio (para o backend salvar como NULL)
+      // Envia undefined/null apenas quando não queremos atualizar o campo
+      const otifToSend = otifRaw !== undefined ? (otifRaw === '' ? '' : otifRaw) : null;
+      const nilToSend = nilRaw !== undefined ? (nilRaw === '' ? '' : nilRaw) : null;
+      const pickupToSend = pickupRaw !== undefined ? (pickupRaw === '' ? '' : pickupRaw) : null;
+      const packageToSend = packageRaw !== undefined ? (packageRaw === '' ? '' : packageRaw) : null;
+
+      // Para cálculo do total, usa os valores raw
+      const otif = otifRaw || null;
+      const nil = nilRaw || null;
+      const pickup = pickupRaw || null;
+      const packageScore = packageRaw || null;
 
       // Calcula o total
       const scores: { value: number, weight: number }[] = [];
@@ -718,28 +758,22 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         ? (scores.reduce((sum, s) => sum + (s.value * s.weight), 0) / scores.reduce((sum, s) => sum + s.weight, 0))
         : 0;
 
-      console.log('💾 Saving score with comment:', comments);
-
-      console.log('========================================');
-      console.log('🔍 DADOS SENDO ENVIADOS PARA save_supplier_score:');
-      console.log('userName:', userName);
-      console.log('userWwid:', userWwid);
-      console.log('========================================');
-
-      await invoke('save_supplier_score', {
+      console.log('🚀 Chamando backend save_supplier_score...');
+      const result = await invoke('save_supplier_score', {
         supplierId,
         supplierName,
         month,
         year: parseInt(selectedYear),
-        otifScore: otif,
-        nilScore: nil,
-        pickupScore: pickup,
-        packageScore: packageScore,
+        otifScore: otifToSend,
+        nilScore: nilToSend,
+        pickupScore: pickupToSend,
+        packageScore: packageToSend,
         totalScore: totalScore.toString(),
         comments,
         userName,
         userWwid
       });
+      console.log('✅ Backend retornou:', result);
 
       // Remove as células modificadas desta linha
       const newModifiedCells = new Set(modifiedCells);
@@ -764,10 +798,22 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         data.set(supplierId, months);
         setYearlyData(data);
       }
+      
+      // Atualiza os originalValues para refletir os valores salvos
+      const newOriginalValues = new Map(originalValues);
+      newOriginalValues.set(`${rowKey}-otif`, currentOtif);
+      newOriginalValues.set(`${rowKey}-nil`, currentNil);
+      newOriginalValues.set(`${rowKey}-pickup`, currentPickup);
+      newOriginalValues.set(`${rowKey}-package`, currentPackage);
+      newOriginalValues.set(`${rowKey}-comments`, currentComment);
+      setOriginalValues(newOriginalValues);
+      
+      showToast(`${monthNames[month - 1]} salvo!`, 'success');
+      console.log('✅ SUCESSO - Mês', month, 'salvo!');
 
     } catch (error) {
-      console.error('Erro ao salvar:', error);
-      showToast('Erro ao salvar as notas', 'error');
+      console.error('❌ ERRO ao salvar:', error);
+      showToast('Erro ao salvar', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -778,21 +824,26 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
     const rowKey = `${supplierId}-${month}`;
     const comment = inputValues.get(`${rowKey}-comments`) || '';
     const supplierName = supplier?.vendor_name || '';
-    console.log('🔍 Opening comment modal - rowKey:', rowKey, 'comment:', comment, 'all inputValues:', Array.from(inputValues.entries()));
     setSelectedComment({ supplierId, supplierName, month, monthName, comment });
     setCommentModalOpen(true);
   };
 
   const handleCommentSave = async (comment: string) => {
     if (selectedComment) {
-      console.log('💬 Saving comment:', comment, 'for supplier:', selectedComment.supplierId, 'month:', selectedComment.month);
-
       // Atualiza o inputValues primeiro
       const rowKey = `${selectedComment.supplierId}-${selectedComment.month}`;
       const key = `${rowKey}-comments`;
       const newInputValues = new Map(inputValues);
       newInputValues.set(key, comment);
       setInputValues(newInputValues);
+
+      // Se autoSave não está ativo, apenas atualiza o estado e retorna
+      if (!autoSave) {
+        setCommentModalOpen(false);
+        return;
+      }
+      
+      console.log('💾 [SALVANDO COMENTÁRIO] Mês:', selectedComment.month);
 
       // Agora salva com o valor atualizado
       const supplierId = selectedComment.supplierId;
@@ -811,10 +862,22 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         const supplier = getSupplierById(supplierId);
         const supplierName = supplier?.vendor_name || '';
 
-        const otif = newInputValues.get(`${rowKey}-otif`) || null;
-        const nil = newInputValues.get(`${rowKey}-nil`) || null;
-        const pickup = newInputValues.get(`${rowKey}-pickup`) || null;
-        const packageScore = newInputValues.get(`${rowKey}-package`) || null;
+        const otifRaw = newInputValues.get(`${rowKey}-otif`);
+        const nilRaw = newInputValues.get(`${rowKey}-nil`);
+        const pickupRaw = newInputValues.get(`${rowKey}-pickup`);
+        const packageRaw = newInputValues.get(`${rowKey}-package`);
+
+        // Envia string vazia quando o campo está vazio (para o backend salvar como NULL)
+        const otifToSend = otifRaw !== undefined ? (otifRaw === '' ? '' : otifRaw) : null;
+        const nilToSend = nilRaw !== undefined ? (nilRaw === '' ? '' : nilRaw) : null;
+        const pickupToSend = pickupRaw !== undefined ? (pickupRaw === '' ? '' : pickupRaw) : null;
+        const packageToSend = packageRaw !== undefined ? (packageRaw === '' ? '' : packageRaw) : null;
+
+        // Para cálculo do total
+        const otif = otifRaw || null;
+        const nil = nilRaw || null;
+        const pickup = pickupRaw || null;
+        const packageScore = packageRaw || null;
 
         // Calcula o total
         const scores: { value: number, weight: number }[] = [];
@@ -847,10 +910,10 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
           supplierName,
           month,
           year: parseInt(selectedYear),
-          otifScore: otif,
-          nilScore: nil,
-          pickupScore: pickup,
-          packageScore: packageScore,
+          otifScore: otifToSend,
+          nilScore: nilToSend,
+          pickupScore: pickupToSend,
+          packageScore: packageToSend,
           totalScore: totalScore.toString(),
           comments: comment,
           userName,
@@ -868,6 +931,10 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
           data.set(supplierId, months);
           setYearlyData(data);
         }
+
+        const updatedOriginalValues = new Map(originalValues);
+        updatedOriginalValues.set(`${rowKey}-comments`, comment);
+        setOriginalValues(updatedOriginalValues);
 
       } catch (error) {
         console.error('Erro ao salvar comentário:', error);
@@ -952,18 +1019,56 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <button
                         className="supplier-info-icon-btn"
+                        onClick={async () => {
+                          let savedCount = 0;
+                          for (let month = 1; month <= 12; month++) {
+                            const rowKey = `${supplierId}-${month}`;
+
+                            const otif = inputValues.get(`${rowKey}-otif`) || '';
+                            const nil = inputValues.get(`${rowKey}-nil`) || '';
+                            const pickup = inputValues.get(`${rowKey}-pickup`) || '';
+                            const pack = inputValues.get(`${rowKey}-package`) || '';
+                            const comment = inputValues.get(`${rowKey}-comments`) || '';
+
+                            const previousOtif = originalValues.get(`${rowKey}-otif`) || '';
+                            const previousNil = originalValues.get(`${rowKey}-nil`) || '';
+                            const previousPickup = originalValues.get(`${rowKey}-pickup`) || '';
+                            const previousPack = originalValues.get(`${rowKey}-package`) || '';
+                            const previousComment = originalValues.get(`${rowKey}-comments`) || '';
+
+                            const hasCurrentScores = [otif, nil, pickup, pack].some(val => val !== '' && val !== null);
+                            const hadPreviousScores = [previousOtif, previousNil, previousPickup, previousPack].some(val => val !== '' && val !== null);
+                            const commentChanged = comment !== previousComment;
+
+                            if (hasCurrentScores || hadPreviousScores || commentChanged) {
+                              await saveScore(supplierId, month, inputValues);
+                              savedCount++;
+                            }
+                          }
+                          if (savedCount > 0) {
+                            showToast(`${savedCount} período(s) salvo(s) com sucesso!`, 'success');
+                          } else {
+                            showToast('Nenhum período com dados para salvar', 'info');
+                          }
+                        }}
+                        disabled={isSaving}
+                        title="Salvar todos os dados deste fornecedor"
+                      >
+                        <i className="bi bi-save" style={{ fontSize: '18px' }}></i>
+                      </button>
+                      <button
+                        className="supplier-info-icon-btn"
                         onClick={() => setShowSupplierInfo(supplier)}
                         title="Ver informações do fornecedor"
                       >
-                        <Info size={18} />
+                        <i className="bi bi-info-circle" style={{ fontSize: '18px' }}></i>
                       </button>
                       <button
                         className="supplier-info-icon-btn"
                         onClick={() => handleRemoveSupplier(supplierId)}
                         title="Remover fornecedor da lista"
-                        style={{ color: 'var(--error-color)' }}
                       >
-                        <i className="bi bi-dash-circle" style={{ fontSize: '18px' }}></i>
+                        <i className="bi bi-x-circle" style={{ fontSize: '18px' }}></i>
                       </button>
                     </div>
                   </div>
@@ -1006,7 +1111,6 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                                 onBlur={() => handleInputBlur(supplierId, monthData.month, 'otif')}
                                 disabled={!canEdit('otif') || isFutureMonth(monthData.month)}
                                 title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
-                                min="0"
                                 max="10"
                                 step="0.1"
                               />
@@ -1026,7 +1130,6 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                                 onBlur={() => handleInputBlur(supplierId, monthData.month, 'nil')}
                                 disabled={!canEdit('nil') || isFutureMonth(monthData.month)}
                                 title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
-                                min="0"
                                 max="10"
                                 step="0.1"
                               />
@@ -1046,7 +1149,6 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                                 onBlur={() => handleInputBlur(supplierId, monthData.month, 'pickup')}
                                 disabled={!canEdit('pickup') || isFutureMonth(monthData.month)}
                                 title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
-                                min="0"
                                 max="10"
                                 step="0.1"
                               />
@@ -1066,7 +1168,6 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                                 onBlur={() => handleInputBlur(supplierId, monthData.month, 'package')}
                                 disabled={!canEdit('package') || isFutureMonth(monthData.month)}
                                 title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
-                                min="0"
                                 max="10"
                                 step="0.1"
                               />
@@ -1480,11 +1581,24 @@ function Score() {
   };
 
   // Função para salvar um score individual
-  const saveScore = async (supplierId: string) => {
-    if (!selectedMonth || !selectedYear || isSaving) return;
+  // Aceita opcionalmente um Map com os valores atualizados (para evitar problemas de state assíncrono)
+  const saveScore = async (supplierId: string, updatedValues?: Map<string, any>) => {
+    console.log('🔵 INÍCIO saveScore - supplierId:', supplierId);
+    console.log('🔵 selectedMonth:', selectedMonth, 'selectedYear:', selectedYear);
+    
+    if (!selectedMonth || !selectedYear) {
+      console.log('❌ BLOQUEADO: Mês ou ano não selecionado');
+      return;
+    }
+    
+    if (isSaving) {
+      console.log('❌ BLOQUEADO: Já está salvando');
+      return;
+    }
 
     try {
       setIsSaving(true);
+      console.log('💾 [SALVANDO MENSAL]', supplierId);
       const supplier = getSupplierById(supplierId);
       if (!supplier) return;
 
@@ -1496,32 +1610,55 @@ function Score() {
       const month = parseInt(selectedMonth);
       const year = parseInt(selectedYear);
 
-      const otif = inputValues.get(`${supplierId}-otif`) || null;
-      const nil = inputValues.get(`${supplierId}-nil`) || null;
-      const pickup = inputValues.get(`${supplierId}-pickup`) || null;
-      const packageScore = inputValues.get(`${supplierId}-package`) || null;
-      const comments = inputValues.get(`${supplierId}-comments`) || null;
-      const totalScore = calculateTotalScore(supplierId, inputValues);
+      // Usa os valores atualizados se fornecidos, senão usa inputValues
+      const values = updatedValues || inputValues;
 
-      console.log('💾 Salvando score:', { supplierId, month, year, otif, nil, pickup, packageScore, totalScore, comments });
-      console.log('💬 Comentário a ser salvo:', comments, 'Tipo:', typeof comments, 'Key:', `${supplierId}-comments`);
+      const otifRaw = values.get(`${supplierId}-otif`);
+      const nilRaw = values.get(`${supplierId}-nil`);
+      const pickupRaw = values.get(`${supplierId}-pickup`);
+      const packageRaw = values.get(`${supplierId}-package`);
+      const comments = values.get(`${supplierId}-comments`) || null;
+      const totalScore = calculateTotalScore(supplierId, values);
 
-      await invoke('save_supplier_score', {
+      // Envia string vazia quando o campo está vazio (para o backend salvar como NULL)
+      const otifToSend = otifRaw !== undefined ? (otifRaw === '' ? '' : otifRaw) : null;
+      const nilToSend = nilRaw !== undefined ? (nilRaw === '' ? '' : nilRaw) : null;
+      const pickupToSend = pickupRaw !== undefined ? (pickupRaw === '' ? '' : pickupRaw) : null;
+      const packageToSend = packageRaw !== undefined ? (packageRaw === '' ? '' : packageRaw) : null;
+
+      console.log('🚀 Chamando backend com dados:', {
+        supplierId,
+        supplierName: supplier.vendor_name,
+        month,
+        year,
+        otifScore: otifToSend,
+        nilScore: nilToSend,
+        pickupScore: pickupToSend,
+        packageScore: packageToSend,
+        totalScore,
+        comments,
+        userName,
+        userWwid: userWwid3
+      });
+      
+      const result = await invoke('save_supplier_score', {
         supplierId: supplierId,
         supplierName: supplier.vendor_name,
         month,
         year,
-        otifScore: otif,
-        nilScore: nil,
-        pickupScore: pickup,
-        packageScore: packageScore,
+        otifScore: otifToSend,
+        nilScore: nilToSend,
+        pickupScore: pickupToSend,
+        packageScore: packageToSend,
         totalScore: totalScore,
         comments,
         userName,
         userWwid: userWwid3
       });
 
-      console.log('✅ Score salvo com sucesso!');
+      console.log('✅ RESPOSTA DO BACKEND:', result);
+      console.log('✅ SUCESSO - Dados salvos no banco!');
+      showToast('Salvo com sucesso!', 'success');
 
       // Remover linha do set de modificadas
       setModifiedRows(prev => {
@@ -1530,7 +1667,8 @@ function Score() {
         return newSet;
       });
     } catch (error) {
-      console.error('❌ Erro ao salvar score:', error);
+      console.error('❌ ERRO:', error);
+      showToast('Erro ao salvar', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -1550,23 +1688,17 @@ function Score() {
       const { supplierId } = normalViewSelectedComment;
       const key = `${supplierId}-comments`;
       
-      console.log('💬 Salvando comentário:', { supplierId, comment, key, autoSave });
-      
       const newValues = new Map(inputValues);
       newValues.set(key, comment);
       setInputValues(newValues);
-
-      console.log('✅ Comentário setado no inputValues. Valor atual:', newValues.get(key));
 
       // Marcar linha como modificada
       setModifiedRows(prev => new Set(prev).add(supplierId));
 
       // Se auto-save estiver ativo, salvar automaticamente
       if (autoSave) {
-        console.log('🔄 Auto-save ativo, salvando score...');
-        await saveScore(supplierId);
-      } else {
-        console.log('⚠️ Auto-save desativado, usuário precisa clicar em Salvar');
+        console.log('💾 [SALVANDO COMENTÁRIO MENSAL]', supplierId);
+        await saveScore(supplierId, newValues);
       }
 
       setNormalViewCommentModal(false);
@@ -1659,15 +1791,39 @@ function Score() {
 
         // Processar batch em paralelo
         const promises = batch.map(async (supplier) => {
-          // Calcular total
-          const total = (
-            notaFixa * criteriaMap.otif +
-            notaFixa * criteriaMap.nil +
-            notaFixa * criteriaMap.package +
-            notaFixa * criteriaMap.pickup
-          );
-
           try {
+            // Verifica se já existe nota PREENCHIDA (não zero) para este supplier/mês/ano
+            const existingRecords = await invoke<any[]>('get_supplier_score_records', {
+              supplierId: supplier.supplier_id
+            });
+
+            // Converte month e year para inteiros para comparação
+            const monthInt = parseInt(fullScoreMonth);
+            const yearInt = parseInt(fullScoreYear);
+
+            // Filtra apenas o registro do mês/ano específico
+            const recordForMonth = existingRecords.find(
+              (record) => record.month === monthInt && record.year === fullScoreYear
+            );
+
+            // Se encontrou registro (independente dos valores), ignora
+            if (recordForMonth) {
+              console.log(`⏭️  Supplier ${supplier.supplier_id} já tem registro para ${fullScoreMonth}/${fullScoreYear}, ignorando`);
+              ignored++;
+              return;
+            }
+            
+            // Só cria se NÃO existe registro algum
+            console.log(`➕ Supplier ${supplier.supplier_id} não tem registro para ${fullScoreMonth}/${fullScoreYear}, vai criar`);
+
+            // Calcular total
+            const total = (
+              notaFixa * criteriaMap.otif +
+              notaFixa * criteriaMap.nil +
+              notaFixa * criteriaMap.package +
+              notaFixa * criteriaMap.pickup
+            );
+
             const result = await invoke<string>('save_supplier_score', {
               supplierId: supplier.supplier_id,
               supplierName: supplier.vendor_name,
@@ -1678,17 +1834,12 @@ function Score() {
               pickupScore: notaFixa.toString(),
               packageScore: notaFixa.toString(),
               totalScore: total.toFixed(2),
-              comments: '',
+              comments: null,
               userName,
               userWwid: userWwid4
             });
 
-            // Verifica se foi ignorado ou inserido
-            if (result.includes('ignorado') || result.includes('já existe')) {
-              ignored++;
-            } else {
-              added++;
-            }
+            added++;
           } catch (error) {
             console.error(`Erro ao salvar score para ${supplier.supplier_id}:`, error);
           }
@@ -1965,7 +2116,7 @@ function Score() {
                       required
                     >
                       <option value="">Ano</option>
-                      {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() + i).map((year) => (
+                      {[2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040].map((year) => (
                         <option key={year} value={year.toString()}>{year}</option>
                       ))}
                     </select>
@@ -2090,6 +2241,7 @@ function Score() {
                         criteriaWeights={criteriaWeights}
                         showToast={showToast}
                         handleRemoveSupplier={handleRemoveSupplier}
+                        autoSave={autoSave}
                       />
                     </div>
                   ) : !yearlyView ? (
@@ -2119,7 +2271,6 @@ function Score() {
 
                               const score = scores.get(supplierId);
                               const commentValue = inputValues.get(`${supplierId}-comments`);
-                              console.log(`🎨 Renderizando ícone para ${supplierId}:`, 'commentValue:', commentValue, 'hasContent:', !!(commentValue || '').trim());
 
                               return (
                                 <tr key={`${supplierId}-${selectedMonth}-${selectedYear}`}>
@@ -2132,7 +2283,6 @@ function Score() {
                                     <input
                                       type="number"
                                       className={`score-input ${!canEdit('otif') || !selectedMonth || !selectedYear ? 'readonly' : ''}`}
-                                      min="0"
                                       max="10"
                                       step="0.1"
 
@@ -2144,7 +2294,6 @@ function Score() {
                                         let value = e.target.value;
                                         const numValue = parseFloat(value);
                                         if (numValue > 10) value = '10.0';
-                                        if (numValue < 0) value = '0.0';
                                         const newValues = new Map(inputValues);
                                         newValues.set(`${supplierId}-otif`, value);
 
@@ -2160,13 +2309,12 @@ function Score() {
                                       onBlur={(e) => {
                                         if (!canEdit('otif') || !selectedMonth || !selectedYear) return;
                                         const formatted = formatScoreValue(e.target.value);
-                                        if (formatted !== '') {
-                                          const newValues = new Map(inputValues);
-                                          newValues.set(`${supplierId}-otif`, formatted);
-                                          setInputValues(newValues);
-                                        }
+                                        const newValues = new Map(inputValues);
+                                        newValues.set(`${supplierId}-otif`, formatted);
+                                        setInputValues(newValues);
                                         if (autoSave) {
-                                          saveScore(supplierId);
+                                          console.log('💾 [SALVANDO MENSAL - OTIF]', supplierId);
+                                          saveScore(supplierId, newValues);
                                         }
                                       }}
                                     />
@@ -2175,7 +2323,6 @@ function Score() {
                                     <input
                                       type="number"
                                       className={`score-input ${!canEdit('nil') || !selectedMonth || !selectedYear ? 'readonly' : ''}`}
-                                      min="0"
                                       max="10"
                                       step="0.1"
 
@@ -2187,7 +2334,6 @@ function Score() {
                                         let value = e.target.value;
                                         const numValue = parseFloat(value);
                                         if (numValue > 10) value = '10.0';
-                                        if (numValue < 0) value = '0.0';
                                         const newValues = new Map(inputValues);
                                         newValues.set(`${supplierId}-nil`, value);
 
@@ -2203,13 +2349,12 @@ function Score() {
                                       onBlur={(e) => {
                                         if (!canEdit('nil') || !selectedMonth || !selectedYear) return;
                                         const formatted = formatScoreValue(e.target.value);
-                                        if (formatted !== '') {
-                                          const newValues = new Map(inputValues);
-                                          newValues.set(`${supplierId}-nil`, formatted);
-                                          setInputValues(newValues);
-                                        }
+                                        const newValues = new Map(inputValues);
+                                        newValues.set(`${supplierId}-nil`, formatted);
+                                        setInputValues(newValues);
                                         if (autoSave) {
-                                          saveScore(supplierId);
+                                          console.log('💾 [SALVANDO MENSAL - NIL]', supplierId);
+                                          saveScore(supplierId, newValues);
                                         }
                                       }}
                                     />
@@ -2218,7 +2363,6 @@ function Score() {
                                     <input
                                       type="number"
                                       className={`score-input ${!canEdit('pickup') || !selectedMonth || !selectedYear ? 'readonly' : ''}`}
-                                      min="0"
                                       max="10"
                                       step="0.1"
 
@@ -2230,7 +2374,6 @@ function Score() {
                                         let value = e.target.value;
                                         const numValue = parseFloat(value);
                                         if (numValue > 10) value = '10';
-                                        if (numValue < 0) value = '0';
                                         const newValues = new Map(inputValues);
                                         newValues.set(`${supplierId}-pickup`, value);
 
@@ -2246,13 +2389,12 @@ function Score() {
                                       onBlur={(e) => {
                                         if (!canEdit('pickup') || !selectedMonth || !selectedYear) return;
                                         const formatted = formatScoreValue(e.target.value);
-                                        if (formatted !== '') {
-                                          const newValues = new Map(inputValues);
-                                          newValues.set(`${supplierId}-pickup`, formatted);
-                                          setInputValues(newValues);
-                                        }
+                                        const newValues = new Map(inputValues);
+                                        newValues.set(`${supplierId}-pickup`, formatted);
+                                        setInputValues(newValues);
                                         if (autoSave) {
-                                          saveScore(supplierId);
+                                          console.log('💾 [SALVANDO MENSAL - PICKUP]', supplierId);
+                                          saveScore(supplierId, newValues);
                                         }
                                       }}
                                     />
@@ -2261,7 +2403,6 @@ function Score() {
                                     <input
                                       type="number"
                                       className={`score-input ${!canEdit('package') || !selectedMonth || !selectedYear ? 'readonly' : ''}`}
-                                      min="0"
                                       max="10"
                                       step="0.1"
 
@@ -2273,7 +2414,6 @@ function Score() {
                                         let value = e.target.value;
                                         const numValue = parseFloat(value);
                                         if (numValue > 10) value = '10';
-                                        if (numValue < 0) value = '0';
                                         const newValues = new Map(inputValues);
                                         newValues.set(`${supplierId}-package`, value);
 
@@ -2289,13 +2429,12 @@ function Score() {
                                       onBlur={(e) => {
                                         if (!canEdit('package') || !selectedMonth || !selectedYear) return;
                                         const formatted = formatScoreValue(e.target.value);
-                                        if (formatted !== '') {
-                                          const newValues = new Map(inputValues);
-                                          newValues.set(`${supplierId}-package`, formatted);
-                                          setInputValues(newValues);
-                                        }
+                                        const newValues = new Map(inputValues);
+                                        newValues.set(`${supplierId}-package`, formatted);
+                                        setInputValues(newValues);
                                         if (autoSave) {
-                                          saveScore(supplierId);
+                                          console.log('💾 [SALVANDO MENSAL - PACKAGE]', supplierId);
+                                          saveScore(supplierId, newValues);
                                         }
                                       }}
                                     />
@@ -2347,7 +2486,10 @@ function Score() {
                                       {!autoSave && (
                                         <button
                                           className="action-btn save-btn"
-                                          onClick={() => saveScore(supplierId)}
+                                          onClick={() => {
+                                            console.log('💾 [SALVANDO MANUAL]', supplierId);
+                                            saveScore(supplierId, inputValues);
+                                          }}
                                           disabled={isSaving || !selectedMonth || !selectedYear}
                                           title={!selectedMonth || !selectedYear ? "Selecione mês e ano" : "Salvar"}
                                         >
@@ -2357,11 +2499,11 @@ function Score() {
                                       {/* Botão Remover */}
                                       <button
                                         className="action-btn remove-btn"
-                                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--error-color)' }}
+                                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                                         title="Remover fornecedor da lista"
                                         onClick={() => handleRemoveSupplier(supplierId)}
                                       >
-                                        <i className="bi bi-dash-circle" style={{ fontSize: '16px' }}></i>
+                                        <i className="bi bi-x-circle" style={{ fontSize: '16px', color: 'var(--accent-primary)' }}></i>
                                       </button>
                                     </div>
                                   </td>

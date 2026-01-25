@@ -251,13 +251,7 @@ const SupplierEditModal: React.FC<SupplierEditModalProps> = ({ isOpen, supplier,
                   onChange={(e) => handleInputChange('supplier_name', e.target.value)}
                   className="form-input"
                   placeholder="Nome do fornecedor"
-                  disabled={!!supplier}
                 />
-                {supplier && (
-                  <small style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
-                    Nome do fornecedor não pode ser editado
-                  </small>
-                )}
               </div>
 
               {/* Category e BU */}

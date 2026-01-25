@@ -219,6 +219,13 @@ impl DatabaseManager {
         match Connection::open(&db_path) {
             Ok(conn) => {
                 println!("✅ Conexão estabelecida com sucesso!");
+                
+                // Desabilitar WAL mode para não gerar arquivos .wal e .shm
+                // Usa DELETE mode (padrão) que é mais simples
+                conn.execute_batch("PRAGMA journal_mode = DELETE;")
+                    .map_err(|e| format!("Erro ao configurar journal_mode: {}", e))?;
+                println!("📝 Journal mode configurado para DELETE (sem arquivos WAL/SHM)");
+                
                 let mut db = DB_CONNECTION.lock().unwrap();
                 *db = Some(conn);
                 
@@ -1097,8 +1104,6 @@ impl DatabaseManager {
 
     /// Busca os scores de fornecedores específicos para um mês/ano
     pub fn get_supplier_scores(supplier_ids: Vec<String>, month: i32, year: i32) -> Result<Vec<SupplierScore>, String> {
-        println!("\n🔍 Buscando scores - Mês: {}, Ano: {}, IDs: {:?}", month, year, supplier_ids);
-        
         let conn_guard = Self::get_connection()?;
         
         if conn_guard.is_none() {
@@ -1107,30 +1112,9 @@ impl DatabaseManager {
 
         let conn = conn_guard.as_ref().unwrap();
         
-        // Debug: Mostra todos os registros da tabela
-        println!("\n📋 DEBUG - Listando TODOS os registros da tabela:");
-        if let Ok(mut stmt) = conn.prepare("SELECT supplier_id, month, year, otif_score FROM supplier_score_records_table LIMIT 10") {
-            if let Ok(rows) = stmt.query_map([], |row| {
-                Ok(format!("supplier_id: '{}', month: {}, year: {}, otif: {:?}",
-                    row.get::<_, String>(0).unwrap_or_default(),
-                    row.get::<_, String>(1).unwrap_or_default(),
-                    row.get::<_, String>(2).unwrap_or_default(),
-                    row.get::<_, Option<String>>(3).unwrap_or(None)
-                ))
-            }) {
-                for (i, row) in rows.enumerate() {
-                    if let Ok(info) = row {
-                        println!("  [{}] {}", i + 1, info);
-                    }
-                }
-            }
-        }
-        println!("📋 FIM DEBUG\n");
-        
         let mut scores = Vec::new();
 
         for supplier_id in supplier_ids {
-            println!("🔎 Buscando score para supplier_id: '{}' (tipo: String)", supplier_id);
             
             // Nomes reais das colunas no banco:
             // id, supplier_id, month (TEXT), year (TEXT), otif (REAL), nil (REAL), 
@@ -1138,8 +1122,6 @@ impl DatabaseManager {
             let query = "SELECT id, supplier_id, month, year, otif, nil, quality_pickup, quality_package, total_score, comment 
                          FROM supplier_score_records_table 
                          WHERE lower(trim(supplier_id)) = lower(trim(?1)) AND month = ?2 AND year = ?3";
-            
-            println!("🔍 Query: {} com params: ['{}', '{}', '{}']", query, supplier_id, month, year);
             
             let score = conn.query_row(
                 query,
@@ -1169,9 +1151,6 @@ impl DatabaseManager {
                     let total: Option<String> = row.get(8).ok();
                     let comment: Option<String> = row.get(9).ok();
                     
-                    println!("✅ Score encontrado - ID: {}, OTIF: {:?}, NIL: {:?}, Pickup: {:?}, Package: {:?}, Total: {:?}, Comment: {:?}", 
-                             sid, otif, nil, pickup, package, total, comment);
-                    
                     Ok(SupplierScore {
                         record_id,
                         supplier_id: sid,
@@ -1189,11 +1168,9 @@ impl DatabaseManager {
 
             match score {
                 Ok(s) => {
-                    println!("✅ Score carregado para {}", supplier_id);
                     scores.push(s);
                 },
-                Err(e) => {
-                    println!("⚠️ Score não encontrado para {} - Erro: {}", supplier_id, e);
+                Err(_e) => {
                     // Se não encontrar, retorna um score vazio para este fornecedor
                     scores.push(SupplierScore {
                         record_id: None,
@@ -1211,7 +1188,6 @@ impl DatabaseManager {
             }
         }
 
-        println!("📊 Total de scores retornados: {}", scores.len());
         Ok(scores)
     }
 
@@ -1368,11 +1344,6 @@ impl DatabaseManager {
         
         let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         
-        // Detecta se é geração automática de nota cheia
-        let is_auto_generated = comments.as_ref()
-            .map(|c| c.contains("auto-generated") || c.contains("Maximum score"))
-            .unwrap_or(false);
-        
         println!("🔍 WWID recebido do frontend: '{}'", user_wwid);
         
         // Verifica se já existe um registro e busca valores antigos para o log
@@ -1397,13 +1368,7 @@ impl DatabaseManager {
         
         match existing_data {
             Ok((id, old_otif, old_nil, old_pickup, old_package, old_comment)) => {
-                // Se for geração automática e já existe registro, apenas ignora
-                if is_auto_generated {
-                    println!("⏭️  Registro já existe (id: {}), ignorando geração automática", id);
-                    return Ok("Registro já existe, ignorado".to_string());
-                }
-                
-                // Registra logs para cada campo alterado (apenas se NÃO for auto-generated)
+                // Registra logs para cada campo alterado
                 if let Some(ref new_otif) = otif_score {
                     let old_val = old_otif.map(|v| v.to_string()).unwrap_or_else(|| "".to_string());
                     // Normaliza comparação: converte ambos para f64 e compara
@@ -1508,28 +1473,81 @@ impl DatabaseManager {
                 // Atualiza o registro existente - APENAS os campos que foram enviados (não nulos)
                 println!("📝 Atualizando registro existente (id: {})", id);
                 
+                // Se está enviando todas as notas e todas estão vazias, deleta o registro
+                let all_scores_sent = otif_score.is_some() && nil_score.is_some() && pickup_score.is_some() && package_score.is_some();
+                let all_scores_empty = otif_score.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) 
+                    && nil_score.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true)
+                    && pickup_score.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true)
+                    && package_score.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true);
+                
+                if all_scores_sent && all_scores_empty {
+                    println!("🗑️ Todas as 4 notas estão vazias - Deletando registro (id: {})", id);
+                    
+                    // Registra log de deleção
+                    Self::insert_log(
+                        conn,
+                        &user_name,
+                        "Delete",
+                        &user_wwid,
+                        "All Scores",
+                        Some(&supplier_info),
+                        Some(&score_date_str),
+                        Some(&format!("OTIF: {:?}, NIL: {:?}, Pickup: {:?}, Package: {:?}", 
+                            old_otif, old_nil, old_pickup, old_package)),
+                        None
+                    )?;
+                    
+                    conn.execute(
+                        "DELETE FROM supplier_score_records_table WHERE id = ?",
+                        rusqlite::params![id]
+                    ).map_err(|e| format!("Erro ao deletar registro: {}", e))?;
+                    
+                    println!("✅ Registro deletado com sucesso!");
+                    return Ok("Registro deletado (todas as notas removidas)".to_string());
+                }
+                
                 // Monta a query dinamicamente para atualizar apenas os campos enviados
                 let mut updates = Vec::new();
                 let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
                 
                 if let Some(ref otif) = otif_score {
                     updates.push("otif = ?");
-                    params.push(Box::new(otif.parse::<f64>().ok()));
+                    let value: Option<f64> = if otif.trim().is_empty() { 
+                        None 
+                    } else { 
+                        otif.parse::<f64>().ok() 
+                    };
+                    params.push(Box::new(value));
                 }
                 
                 if let Some(ref nil) = nil_score {
                     updates.push("nil = ?");
-                    params.push(Box::new(nil.parse::<f64>().ok()));
+                    let value: Option<f64> = if nil.trim().is_empty() { 
+                        None 
+                    } else { 
+                        nil.parse::<f64>().ok() 
+                    };
+                    params.push(Box::new(value));
                 }
                 
                 if let Some(ref pickup) = pickup_score {
                     updates.push("quality_pickup = ?");
-                    params.push(Box::new(pickup.clone()));
+                    let value: Option<String> = if pickup.trim().is_empty() { 
+                        None 
+                    } else { 
+                        Some(pickup.clone()) 
+                    };
+                    params.push(Box::new(value));
                 }
                 
                 if let Some(ref package) = package_score {
                     updates.push("quality_package = ?");
-                    params.push(Box::new(package.clone()));
+                    let value: Option<String> = if package.trim().is_empty() { 
+                        None 
+                    } else { 
+                        Some(package.clone()) 
+                    };
+                    params.push(Box::new(value));
                 }
                 
                 if let Some(ref comment) = comments {
@@ -1571,29 +1589,25 @@ impl DatabaseManager {
                 println!("➕ Criando novo registro");
                 
                 // Registra log de criação
-                if !is_auto_generated {
-                    // Para criação manual, registra normalmente
-                    let new_values = format!(
-                        "OTIF: {}, NIL: {}, Pickup: {}, Package: {}",
-                        otif_score.as_ref().unwrap_or(&"—".to_string()),
-                        nil_score.as_ref().unwrap_or(&"—".to_string()),
-                        pickup_score.as_ref().unwrap_or(&"—".to_string()),
-                        package_score.as_ref().unwrap_or(&"—".to_string())
-                    );
-                    
-                    Self::insert_log(
-                        conn,
-                        &user_name,
-                        "Create",
-                        &user_wwid,
-                        "All Scores",
-                        Some(&supplier_info),
-                        Some(&score_date_str),
-                        None,
-                        Some(&new_values)
-                    )?;
-                }
-                // Para auto-generated, o log será criado uma única vez no batch
+                let new_values = format!(
+                    "OTIF: {}, NIL: {}, Pickup: {}, Package: {}",
+                    otif_score.as_ref().unwrap_or(&"—".to_string()),
+                    nil_score.as_ref().unwrap_or(&"—".to_string()),
+                    pickup_score.as_ref().unwrap_or(&"—".to_string()),
+                    package_score.as_ref().unwrap_or(&"—".to_string())
+                );
+                
+                Self::insert_log(
+                    conn,
+                    &user_name,
+                    "Create",
+                    &user_wwid,
+                    "All Scores",
+                    Some(&supplier_info),
+                    Some(&score_date_str),
+                    None,
+                    Some(&new_values)
+                )?;
                 
                 conn.execute(
                     "INSERT INTO supplier_score_records_table 
@@ -1605,10 +1619,10 @@ impl DatabaseManager {
                         supplier_name,
                         month.to_string(),
                         year.to_string(),
-                        otif_score.as_ref().and_then(|s| s.parse::<f64>().ok()),
-                        nil_score.as_ref().and_then(|s| s.parse::<f64>().ok()),
-                        pickup_score,
-                        package_score,
+                        otif_score.as_ref().and_then(|s| if s.trim().is_empty() { None } else { s.parse::<f64>().ok() }),
+                        nil_score.as_ref().and_then(|s| if s.trim().is_empty() { None } else { s.parse::<f64>().ok() }),
+                        pickup_score.as_ref().and_then(|s| if s.trim().is_empty() { None } else { Some(s.clone()) }),
+                        package_score.as_ref().and_then(|s| if s.trim().is_empty() { None } else { Some(s.clone()) }),
                         total_score_value,
                         comments,
                         now.clone(),
@@ -2077,27 +2091,21 @@ impl DatabaseManager {
     /// Atualiza dados do fornecedor
     pub fn update_supplier(supplier: SupplierUpdate) -> Result<(), String> {
         println!("\n💾 Atualizando fornecedor: {}", supplier.supplier_id);
-        
         let conn_guard = Self::get_connection()?;
-        
         if conn_guard.is_none() {
             return Err("Conexão não inicializada".to_string());
         }
-
         let conn = conn_guard.as_ref().unwrap();
         let has_vendor_name = Self::supplier_table_has_column(conn, "vendor_name")?;
         let has_supplier_name = Self::supplier_table_has_column(conn, "supplier_name")?;
 
         let mut set_clauses: Vec<String> = Vec::new();
-
         if has_vendor_name {
             set_clauses.push("vendor_name = :supplier_name".to_string());
         }
-
         if has_supplier_name {
             set_clauses.push("supplier_name = :supplier_name".to_string());
         }
-
         set_clauses.extend([
             "supplier_po = :supplier_po",
             "bu = :bu",
@@ -2118,7 +2126,6 @@ impl DatabaseManager {
             "UPDATE supplier_database_table SET {} WHERE COALESCE(CAST(supplier_id AS TEXT), '') = :supplier_id",
             set_clauses.join(", ")
         );
-        
         // Atualiza todos os campos do fornecedor
         let rows_affected = conn
             .execute(
@@ -2141,7 +2148,14 @@ impl DatabaseManager {
             )
             .map_err(|e| format!("Erro ao atualizar fornecedor: {}", e))?;
 
-        println!("✅ {} registros atualizados", rows_affected);
+        // Atualiza o nome do fornecedor em todos os registros de score relacionados
+        let update_score_sql = "UPDATE supplier_score_records_table SET supplier_name = ?1 WHERE supplier_id = ?2";
+        let score_rows_affected = conn
+            .execute(update_score_sql, rusqlite::params![&supplier.supplier_name, &supplier.supplier_id])
+            .map_err(|e| format!("Erro ao atualizar registros de score: {}", e))?;
+        println!("✅ {} registros de score atualizados", score_rows_affected);
+
+        println!("✅ {} registros de fornecedor atualizados", rows_affected);
         Ok(())
     }
 
@@ -2699,21 +2713,17 @@ impl DatabaseManager {
 
     /// Atualiza o status online de um usuário
     pub fn set_user_online_status(user_id: i32, is_online: bool) -> Result<(), String> {
-        println!("🔄 set_user_online_status - user_id: {}, is_online: {}", user_id, is_online);
-        
         let conn_guard = Self::get_connection()?;
         let conn = conn_guard.as_ref()
             .ok_or_else(|| "Database connection not initialized".to_string())?;
         
         let online_value = if is_online { 1 } else { 0 };
         
-        let rows_affected = conn.execute(
+        conn.execute(
             "UPDATE users_table SET is_online = ?1 WHERE user_id = ?2",
             rusqlite::params![online_value, user_id]
         )
         .map_err(|e| format!("Erro ao atualizar status online: {}", e))?;
-        
-        println!("✅ set_user_online_status concluído - {} linha(s) afetada(s)", rows_affected);
         
         Ok(())
     }
@@ -2739,11 +2749,6 @@ impl DatabaseManager {
 
     /// Busca scores pendentes de avaliação para um usuário baseado em suas permissões
     pub fn get_pending_scores(user_id: i32) -> Result<Vec<serde_json::Value>, String> {
-        println!("\n� ========================================");
-        println!("🔔 GET_PENDING_SCORES");
-        println!("🔔 user_id: {}", user_id);
-        println!("🔔 ========================================\n");
-
         let conn_guard = Self::get_connection()?;
         let conn = conn_guard.as_ref()
             .ok_or_else(|| "Conexão não inicializada".to_string())?;
@@ -2762,25 +2767,17 @@ impl DatabaseManager {
             }
         ).map_err(|e| format!("Erro ao buscar permissões do usuário: {}", e))?;
 
-        println!("👤 Permissões do usuário (1=pode editar, 0=não pode):");
-        println!("   OTIF: {} (pode editar: {})", permissions.0, permissions.0 == 1);
-        println!("   NIL: {} (pode editar: {})", permissions.1, permissions.1 == 1);
-        println!("   Pickup: {} (pode editar: {})", permissions.2, permissions.2 == 1);
-        println!("   Package: {} (pode editar: {})", permissions.3, permissions.3 == 1);
-
         let can_edit_otif = permissions.0 == 1;
         let can_edit_nil = permissions.1 == 1;
         let can_edit_pickup = permissions.2 == 1;
         let can_edit_package = permissions.3 == 1;
 
         if !can_edit_otif && !can_edit_nil && !can_edit_pickup && !can_edit_package {
-            println!("❌ Usuário sem permissões de edição - retornando vazio");
             return Ok(Vec::new());
         }
 
-        println!("\n📊 Buscando registros com campos NULL ou vazios...\n");
-
         // Busca registros com qualquer campo pendente (NULL ou vazio)
+        // MAS que tenham pelo menos UM campo preenchido (não considera registros com TODAS as notas vazias)
         let query = "
             SELECT 
                 r.id,
@@ -2799,6 +2796,12 @@ impl DatabaseManager {
                 r.nil IS NULL OR CAST(r.nil AS TEXT) = '' OR
                 r.quality_pickup IS NULL OR r.quality_pickup = '' OR
                 r.quality_package IS NULL OR r.quality_package = ''
+            )
+            AND (
+                (r.otif IS NOT NULL AND CAST(r.otif AS TEXT) != '') OR
+                (r.nil IS NOT NULL AND CAST(r.nil AS TEXT) != '') OR
+                (r.quality_pickup IS NOT NULL AND r.quality_pickup != '') OR
+                (r.quality_package IS NOT NULL AND r.quality_package != '')
             )
             ORDER BY r.year DESC, r.month DESC, supplier_name
             LIMIT 150
@@ -2826,11 +2829,6 @@ impl DatabaseManager {
                 let pickup_empty = pickup_value.as_ref().map(|v| v.trim().is_empty()).unwrap_or(true);
                 let package_empty = package_value.as_ref().map(|v| v.trim().is_empty()).unwrap_or(true);
 
-                // LOG DETALHADO DE CADA REGISTRO
-                println!("📦 Registro ID: {} | Supplier: {} | {}/{}", record_id, supplier_name, month, year);
-                println!("   OTIF: {:?} (empty: {}) | NIL: {:?} (empty: {})", otif_value, otif_empty, nil_value, nil_empty);
-                println!("   Pickup: {:?} (empty: {}) | Package: {:?} (empty: {})", pickup_value, pickup_empty, package_value, package_empty);
-
                 let mut pending_for_user: Vec<&str> = Vec::new();
                 if can_edit_otif && otif_empty {
                     pending_for_user.push("OTIF");
@@ -2846,11 +2844,8 @@ impl DatabaseManager {
                 }
 
                 if pending_for_user.is_empty() {
-                    println!("   ⚠️ Nenhum campo que o usuário pode preencher - IGNORADO\n");
                     return Ok(None);
                 }
-
-                println!("   ✅ Campos que o usuário pode preencher: {:?}\n", pending_for_user);
 
                 Ok(Some(serde_json::json!({
                     "record_id": record_id,
@@ -2871,10 +2866,6 @@ impl DatabaseManager {
                 Err(e) => return Err(format!("Erro ao processar registro pendente: {}", e)),
             }
         }
-
-        println!("🔔 ========================================");
-        println!("🔔 TOTAL DE NOTIFICAÇÕES: {}", results.len());
-        println!("🔔 ========================================\n");
 
         Ok(results)
     }
@@ -3163,6 +3154,7 @@ impl DatabaseManager {
         let year_str = year.to_string();
         
         // Query com JOIN entre supplier_database_table e supplier_score_records_table
+        // Um registro só conta se tiver pelo menos uma das 4 notas preenchidas
         let query = format!(
             "SELECT 
                 CAST(sup.supplier_id AS TEXT) AS supplier_id,
@@ -3170,19 +3162,18 @@ impl DatabaseManager {
                 sup.vendor_name,
                 sup.bu,
                 CAST(sup.supplier_po AS TEXT) AS supplier_po,
-                AVG(CASE WHEN score.month IN ('1','2','3') THEN CAST(score.total_score AS REAL) END) as q1,
-                AVG(CASE WHEN score.month IN ('4','5','6') THEN CAST(score.total_score AS REAL) END) as q2,
-                AVG(CASE WHEN score.month IN ('7','8','9') THEN CAST(score.total_score AS REAL) END) as q3,
-                AVG(CASE WHEN score.month IN ('10','11','12') THEN CAST(score.total_score AS REAL) END) as q4,
-                AVG(CAST(score.total_score AS REAL)) as avg_score
+                AVG(CASE WHEN score.month IN ('1','2','3') AND (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL) THEN CAST(score.total_score AS REAL) END) as q1,
+                AVG(CASE WHEN score.month IN ('4','5','6') AND (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL) THEN CAST(score.total_score AS REAL) END) as q2,
+                AVG(CASE WHEN score.month IN ('7','8','9') AND (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL) THEN CAST(score.total_score AS REAL) END) as q3,
+                AVG(CASE WHEN score.month IN ('10','11','12') AND (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL) THEN CAST(score.total_score AS REAL) END) as q4,
+                AVG(CASE WHEN (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL) THEN CAST(score.total_score AS REAL) END) as avg_score
             FROM supplier_database_table sup
             INNER JOIN supplier_score_records_table score 
                 ON sup.supplier_id = score.supplier_id
             WHERE score.year = '{}' 
-                AND score.total_score IS NOT NULL 
-                AND score.total_score != ''
+                AND (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL)
             GROUP BY sup.supplier_id, sup.ssid, sup.vendor_name, sup.bu, sup.supplier_po
-            HAVING avg_score < {}
+            HAVING avg_score < {} AND avg_score IS NOT NULL
             ORDER BY avg_score ASC",
             year_str, target
         );
@@ -3636,6 +3627,7 @@ impl DatabaseManager {
             bu: String,
             supplier_po: String,
             score: Option<f64>,
+            comment: Option<String>,
         }
 
         let mut export_data: Vec<ExportRow> = Vec::new();
@@ -3657,11 +3649,12 @@ impl DatabaseManager {
 
             let mut score: Option<f64> = None;
             let mut record_id: Option<i32> = None;
+            let mut comment: Option<String> = None;
 
             // Se deve incluir scores, busca da tabela de scores
             if include_score && month.is_some() && year.is_some() {
                 let score_query = format!(
-                    "SELECT id, {} FROM supplier_score_records_table 
+                    "SELECT id, {}, comment FROM supplier_score_records_table 
                      WHERE lower(trim(supplier_id)) = lower(trim(?1)) 
                      AND month = ?2 
                      AND year = ?3",
@@ -3686,13 +3679,16 @@ impl DatabaseManager {
                                 row.get::<_, Option<f64>>(1)?
                             };
                             
-                            println!("   ✅ Encontrado: id={}, score={:?}", id, score_val);
-                            Ok((Some(id), score_val))
+                            let comment_val = row.get::<_, Option<String>>(2)?;
+                            
+                            println!("   ✅ Encontrado: id={}, score={:?}, comment={:?}", id, score_val, comment_val);
+                            Ok((Some(id), score_val, comment_val))
                         }
                     ) {
                         Ok(result) => {
                             record_id = result.0;
                             score = result.1;
+                            comment = result.2;
                         }
                         Err(e) => {
                             println!("   ⚠️ Nenhum registro encontrado: {}", e);
@@ -3708,6 +3704,7 @@ impl DatabaseManager {
                 bu,
                 supplier_po,
                 score,
+                comment,
             });
         }
 
@@ -3745,6 +3742,11 @@ impl DatabaseManager {
             .set_num_format("0.0")
             .set_unlocked(); // Permite edição
 
+        // Formato para coluna de comentário - desbloqueada
+        let comment_format = Format::new()
+            .set_align(FormatAlign::Left)
+            .set_unlocked(); // Permite edição
+
         // Define largura das colunas
         if include_score {
             worksheet.set_column_width(0, 12).map_err(|e| format!("Erro ao definir largura: {}", e))?;
@@ -3753,12 +3755,14 @@ impl DatabaseManager {
             worksheet.set_column_width(3, 18).map_err(|e| format!("Erro ao definir largura: {}", e))?;
             worksheet.set_column_width(4, 15).map_err(|e| format!("Erro ao definir largura: {}", e))?;
             worksheet.set_column_width(5, 12).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(6, 50).map_err(|e| format!("Erro ao definir largura: {}", e))?;
         } else {
             worksheet.set_column_width(0, 15).map_err(|e| format!("Erro ao definir largura: {}", e))?;
             worksheet.set_column_width(1, 40).map_err(|e| format!("Erro ao definir largura: {}", e))?;
             worksheet.set_column_width(2, 18).map_err(|e| format!("Erro ao definir largura: {}", e))?;
             worksheet.set_column_width(3, 15).map_err(|e| format!("Erro ao definir largura: {}", e))?;
             worksheet.set_column_width(4, 12).map_err(|e| format!("Erro ao definir largura: {}", e))?;
+            worksheet.set_column_width(5, 50).map_err(|e| format!("Erro ao definir largura: {}", e))?;
         }
 
         // Cabeçalhos
@@ -3775,6 +3779,8 @@ impl DatabaseManager {
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
             worksheet.write_with_format(0, 5, criteria_label.as_str(), &header_format)
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 6, "Comment", &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
         } else {
             worksheet.write_with_format(0, 0, "Supplier ID", &header_format)
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
@@ -3785,6 +3791,8 @@ impl DatabaseManager {
             worksheet.write_with_format(0, 3, "Supplier PO", &header_format)
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
             worksheet.write_with_format(0, 4, criteria_label.as_str(), &header_format)
+                .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
+            worksheet.write_with_format(0, 5, "Comment", &header_format)
                 .map_err(|e| format!("Erro ao escrever cabeçalho: {}", e))?;
         }
 
@@ -3826,6 +3834,15 @@ impl DatabaseManager {
                     worksheet.write_with_format(row_num, 5, "", &score_format)
                         .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
                 }
+
+                // Coluna G: Comment (desbloqueada)
+                if let Some(ref comment_val) = row.comment {
+                    worksheet.write_with_format(row_num, 6, comment_val, &comment_format)
+                        .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                } else {
+                    worksheet.write_with_format(row_num, 6, "", &comment_format)
+                        .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                }
             } else {
                 // Modo sem score (não usado mais, mas mantido por compatibilidade)
                 worksheet.write_with_format(row_num, 0, &row.supplier_id, &locked_format)
@@ -3838,6 +3855,14 @@ impl DatabaseManager {
                     .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
                 worksheet.write_with_format(row_num, 4, "", &score_format)
                     .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                // Coluna F: Comment (desbloqueada) - modo sem score
+                if let Some(ref comment_val) = row.comment {
+                    worksheet.write_with_format(row_num, 5, comment_val, &comment_format)
+                        .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                } else {
+                    worksheet.write_with_format(row_num, 5, "", &comment_format)
+                        .map_err(|e| format!("Erro ao escrever dados: {}", e))?;
+                }
             }
         }
 
@@ -4147,6 +4172,7 @@ impl DatabaseManager {
             let _bu_str = row.get(3).map(|cell| cell_to_string(cell)).unwrap_or_default();
             let supplier_po_str = row.get(4).map(|cell| cell_to_string(cell)).unwrap_or_default();
             let score_opt = row.get(5).and_then(|cell| cell_to_f64(cell));
+            let comment_str = row.get(6).map(|cell| cell_to_string(cell)).unwrap_or_default();
 
             println!("   [0] record_id: {:?}", record_id_opt);
             println!("   [1] supplier_id: '{}'", supplier_id_str);
@@ -4154,6 +4180,7 @@ impl DatabaseManager {
             println!("   [3] bu: '{}'", _bu_str);
             println!("   [4] supplier_po: '{}'", supplier_po_str);
             println!("   [5] score: {:?}", score_opt);
+            println!("   [6] comment: '{}'", comment_str);
 
             // Valida record_id
             let record_id = match record_id_opt {
@@ -4251,40 +4278,67 @@ impl DatabaseManager {
             let total_score_str = format!("{:.2}", total_score);
             println!("   Total Score: {}", total_score_str);
 
-            // Atualiza o registro no banco
-            let update_query = format!(
-                "UPDATE supplier_score_records_table 
-                 SET {} = ?, total_score = ?, change_date = ?, changed_by = ? 
-                 WHERE id = ?",
-                score_column
-            );
+            // Atualiza o registro no banco (inclui comment se não estiver vazio)
+            let update_query = if !comment_str.is_empty() {
+                format!(
+                    "UPDATE supplier_score_records_table 
+                     SET {} = ?, total_score = ?, comment = ?, change_date = ?, changed_by = ? 
+                     WHERE id = ?",
+                    score_column
+                )
+            } else {
+                format!(
+                    "UPDATE supplier_score_records_table 
+                     SET {} = ?, total_score = ?, change_date = ?, changed_by = ? 
+                     WHERE id = ?",
+                    score_column
+                )
+            };
 
             println!("🔧 Query SQL: {}", update_query);
             println!("🔧 Parâmetros:");
             println!("   {} = {}", score_column, score);
             println!("   total_score = {}", total_score_str);
+            if !comment_str.is_empty() {
+                println!("   comment = {}", comment_str);
+            }
             println!("   change_date = {}", now);
             println!("   changed_by = Import System");
             println!("   id = {}", record_id);
 
-            let exec_result = if score_column == "quality_pickup" || score_column == "quality_package" {
-                conn.execute(
-                    &update_query,
-                    params![score.to_string(), total_score_str.clone(), now.clone(), "Import System", record_id]
-                )
+            let exec_result = if !comment_str.is_empty() {
+                if score_column == "quality_pickup" || score_column == "quality_package" {
+                    conn.execute(
+                        &update_query,
+                        params![score.to_string(), total_score_str.clone(), comment_str.clone(), now.clone(), "Import System", record_id]
+                    )
+                } else {
+                    conn.execute(
+                        &update_query,
+                        params![score, total_score_str.clone(), comment_str.clone(), now.clone(), "Import System", record_id]
+                    )
+                }
             } else {
-                conn.execute(
-                    &update_query,
-                    params![score, total_score_str.clone(), now.clone(), "Import System", record_id]
-                )
+                if score_column == "quality_pickup" || score_column == "quality_package" {
+                    conn.execute(
+                        &update_query,
+                        params![score.to_string(), total_score_str.clone(), now.clone(), "Import System", record_id]
+                    )
+                } else {
+                    conn.execute(
+                        &update_query,
+                        params![score, total_score_str.clone(), now.clone(), "Import System", record_id]
+                    )
+                }
             };
 
             match exec_result {
                 Ok(rows_affected) => {
                     println!("🔍 Linhas afetadas: {}", rows_affected);
                     if rows_affected > 0 {
-                        println!("✅ Record {} atualizado: {} = {}, total_score = {}", 
-                                 record_id, score_column, score, total_score_str);
+                        println!("✅ Record {} atualizado: {} = {}, total_score = {}{}", 
+                                 record_id, score_column, score, total_score_str,
+                                 if !comment_str.is_empty() { format!(", comment = {}", comment_str) } else { "".to_string() });
                         updated_count += 1;
                     } else {
                         println!("⚠️ Record {} não foi atualizado (0 linhas afetadas)", record_id);
