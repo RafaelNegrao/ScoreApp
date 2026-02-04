@@ -20,7 +20,7 @@ interface User {
 
 const Users = () => {
   const { user: currentUser, permissions, isUser, isAdmin } = usePermissions();
-  const { toasts, showToast, removeToast } = useToast();
+  const { toasts, stackCount, showToast, removeToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -465,7 +465,7 @@ const Users = () => {
       />
 
       {/* Toast Notifications */}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      <ToastContainer toasts={toasts} stackCount={stackCount} onRemove={removeToast} />
     </div>
   );
 };

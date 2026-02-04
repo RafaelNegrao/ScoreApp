@@ -20,13 +20,13 @@ interface ScoreRecord {
 }
 
 interface MetricsData {
-  overallAverage: number;
-  twelveMonthsAverage: number;
-  yearAverage: number;
-  q1Average: number;
-  q2Average: number;
-  q3Average: number;
-  q4Average: number;
+  overallAverage: number | null;
+  twelveMonthsAverage: number | null;
+  yearAverage: number | null;
+  q1Average: number | null;
+  q2Average: number | null;
+  q3Average: number | null;
+  q4Average: number | null;
   q1Trend: 'up' | 'down' | 'neutral';
   q2Trend: 'up' | 'down' | 'neutral';
   q3Trend: 'up' | 'down' | 'neutral';
@@ -108,7 +108,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     // Overall Average (todos os dados)
     const overallAverage = allScores.length > 0
       ? allScores.reduce((a, b) => a + b, 0) / allScores.length
-      : 0;
+      : null;
 
     // Últimos 12 meses
     const now = new Date();
@@ -123,25 +123,32 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     const last12MonthsScores = last12MonthsRecords.map(r => getScore(r)).filter((s): s is number => s !== null);
     const twelveMonthsAverage = last12MonthsScores.length > 0
       ? last12MonthsScores.reduce((a, b) => a + b, 0) / last12MonthsScores.length
-      : 0;
+      : null;
 
     // Year Average
     const yearRecords = year
       ? records.filter(r => r.year === year)
       : records;
-    const yearScores = yearRecords.map(r => getScore(r)).filter((s): s is number => s !== null);
-    const yearAverage = yearScores.length > 0
-      ? yearScores.reduce((a, b) => a + b, 0) / yearScores.length
-      : 0;
 
-    // Calcular médias trimestrais
-    const getQuarterAverage = (quarter: number): number => {
-      const startMonth = (quarter - 1) * 3 + 1;
-      const endMonth = startMonth + 2;
-      const quarterRecords = yearRecords.filter(r => r.month >= startMonth && r.month <= endMonth);
-      const quarterScores = quarterRecords.map(r => getScore(r)).filter((s): s is number => s !== null);
-      
-      if (quarterScores.length === 0) return 0;
+    // Montar scores mensais (mesma lógica da aba Risks)
+    const monthlyScores: (number | null)[] = Array(12).fill(null);
+    yearRecords.forEach((record) => {
+      const monthIndex = record.month - 1;
+      const score = getScore(record);
+      if (monthIndex >= 0 && monthIndex < 12 && score !== null) {
+        monthlyScores[monthIndex] = score;
+      }
+    });
+
+    // Calcular médias trimestrais com base nos meses disponíveis
+    const getQuarterAverage = (quarter: number): number | null => {
+      const startMonth = (quarter - 1) * 3;
+      const endMonth = startMonth + 3;
+      const quarterScores = monthlyScores
+        .slice(startMonth, endMonth)
+        .filter((s): s is number => s !== null);
+
+      if (quarterScores.length === 0) return null;
       return quarterScores.reduce((a, b) => a + b, 0) / quarterScores.length;
     };
 
@@ -150,17 +157,63 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     const q3Average = getQuarterAverage(3);
     const q4Average = getQuarterAverage(4);
 
+    // Buscar último quarter disponível do ano anterior para comparar com Q1
+    const previousYear = year ? (parseInt(year) - 1).toString() : null;
+    let lastQuarterPreviousYear: number | null = null;
+    
+    if (previousYear) {
+      const previousYearRecords = records.filter(r => r.year === previousYear);
+      const previousYearMonthlyScores: (number | null)[] = Array(12).fill(null);
+      
+      previousYearRecords.forEach((record) => {
+        const monthIndex = record.month - 1;
+        const score = getScore(record);
+        if (monthIndex >= 0 && monthIndex < 12 && score !== null) {
+          previousYearMonthlyScores[monthIndex] = score;
+        }
+      });
+      
+      // Calcular quarters do ano anterior
+      const getPreviousYearQuarterAverage = (quarter: number): number | null => {
+        const startMonth = (quarter - 1) * 3;
+        const endMonth = startMonth + 3;
+        const quarterScores = previousYearMonthlyScores
+          .slice(startMonth, endMonth)
+          .filter((s): s is number => s !== null);
+
+        if (quarterScores.length === 0) return null;
+        return quarterScores.reduce((a, b) => a + b, 0) / quarterScores.length;
+      };
+      
+      // Pegar o último quarter disponível do ano anterior (Q4 -> Q3 -> Q2 -> Q1)
+      const prevQ4 = getPreviousYearQuarterAverage(4);
+      const prevQ3 = getPreviousYearQuarterAverage(3);
+      const prevQ2 = getPreviousYearQuarterAverage(2);
+      const prevQ1 = getPreviousYearQuarterAverage(1);
+      
+      lastQuarterPreviousYear = prevQ4 ?? prevQ3 ?? prevQ2 ?? prevQ1;
+    }
+
+    // Mesma lógica do Risks: média anual baseada nos trimestres disponíveis
+    const yearQuarterScores = [q1Average, q2Average, q3Average, q4Average]
+      .filter((s): s is number => s !== null);
+    const yearAverage = yearQuarterScores.length > 0
+      ? yearQuarterScores.reduce((a, b) => a + b, 0) / yearQuarterScores.length
+      : null;
+
     // Calcular tendências (comparar com trimestre anterior)
-    const getTrend = (current: number, previous: number): 'up' | 'down' | 'neutral' => {
+    // Q1 compara com último quarter disponível do ano anterior
+    const getTrend = (current: number | null, previous: number | null): 'up' | 'down' | 'neutral' => {
+      if (current === null || previous === null) return 'neutral';
       if (previous === 0) return 'neutral';
       const diff = current - previous;
       if (Math.abs(diff) < 0.1) return 'neutral';
       return diff > 0 ? 'up' : 'down';
     };
 
-    const safeFormat = (value: number): number => {
-      if (isNaN(value) || !isFinite(value)) return 0;
-      return parseFloat(value.toFixed(1));
+    const safeFormat = (value: number | null): number | null => {
+      if (value === null || isNaN(value) || !isFinite(value)) return null;
+      return parseFloat(value.toFixed(2));
     };
 
     return {
@@ -171,12 +224,14 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       q2Average: safeFormat(q2Average),
       q3Average: safeFormat(q3Average),
       q4Average: safeFormat(q4Average),
-      q1Trend: getTrend(q1Average, yearAverage),
+      q1Trend: getTrend(q1Average, lastQuarterPreviousYear),
       q2Trend: getTrend(q2Average, q1Average),
       q3Trend: getTrend(q3Average, q2Average),
       q4Trend: getTrend(q4Average, q3Average),
     };
   };
+
+  const formatMetric = (value: number | null) => (value === null ? '-' : value.toFixed(2));
 
   const handlePrevCard = () => {
     setCurrentCardIndex((prev) => (prev === 0 ? 2 : prev - 1));
@@ -236,7 +291,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
                 </div>
                 <div className="metric-content">
                   <div className="metric-label">Overall Average</div>
-                  <div className="metric-value">{metrics.overallAverage.toFixed(1)}</div>
+                  <div className="metric-value">{formatMetric(metrics.overallAverage)}</div>
                   <div className="metric-description">Média Geral</div>
                 </div>
               </div>
@@ -247,7 +302,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
                 </div>
                 <div className="metric-content">
                   <div className="metric-label">12 Months Avg</div>
-                  <div className="metric-value">{metrics.twelveMonthsAverage.toFixed(1)}</div>
+                  <div className="metric-value">{formatMetric(metrics.twelveMonthsAverage)}</div>
                   <div className="metric-description">Últimos 12 meses</div>
                 </div>
               </div>
@@ -258,7 +313,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
                 </div>
                 <div className="metric-content">
                   <div className="metric-label">Year Average</div>
-                  <div className="metric-value">{metrics.yearAverage.toFixed(1)}</div>
+                  <div className="metric-value">{formatMetric(metrics.yearAverage)}</div>
                   <div className="metric-description">Média do ano</div>
                 </div>
               </div>
@@ -277,7 +332,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               </div>
               <div className="metric-content">
                 <div className="metric-label">Overall Average</div>
-                <div className="metric-value">{metrics.overallAverage.toFixed(1)}</div>
+                <div className="metric-value">{formatMetric(metrics.overallAverage)}</div>
                 <div className="metric-description">Média Geral</div>
               </div>
             </div>
@@ -288,7 +343,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               </div>
               <div className="metric-content">
                 <div className="metric-label">12 Months Avg</div>
-                <div className="metric-value">{metrics.twelveMonthsAverage.toFixed(1)}</div>
+                <div className="metric-value">{formatMetric(metrics.twelveMonthsAverage)}</div>
                 <div className="metric-description">Últimos 12 meses</div>
               </div>
             </div>
@@ -299,7 +354,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               </div>
               <div className="metric-content">
                 <div className="metric-label">Year Average</div>
-                <div className="metric-value">{metrics.yearAverage.toFixed(1)}</div>
+                <div className="metric-value">{formatMetric(metrics.yearAverage)}</div>
                 <div className="metric-description">Média do ano</div>
               </div>
             </div>
@@ -318,7 +373,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               {metrics.q1Trend === 'up' && <TrendingUp size={20} className="trend-icon trend-up" />}
               {metrics.q1Trend === 'down' && <TrendingDown size={20} className="trend-icon trend-down" />}
             </div>
-            <div className="quarterly-value">{metrics.q1Average.toFixed(1)}</div>
+            <div className="quarterly-value">{formatMetric(metrics.q1Average)}</div>
             <div className="quarterly-period">Jan - Mar</div>
           </div>
 
@@ -328,7 +383,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               {metrics.q2Trend === 'up' && <TrendingUp size={20} className="trend-icon trend-up" />}
               {metrics.q2Trend === 'down' && <TrendingDown size={20} className="trend-icon trend-down" />}
             </div>
-            <div className="quarterly-value">{metrics.q2Average.toFixed(1)}</div>
+            <div className="quarterly-value">{formatMetric(metrics.q2Average)}</div>
             <div className="quarterly-period">Apr - Jun</div>
           </div>
 
@@ -338,7 +393,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               {metrics.q3Trend === 'up' && <TrendingUp size={20} className="trend-icon trend-up" />}
               {metrics.q3Trend === 'down' && <TrendingDown size={20} className="trend-icon trend-down" />}
             </div>
-            <div className="quarterly-value">{metrics.q3Average.toFixed(1)}</div>
+            <div className="quarterly-value">{formatMetric(metrics.q3Average)}</div>
             <div className="quarterly-period">Jul - Sep</div>
           </div>
 
@@ -348,7 +403,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
               {metrics.q4Trend === 'up' && <TrendingUp size={20} className="trend-icon trend-up" />}
               {metrics.q4Trend === 'down' && <TrendingDown size={20} className="trend-icon trend-down" />}
             </div>
-            <div className="quarterly-value">{metrics.q4Average.toFixed(1)}</div>
+            <div className="quarterly-value">{formatMetric(metrics.q4Average)}</div>
             <div className="quarterly-period">Oct - Dec</div>
           </div>
         </div>

@@ -504,26 +504,6 @@
   transform: scale(1.05);
 }
 
-/* Responsive Design - NÃO APLICA para .charts-grid */
-@media (max-width: 1200px) {
-  .individual-metrics-container:not(.charts-grid *) {
-    grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
-    gap: 1.25rem;
-  }
-}
-
-@media (max-width: 1200px) {
-  .individual-metrics-container:not(.charts-grid *) {
-    grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
-    gap: 1rem;
-    margin-top: 2rem;
-  }
-  
-  .performance-chart-centered {
-    margin-top: 2rem;
-  }
-}
-
 @media (max-width: 1000px) {
   .individual-metrics-container:not(.charts-grid *) {
     grid-template-columns: 1fr;

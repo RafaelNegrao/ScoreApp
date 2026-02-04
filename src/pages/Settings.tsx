@@ -28,7 +28,7 @@ function CriteriaTab() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [hasChanges, setHasChanges] = useState<boolean>(false);
-  const { toasts, showToast, removeToast } = useToast();
+  const { toasts, stackCount, showToast, removeToast } = useToast();
 
   type CriteriaDisplayItem = {
     key: string;
@@ -314,7 +314,7 @@ function CriteriaTab() {
       </div>
       
       {/* Toast Notifications */}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      <ToastContainer toasts={toasts} stackCount={stackCount} onRemove={removeToast} />
     </div>
   );
 }
@@ -614,7 +614,7 @@ function Settings() {
                   <div className="info-card-settings">
                     <i className="bi bi-tag"></i>
                     <h4>Version</h4>
-                    <p>1.1.5</p>
+                    <p>1.1.6</p>
                   </div>
                   
                   <div className="info-card-settings">

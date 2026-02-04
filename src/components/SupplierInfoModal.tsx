@@ -45,11 +45,22 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
   useEffect(() => {
     if (!isOpen || !supplier) return;
 
-    setCurrentSupplier(supplier);
-
-    const loadResponsibles = async () => {
+    const loadSupplierData = async () => {
       try {
         setLoading(true);
+
+        const supplierId = supplier?.supplier_id || (supplier as any)?.supplierId;
+        let resolvedSupplier = supplier;
+
+        if (supplierId) {
+          const fullSupplier = await invoke<any>('get_supplier_data', {
+            supplierId,
+          });
+
+          resolvedSupplier = fullSupplier || supplier;
+        }
+
+        setCurrentSupplier(resolvedSupplier);
 
         // Carregar TODAS as listas de responsáveis
         const [plannerList, continuityList, sourcingList, sqieList] = await Promise.all([
@@ -60,10 +71,10 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
         ]);
 
         // Buscar os responsáveis específicos do fornecedor pelos nomes
-        const foundPlanner = plannerList.find(p => p.name === supplier.planner) || null;
-        const foundContinuity = continuityList.find(c => c.name === supplier.continuity) || null;
-        const foundSourcing = sourcingList.find(s => s.name === supplier.sourcing) || null;
-        const foundSqie = sqieList.find(sq => sq.name === supplier.sqie) || null;
+        const foundPlanner = plannerList.find(p => p.name === resolvedSupplier?.planner) || null;
+        const foundContinuity = continuityList.find(c => c.name === resolvedSupplier?.continuity) || null;
+        const foundSourcing = sourcingList.find(s => s.name === resolvedSupplier?.sourcing) || null;
+        const foundSqie = sqieList.find(sq => sq.name === resolvedSupplier?.sqie) || null;
 
         setPlanner(foundPlanner);
         setContinuity(foundContinuity);
@@ -82,7 +93,7 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
       }
     };
 
-    loadResponsibles();
+    loadSupplierData();
   }, [isOpen, supplier]);
 
   const handleOpenEditModal = () => {

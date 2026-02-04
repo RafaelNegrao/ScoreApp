@@ -51,8 +51,8 @@ const DeleteModal: React.FC<DeleteModalProps> = ({
               id="confirmation-code"
               value={userInput}
               onChange={e => onInputChange(e.target.value)}
-              placeholder="Digite as 5 letras"
-              maxLength={5}
+              placeholder={`Digite as ${confirmationCode.length} letras`}
+              maxLength={confirmationCode.length}
               className="confirmation-input themed-bg"
               autoComplete="off"
             />

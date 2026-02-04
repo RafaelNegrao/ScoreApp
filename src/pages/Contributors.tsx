@@ -6,41 +6,132 @@ interface Contributor {
   user_wwid: string;
   user_name: string;
   contribution_count: number;
-  last_input_date: string;
+  dailyCounts: Map<string, number>;
+}
+
+interface User {
+  user_wwid: string;
+  user_privilege: string;
 }
 
 function Contributors() {
   const [contributors, setContributors] = useState<Contributor[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
-  const [viewMode, setViewMode] = useState<'all' | 'monthly'>('all');
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
   useEffect(() => {
     loadContributors();
-  }, [viewMode, selectedMonth, selectedYear]);
+  }, [selectedYear]);
+
+  const parseDateString = (dateString: string) => {
+    if (!dateString) return null;
+    const rawDate = dateString.split(' ')[0];
+
+    if (rawDate.includes('-')) {
+      const [year, month, day] = rawDate.split('-').map(Number);
+      if (!year || !month || !day) return null;
+      return new Date(year, month - 1, day);
+    }
+
+    if (rawDate.includes('/')) {
+      const [day, month, year] = rawDate.split('/').map(Number);
+      if (!year || !month || !day) return null;
+      return new Date(year, month - 1, day);
+    }
+
+    return null;
+  };
+
+  const formatDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const buildCalendar = (year: number) => {
+    const start = new Date(year, 0, 1);
+    const end = new Date(year, 11, 31);
+
+    const startOffset = (start.getDay() + 6) % 7; // segunda-feira como início
+    const endOffset = (6 - ((end.getDay() + 6) % 7));
+
+    const calendarStart = new Date(year, 0, 1 - startOffset);
+    const calendarEnd = new Date(year, 11, 31 + endOffset);
+
+    const days: Date[] = [];
+    const cursor = new Date(calendarStart);
+
+    while (cursor <= calendarEnd) {
+      days.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const weeks: Date[][] = [];
+    for (let i = 0; i < days.length; i += 7) {
+      weeks.push(days.slice(i, i + 7));
+    }
+
+    return weeks;
+  };
+
+  const getIntensity = (count: number, max: number) => {
+    if (!count) return 0;
+    if (max <= 4) return Math.min(4, count);
+    if (count <= max * 0.25) return 1;
+    if (count <= max * 0.5) return 2;
+    if (count <= max * 0.75) return 3;
+    return 4;
+  };
+
+  const normalizePrivilege = (value: string) =>
+    value.toLowerCase().replace(/\s|_|-/g, '');
 
   const loadContributors = async () => {
     try {
       setLoading(true);
-      let data: [string, string, number, string][];
-      
-      if (viewMode === 'all') {
-        data = await invoke<[string, string, number, string][]>('get_user_contributions');
-      } else {
-        data = await invoke<[string, string, number, string][]>('get_user_contributions_by_month', {
-          month: selectedMonth,
-          year: selectedYear
+
+      const data = await invoke<[string, string, string, number][]>('get_user_contribution_calendar', {
+        year: selectedYear
+      });
+
+      const users = await invoke<User[]>('get_all_users');
+      const superAdminWwids = new Set(
+        users
+          .filter((user) => normalizePrivilege(user.user_privilege || '') === 'superadmin')
+          .map((user) => user.user_wwid.trim())
+          .filter(Boolean)
+      );
+
+      const contributorsMap = new Map<string, Contributor>();
+
+      data.forEach(([wwid, name, dateStr, count]) => {
+        const parsedDate = parseDateString(dateStr);
+        if (!parsedDate) return;
+        const key = formatDateKey(parsedDate);
+        const contributorKey = wwid.trim();
+        if (!contributorKey) return;
+
+        const contributor = contributorsMap.get(contributorKey);
+        if (contributor) {
+          contributor.contribution_count += count;
+          contributor.dailyCounts.set(key, count);
+          return;
+        }
+
+        contributorsMap.set(contributorKey, {
+          user_wwid: wwid,
+          user_name: name,
+          contribution_count: count,
+          dailyCounts: new Map([[key, count]])
         });
-      }
-      
-      const formattedContributors: Contributor[] = data.map(([wwid, name, count, lastDate]) => ({
-        user_wwid: wwid,
-        user_name: name,
-        contribution_count: count,
-        last_input_date: lastDate
-      }));
+      });
+
+      const formattedContributors = Array.from(contributorsMap.values())
+        .filter((contributor) => !superAdminWwids.has(contributor.user_wwid.trim()))
+        .sort((a, b) => b.contribution_count - a.contribution_count);
+
       setContributors(formattedContributors);
       setError('');
     } catch (err) {
@@ -49,18 +140,6 @@ function Contributors() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'Nunca';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
   };
 
   if (loading) {
@@ -86,8 +165,8 @@ function Contributors() {
   }
 
   const months = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+    'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
   ];
 
   const years = [2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040];
@@ -97,91 +176,111 @@ function Contributors() {
       <div className="contributors-header">
         <div className="header-title">
           <h1>Contribuidores</h1>
-          <p>Ranking de usuários por número de contribuições</p>
+          <p>Contribuições por dia</p>
         </div>
         
         <div className="view-controls">
-          <div className="view-tabs">
-            <button 
-              className={`view-tab ${viewMode === 'all' ? 'active' : ''}`}
-              onClick={() => setViewMode('all')}
+          <div className="month-year-selector">
+            <select 
+              value={selectedYear} 
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="year-select"
             >
-              Geral
-            </button>
-            <button 
-              className={`view-tab ${viewMode === 'monthly' ? 'active' : ''}`}
-              onClick={() => setViewMode('monthly')}
-            >
-              Mensal
-            </button>
+              {years.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
           </div>
-          
-          {viewMode === 'monthly' && (
-            <div className="month-year-selector">
-              <select 
-                value={selectedMonth} 
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="month-select"
-              >
-                {months.map((month, index) => (
-                  <option key={index} value={index + 1}>{month}</option>
-                ))}
-              </select>
-              <select 
-                value={selectedYear} 
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="year-select"
-              >
-                {years.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
       </div>
 
       <div className="contributors-container">
-        <div className="contributors-table-wrapper">
-          <table className="contributors-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>WWID</th>
-                <th>Nome</th>
-                <th>Contribuições</th>
-                <th>Último Input</th>
-              </tr>
-            </thead>
-            <tbody>
-              {contributors.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="no-data">
-                    Nenhum dado de contribuição encontrado.
-                  </td>
-                </tr>
-              ) : (
-                contributors.map((contributor, index) => (
-                  <tr key={contributor.user_wwid}>
-                    <td className="rank-cell">
-                      <span className={`rank-badge rank-${index + 1}`}>
-                        {index + 1}
-                      </span>
-                    </td>
-                    <td className="wwid-cell">{contributor.user_wwid}</td>
-                    <td className="name-cell">{contributor.user_name}</td>
-                    <td className="count-cell">
-                      <span className="contribution-badge">
-                        {contributor.contribution_count}
-                      </span>
-                    </td>
-                    <td className="date-cell">{formatDate(contributor.last_input_date)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {contributors.length === 0 ? (
+          <div className="no-data">
+            Nenhum dado de contribuição encontrado.
+          </div>
+        ) : (
+          <div className="contributors-heatmap-list">
+            {contributors.map((contributor) => {
+              const weeks = buildCalendar(selectedYear);
+              const maxCount = Math.max(0, ...Array.from(contributor.dailyCounts.values()));
+
+              const monthLabels = weeks.map((week) => {
+                const monthStart = week.find(day => day.getDate() === 1 && day.getFullYear() === selectedYear);
+                return monthStart ? months[monthStart.getMonth()] : '';
+              });
+
+              return (
+                <div key={contributor.user_wwid} className="contributor-heatmap-card">
+                  <div className="contributor-heatmap-header">
+                    <div>
+                      <div className="contributor-name">{contributor.user_name}</div>
+                      <div className="contributor-wwid">WWID: {contributor.user_wwid}</div>
+                    </div>
+                    <div className="contributor-total">{contributor.contribution_count} contribuições</div>
+                  </div>
+
+                  <div
+                    className="contributor-heatmap"
+                    style={{ ['--heatmap-weeks' as any]: weeks.length }}
+                  >
+                    <div className="heatmap-months">
+                      <div className="heatmap-month-spacer" />
+                      {monthLabels.map((label, index) => (
+                        <div key={`${contributor.user_wwid}-month-${index}`} className="heatmap-month">
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="heatmap-body">
+                      <div className="heatmap-weekdays">
+                        <span>Seg</span>
+                        <span>Ter</span>
+                        <span>Qua</span>
+                        <span>Qui</span>
+                        <span>Sex</span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                      <div className="heatmap-grid">
+                        {weeks.map((week, weekIndex) => (
+                          <div key={`${contributor.user_wwid}-week-${weekIndex}`} className="heatmap-week">
+                            {week.map((day) => {
+                              const isCurrentYear = day.getFullYear() === selectedYear;
+                              const dateKey = formatDateKey(day);
+                              const count = isCurrentYear ? (contributor.dailyCounts.get(dateKey) || 0) : 0;
+                              const level = isCurrentYear ? getIntensity(count, maxCount) : 0;
+                              const title = isCurrentYear
+                                ? `${count} contribuição(ões) em ${day.toLocaleDateString('pt-BR')}`
+                                : '';
+
+                              return (
+                                <span
+                                  key={`${contributor.user_wwid}-${dateKey}`}
+                                  className={`heatmap-day level-${level} ${!isCurrentYear ? 'out-of-range' : ''}`}
+                                  title={title}
+                                />
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="heatmap-legend">
+                      <span>Menos</span>
+                      {[0, 1, 2, 3, 4].map((level) => (
+                        <span key={level} className={`heatmap-day level-${level}`} />
+                      ))}
+                      <span>Mais</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

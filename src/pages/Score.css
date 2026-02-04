@@ -2320,6 +2320,12 @@ input:checked+.slider:before {
 
 .supplier-info-icon-btn i {
   color: var(--text-secondary) !important;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.supplier-info-icon-btn:hover i {
+  color: var(--accent-primary) !important;
 }
 
 .yearly-table-wrapper {

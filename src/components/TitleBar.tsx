@@ -377,12 +377,19 @@ const TitleBar = ({ showUserInfo = true }: TitleBarProps) => {
         
         console.log(`📝 Verificando campo ${field}, ID: ${inputId}`);
         
-        if (!inputElement || !inputElement.value) {
-          console.log(`⚠️ Campo ${field} vazio, pulando...`);
+        if (!inputElement) {
+          console.log(`⚠️ Campo ${field} não encontrado, pulando...`);
           continue;
         }
 
-        const value = parseFloat(inputElement.value);
+        const rawValue = inputElement.value.trim();
+        if (rawValue === '') {
+          console.log(`✓ Campo ${field} vazio, salvando como vazio...`);
+          scores[field.toLowerCase()] = '';
+          continue;
+        }
+
+        const value = parseFloat(rawValue);
         console.log(`✓ Campo ${field} = ${value}`);
         
         if (isNaN(value) || value < 0 || value > 10) {
@@ -391,11 +398,6 @@ const TitleBar = ({ showUserInfo = true }: TitleBarProps) => {
         }
 
         scores[field.toLowerCase()] = value.toFixed(1);
-      }
-
-      if (Object.keys(scores).length === 0) {
-        showToast('Preencha pelo menos uma nota', 'warning');
-        return;
       }
 
       console.log('📊 Scores a salvar:', scores);
@@ -477,15 +479,18 @@ const TitleBar = ({ showUserInfo = true }: TitleBarProps) => {
   };
 
   const handleSaveScore = async () => {
-    if (!scoreToEdit || !scoreToEdit.scoreValue) {
-      showToast('Por favor, insira uma nota', 'warning');
+    if (!scoreToEdit) {
+      showToast('Por favor, selecione uma nota', 'warning');
       return;
     }
 
-    const score = parseFloat(scoreToEdit.scoreValue);
-    if (isNaN(score) || score < 0 || score > 10) {
-      showToast('Nota deve ser entre 0 e 10', 'error');
-      return;
+    const rawValue = scoreToEdit.scoreValue.trim();
+    if (rawValue !== '') {
+      const score = parseFloat(rawValue);
+      if (isNaN(score) || score < 0 || score > 10) {
+        showToast('Nota deve ser entre 0 e 10', 'error');
+        return;
+      }
     }
 
     try {
@@ -494,7 +499,7 @@ const TitleBar = ({ showUserInfo = true }: TitleBarProps) => {
         month: scoreToEdit.month,
         year: scoreToEdit.year,
         scoreType: scoreToEdit.scoreType,
-        scoreValue: scoreToEdit.scoreValue,
+        scoreValue: rawValue,
         userName: userName,
       });
 
@@ -751,7 +756,7 @@ const TitleBar = ({ showUserInfo = true }: TitleBarProps) => {
                                   max="10" 
                                   step="0.1"
                                   className="score-input"
-                                  placeholder="0.0"
+                                  defaultValue=""
                                   id={`score-${notif.recordId}-${field}`}
                                   onClick={(e) => e.stopPropagation()}
                                   onInput={(e) => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
-import { TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { BarChart, Bar, ReferenceLine, ResponsiveContainer, Cell, XAxis } from "recharts";
 import "../pages/Page.css";
@@ -12,6 +12,7 @@ interface RiskSupplier {
   ssid: string | null;
   vendor_name: string;
   bu: string | null;
+  country?: string | null;
   po: string | null;
   avg_score: number;
   q1: number | null;
@@ -39,7 +40,11 @@ interface ScoreRecord {
 function Risks() {
   const [suppliers, setSuppliers] = useState<RiskSupplier[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const saved = localStorage.getItem('risksSelectedYear');
+    const parsed = saved ? Number(saved) : NaN;
+    return Number.isFinite(parsed) ? parsed : new Date().getFullYear();
+  });
   const [target, setTarget] = useState(8.7);
   const [hoveredQuarter, setHoveredQuarter] = useState<{supplierId: string, quarter: string} | null>(null);
   const navigate = useNavigate();
@@ -62,6 +67,10 @@ function Risks() {
   useEffect(() => {
     loadSuppliersAtRisk();
   }, [selectedYear, target]);
+
+  useEffect(() => {
+    localStorage.setItem('risksSelectedYear', String(selectedYear));
+  }, [selectedYear]);
 
   const loadSuppliersAtRisk = async () => {
     setLoading(true);
@@ -132,10 +141,10 @@ function Risks() {
             const q3 = getQuarterAverage(7, 9);   // Jul-Sep
             const q4 = getQuarterAverage(10, 12); // Oct-Dec
             
-            // Recalcular avg_score com base nos dados mensais
-            const validScores = monthlyScores.filter((s): s is number => s !== null);
-            const recalculatedAvg = validScores.length > 0
-              ? validScores.reduce((a, b) => a + b, 0) / validScores.length
+            // Recalcular avg_score com base nos quarters disponíveis
+            const quarterScores = [q1, q2, q3, q4].filter((s): s is number => s !== null);
+            const recalculatedAvg = quarterScores.length > 0
+              ? quarterScores.reduce((a, b) => a + b, 0) / quarterScores.length
               : supplier.avg_score;
             
             return { 
@@ -154,7 +163,12 @@ function Risks() {
         })
       );
       
-      setSuppliers(suppliersWithMonthly);
+      const filteredSuppliers = suppliersWithMonthly.filter((supplier) => {
+        const avg = supplier.avg_score;
+        return Number.isFinite(avg) && avg < target;
+      });
+
+      setSuppliers(filteredSuppliers);
     } catch (error) {
       console.error("Erro ao carregar fornecedores em risco:", error);
       setSuppliers([]);
@@ -176,8 +190,8 @@ function Risks() {
   };
 
   const handleViewTimeline = (supplier: RiskSupplier) => {
-    // Navegar para Timeline e passar o fornecedor completo via state
-    navigate('/timeline', { state: { supplier: supplier } });
+    // Navegar para Timeline e passar o supplier_id e o ano selecionado
+    navigate('/timeline', { state: { supplierId: supplier.supplier_id, supplier, year: selectedYear } });
   };
 
   // Lista fixa de anos: 2025 até 2040
@@ -242,7 +256,7 @@ function Risks() {
                       onClick={() => handleViewTimeline(supplier)}
                       title="Ver Timeline"
                     >
-                      <Activity size={18} />
+                      <BarChart3 size={18} />
                     </button>
                     <div className="risk-score-large" style={{ color: getScoreColor(supplier.avg_score) }}>
                       {supplier.avg_score.toFixed(2)}
@@ -252,6 +266,7 @@ function Risks() {
                   <div className="risk-card-content">
                     <div className="risk-card-info-stacked">
                       <span>BU: {supplier.bu || "N/A"}</span>
+                      <span>Origem: {supplier.country || "N/A"}</span>
                       <span>PO: {supplier.po || "N/A"}</span>
                       <span>SSID: {supplier.ssid || "N/A"}</span>
                       <span>ID: {supplier.supplier_id}</span>

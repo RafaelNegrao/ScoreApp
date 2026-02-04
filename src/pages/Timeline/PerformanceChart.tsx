@@ -261,13 +261,19 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 25, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid 
-                  strokeDasharray="3 3" 
-                  stroke="rgba(148, 163, 184, 0.15)" 
+                  strokeDasharray="2 6" 
+                  stroke="rgba(148, 163, 184, 0.3)" 
                   vertical={false}
                   horizontal={true}
                 />
                 <XAxis dataKey="month" stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
-                <YAxis domain={[0, 10]} stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
+                <YAxis
+                  domain={[0, 10]}
+                  ticks={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
+                  allowDecimals={false}
+                  stroke="var(--text-secondary)"
+                  style={{ fontSize: getFontSize().axis }}
+                />
                 {/* Tooltip removido para não mostrar hover */}
                 <Bar 
                   dataKey="score" 

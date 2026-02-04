@@ -326,6 +326,17 @@ impl DatabaseManager {
             )",
             [],
         ).map_err(|e| format!("Erro ao criar tabela criteria: {}", e))?;
+
+        // Criar tabela de overrides de pendência (para permitir salvar vazio)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS pending_scores_override (
+                record_id INTEGER NOT NULL,
+                score_type TEXT NOT NULL,
+                dismissed INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (record_id, score_type)
+            )",
+            [],
+        ).map_err(|e| format!("Erro ao criar tabela pending_scores_override: {}", e))?;
         
         // Criar usuário administrador padrão
         conn.execute(
@@ -377,6 +388,17 @@ impl DatabaseManager {
         } else {
             println!("✅ Coluna 'supplier' já existe na log_table");
         }
+
+        // Tabela para controle de pendências salvas como vazio
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS pending_scores_override (
+                record_id INTEGER NOT NULL,
+                score_type TEXT NOT NULL,
+                dismissed INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (record_id, score_type)
+            )",
+            [],
+        ).map_err(|e| format!("Erro ao criar tabela pending_scores_override: {}", e))?;
         
         // Verificar se a coluna score_date existe na log_table
         let has_score_date_column = Self::log_table_has_column(conn, "score_date")?;
@@ -2036,7 +2058,7 @@ impl DatabaseManager {
                     sqie,
                     ssid
                  FROM supplier_database_table 
-                 WHERE COALESCE(CAST(supplier_po AS TEXT), '') = ?1
+                 WHERE CAST(supplier_id AS TEXT) = ?1
                  LIMIT 1"
             )
             .map_err(|e| format!("Erro ao preparar query: {}", e))?;
@@ -2156,6 +2178,54 @@ impl DatabaseManager {
         println!("✅ {} registros de score atualizados", score_rows_affected);
 
         println!("✅ {} registros de fornecedor atualizados", rows_affected);
+        Ok(())
+    }
+
+    /// Exclui um fornecedor e seus registros de score
+    pub fn delete_supplier(supplier_id: String) -> Result<(), String> {
+        println!("\n🗑️ Excluindo fornecedor: {}", supplier_id);
+        let mut conn_guard = Self::get_connection()?;
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+        let conn = conn_guard.as_mut().unwrap();
+
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("Erro ao iniciar transação: {}", e))?;
+
+        tx.execute(
+            "DELETE FROM supplier_score_records_table WHERE supplier_id = ?1",
+            [&supplier_id],
+        )
+        .map_err(|e| format!("Erro ao excluir scores do fornecedor: {}", e))?;
+
+        let has_legacy_table: bool = tx
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='supplier_score'",
+                [],
+                |row| row.get::<_, i32>(0),
+            )
+            .map_err(|e| format!("Erro ao verificar tabela legacy: {}", e))? > 0;
+
+        if has_legacy_table {
+            tx.execute(
+                "DELETE FROM supplier_score WHERE supplier_id = ?1",
+                [&supplier_id],
+            )
+            .map_err(|e| format!("Erro ao excluir scores legados do fornecedor: {}", e))?;
+        }
+
+        tx.execute(
+            "DELETE FROM supplier_database_table WHERE COALESCE(CAST(supplier_id AS TEXT), '') = ?1",
+            [&supplier_id],
+        )
+        .map_err(|e| format!("Erro ao excluir fornecedor: {}", e))?;
+
+        tx.commit()
+            .map_err(|e| format!("Erro ao finalizar transação: {}", e))?;
+
+        println!("✅ Fornecedor excluído com sucesso!");
         Ok(())
     }
 
@@ -2788,9 +2858,17 @@ impl DatabaseManager {
                 CASE WHEN r.otif IS NULL THEN NULL ELSE CAST(r.otif AS TEXT) END AS otif_value,
                 CASE WHEN r.nil IS NULL THEN NULL ELSE CAST(r.nil AS TEXT) END AS nil_value,
                 CASE WHEN r.quality_pickup IS NULL THEN NULL ELSE r.quality_pickup END AS pickup_value,
-                CASE WHEN r.quality_package IS NULL THEN NULL ELSE r.quality_package END AS package_value
+                CASE WHEN r.quality_package IS NULL THEN NULL ELSE r.quality_package END AS package_value,
+                o_otif.record_id AS otif_dismissed,
+                o_nil.record_id AS nil_dismissed,
+                o_pickup.record_id AS pickup_dismissed,
+                o_package.record_id AS package_dismissed
             FROM supplier_score_records_table r
             LEFT JOIN supplier_database_table s ON s.supplier_id = r.supplier_id
+            LEFT JOIN pending_scores_override o_otif ON o_otif.record_id = r.id AND o_otif.score_type = 'otif'
+            LEFT JOIN pending_scores_override o_nil ON o_nil.record_id = r.id AND o_nil.score_type = 'nil'
+            LEFT JOIN pending_scores_override o_pickup ON o_pickup.record_id = r.id AND o_pickup.score_type = 'pickup'
+            LEFT JOIN pending_scores_override o_package ON o_package.record_id = r.id AND o_package.score_type = 'package'
             WHERE (
                 r.otif IS NULL OR CAST(r.otif AS TEXT) = '' OR
                 r.nil IS NULL OR CAST(r.nil AS TEXT) = '' OR
@@ -2824,22 +2902,27 @@ impl DatabaseManager {
                 let pickup_value: Option<String> = row.get(7).ok();
                 let package_value: Option<String> = row.get(8).ok();
 
+                let otif_dismissed: Option<i32> = row.get(9).ok();
+                let nil_dismissed: Option<i32> = row.get(10).ok();
+                let pickup_dismissed: Option<i32> = row.get(11).ok();
+                let package_dismissed: Option<i32> = row.get(12).ok();
+
                 let otif_empty = otif_value.as_ref().map(|v| v.trim().is_empty()).unwrap_or(true);
                 let nil_empty = nil_value.as_ref().map(|v| v.trim().is_empty()).unwrap_or(true);
                 let pickup_empty = pickup_value.as_ref().map(|v| v.trim().is_empty()).unwrap_or(true);
                 let package_empty = package_value.as_ref().map(|v| v.trim().is_empty()).unwrap_or(true);
 
                 let mut pending_for_user: Vec<&str> = Vec::new();
-                if can_edit_otif && otif_empty {
+                if can_edit_otif && otif_empty && otif_dismissed.is_none() {
                     pending_for_user.push("OTIF");
                 }
-                if can_edit_nil && nil_empty {
+                if can_edit_nil && nil_empty && nil_dismissed.is_none() {
                     pending_for_user.push("NIL");
                 }
-                if can_edit_pickup && pickup_empty {
+                if can_edit_pickup && pickup_empty && pickup_dismissed.is_none() {
                     pending_for_user.push("Pickup");
                 }
-                if can_edit_package && package_empty {
+                if can_edit_package && package_empty && package_dismissed.is_none() {
                     pending_for_user.push("Package");
                 }
 
@@ -2904,22 +2987,51 @@ impl DatabaseManager {
             column_name
         );
 
+        let score_value_trimmed = score_value.trim();
+
         let rows_affected = if score_type == "otif" || score_type == "nil" {
-            // OTIF e NIL são REAL
-            let score_numeric = score_value.parse::<f64>()
-                .map_err(|_| format!("Valor inválido para {}: {}", score_type, score_value))?;
+            // OTIF e NIL são REAL (permite vazio -> NULL)
+            let score_numeric: Option<f64> = if score_value_trimmed.is_empty() {
+                None
+            } else {
+                Some(
+                    score_value_trimmed
+                        .parse::<f64>()
+                        .map_err(|_| format!("Valor inválido para {}: {}", score_type, score_value))?
+                )
+            };
             
             conn.execute(
                 &query,
                 rusqlite::params![score_numeric, now, user_name, record_id],
             )
         } else {
-            // Pickup e Package são TEXT
+            // Pickup e Package são TEXT (permite vazio -> NULL)
+            let score_text: Option<String> = if score_value_trimmed.is_empty() {
+                None
+            } else {
+                Some(score_value.clone())
+            };
+
             conn.execute(
                 &query,
-                rusqlite::params![score_value, now, user_name, record_id],
+                rusqlite::params![score_text, now, user_name, record_id],
             )
         }.map_err(|e| format!("Erro ao atualizar score: {}", e))?;
+
+        // Controle de pendência: se salvou vazio, marca como avaliado; se salvou valor, remove override
+        if score_value_trimmed.is_empty() {
+            conn.execute(
+                "INSERT OR REPLACE INTO pending_scores_override (record_id, score_type, dismissed)
+                 VALUES (?1, ?2, 1)",
+                rusqlite::params![record_id, score_type],
+            ).map_err(|e| format!("Erro ao registrar override de pendência: {}", e))?;
+        } else {
+            conn.execute(
+                "DELETE FROM pending_scores_override WHERE record_id = ?1 AND score_type = ?2",
+                rusqlite::params![record_id, score_type],
+            ).map_err(|e| format!("Erro ao remover override de pendência: {}", e))?;
+        }
 
         if rows_affected > 0 {
             println!("✅ Score atualizado com sucesso!");
@@ -3130,6 +3242,7 @@ pub struct RiskSupplier {
     pub ssid: Option<String>,
     pub vendor_name: String,
     pub bu: Option<String>,
+    pub country: Option<String>,
     pub po: Option<String>,
     pub avg_score: f64,
     pub q1: Option<f64>,
@@ -3161,6 +3274,7 @@ impl DatabaseManager {
                 sup.ssid,
                 sup.vendor_name,
                 sup.bu,
+                sup.country,
                 CAST(sup.supplier_po AS TEXT) AS supplier_po,
                 AVG(CASE WHEN score.month IN ('1','2','3') AND (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL) THEN CAST(score.total_score AS REAL) END) as q1,
                 AVG(CASE WHEN score.month IN ('4','5','6') AND (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL) THEN CAST(score.total_score AS REAL) END) as q2,
@@ -3172,7 +3286,7 @@ impl DatabaseManager {
                 ON sup.supplier_id = score.supplier_id
             WHERE score.year = '{}' 
                 AND (score.otif IS NOT NULL OR score.nil IS NOT NULL OR score.quality_pickup IS NOT NULL OR score.quality_package IS NOT NULL)
-            GROUP BY sup.supplier_id, sup.ssid, sup.vendor_name, sup.bu, sup.supplier_po
+            GROUP BY sup.supplier_id, sup.ssid, sup.vendor_name, sup.bu, sup.country, sup.supplier_po
             HAVING avg_score < {} AND avg_score IS NOT NULL
             ORDER BY avg_score ASC",
             year_str, target
@@ -3188,12 +3302,13 @@ impl DatabaseManager {
             let ssid: Option<String> = row.get(1)?;
             let vendor_name: String = row.get(2)?;
             let bu: Option<String> = row.get(3)?;
-            let po: Option<String> = row.get(4)?;
-            let q1: Option<f64> = row.get(5)?;
-            let q2: Option<f64> = row.get(6)?;
-            let q3: Option<f64> = row.get(7)?;
-            let q4: Option<f64> = row.get(8)?;
-            let avg_score: f64 = row.get(9)?;
+            let country: Option<String> = row.get(4)?;
+            let po: Option<String> = row.get(5)?;
+            let q1: Option<f64> = row.get(6)?;
+            let q2: Option<f64> = row.get(7)?;
+            let q3: Option<f64> = row.get(8)?;
+            let q4: Option<f64> = row.get(9)?;
+            let avg_score: f64 = row.get(10)?;
             
             println!("  📊 {} - {} | Média: {:.2} | Q1: {:?} | Q2: {:?} | Q3: {:?} | Q4: {:?}", 
                      supplier_id, vendor_name, avg_score, q1, q2, q3, q4);
@@ -3203,6 +3318,7 @@ impl DatabaseManager {
                 ssid,
                 vendor_name,
                 bu,
+                country,
                 po,
                 q1,
                 q2,
@@ -3506,10 +3622,14 @@ impl DatabaseManager {
                         MAX(l.date || ' ' || l.time) as last_input_date
                  FROM users_table u
                  LEFT JOIN log_table l ON u.user_wwid = l.wwid
-                 WHERE l.wwid IS NOT NULL 
-                   AND l.wwid != 'Unknown' 
-                   AND l.wwid != ''
-                   AND (l.date LIKE ?1 OR l.date LIKE ?2)
+                                 WHERE l.wwid IS NOT NULL
+                                     AND l.wwid != 'Unknown'
+                                     AND l.wwid != ''
+                                        AND (
+                                            u.user_privilege IS NULL
+                                            OR replace(replace(replace(lower(trim(u.user_privilege)), ' ', ''), '-', ''), '_', '') != 'superadmin'
+                                        )
+                                     AND (l.date LIKE ?1 OR l.date LIKE ?2)
                  GROUP BY u.user_wwid, u.user_name
                  HAVING contribution_count > 0
                  ORDER BY contribution_count DESC"
@@ -3530,6 +3650,56 @@ impl DatabaseManager {
 
         println!("✅ {} contribuidores encontrados para {}/{}", contributors.len(), month, year);
         Ok(contributors)
+    }
+
+    /// Busca contribuições diárias por usuário (estilo calendário) para um ano
+    pub fn get_user_contribution_calendar(year: i32) -> Result<Vec<(String, String, String, i32)>, String> {
+        println!("📊 Buscando contribuições diárias dos usuários para {}", year);
+
+        let conn_guard = Self::get_connection()?;
+
+        if conn_guard.is_none() {
+            return Err("Conexão não inicializada".to_string());
+        }
+
+        let conn = conn_guard.as_ref().unwrap();
+
+        let date_patterns = vec![
+            format!("{:04}-%", year),
+            format!("%/{}", year),
+        ];
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT u.user_wwid,
+                        u.user_name,
+                        l.date,
+                        COUNT(l.wwid) as contribution_count
+                 FROM users_table u
+                 LEFT JOIN log_table l ON u.user_wwid = l.wwid
+                 WHERE l.wwid IS NOT NULL
+                   AND l.wwid != 'Unknown'
+                   AND l.wwid != ''
+                   AND (l.date LIKE ?1 OR l.date LIKE ?2)
+                 GROUP BY u.user_wwid, u.user_name, l.date
+                 ORDER BY u.user_name, l.date"
+            )
+            .map_err(|e| format!("Erro ao preparar query: {}", e))?;
+
+        let rows = stmt
+            .query_map([&date_patterns[0], &date_patterns[1]], |row| {
+                let wwid: String = row.get(0)?;
+                let name: String = row.get(1)?;
+                let date: String = row.get(2).unwrap_or_else(|_| "".to_string());
+                let count: i32 = row.get(3)?;
+                Ok((wwid, name, date, count))
+            })
+            .map_err(|e| format!("Erro ao executar query: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Erro ao coletar resultados: {}", e))?;
+
+        println!("✅ {} registros de contribuição diários encontrados", rows.len());
+        Ok(rows)
     }
 
     /// Exporta formulário de avaliação para Excel

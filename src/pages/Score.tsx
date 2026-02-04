@@ -7,6 +7,7 @@ import ImportScoreModal from "../components/ImportScoreModal";
 import { invoke } from '@tauri-apps/api/tauri';
 import { save } from '@tauri-apps/api/dialog';
 import { Info } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import './FullScoreModalAnimation.css';
 import { useToastContext } from '../contexts/ToastContext';
 import { useScoreContext } from '../contexts/ScoreContext';
@@ -363,6 +364,7 @@ interface YearlyMonthData {
 }
 
 function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, permissions, criteriaWeights, showToast, handleRemoveSupplier, autoSave }: YearlyViewTableProps) {
+  const navigate = useNavigate();
   const [yearlyData, setYearlyData] = useState<Map<string, YearlyMonthData[]>>(new Map());
   const [fadeKey, setFadeKey] = useState(0);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
@@ -648,7 +650,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
     
     const total = scores.length > 0 
       ? (scores.reduce((sum, s) => sum + (s.value * s.weight), 0) / scores.reduce((sum, s) => sum + s.weight, 0))
-      : 0;
+      : null;
 
     // Atualiza o yearlyData
     const data = new Map(yearlyData);
@@ -756,7 +758,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
       
       const totalScore = scores.length > 0
         ? (scores.reduce((sum, s) => sum + (s.value * s.weight), 0) / scores.reduce((sum, s) => sum + s.weight, 0))
-        : 0;
+        : null;
 
       console.log('🚀 Chamando backend save_supplier_score...');
       const result = await invoke('save_supplier_score', {
@@ -768,7 +770,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         nilScore: nilToSend,
         pickupScore: pickupToSend,
         packageScore: packageToSend,
-        totalScore: totalScore.toString(),
+        totalScore: totalScore === null ? null : totalScore.toString(),
         comments,
         userName,
         userWwid
@@ -901,7 +903,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         
         const totalScore = scores.length > 0
           ? (scores.reduce((sum, s) => sum + (s.value * s.weight), 0) / scores.reduce((sum, s) => sum + s.weight, 0))
-          : 0;
+          : null;
 
         console.log('💾 Saving score with comment:', comment);
 
@@ -914,7 +916,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
           nilScore: nilToSend,
           pickupScore: pickupToSend,
           packageScore: packageToSend,
-          totalScore: totalScore.toString(),
+          totalScore: totalScore === null ? null : totalScore.toString(),
           comments: comment,
           userName,
           userWwid: userWwid2
@@ -946,6 +948,16 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
   };
 
   const totalPages = Math.ceil(totalSuppliers / cardsPerPage);
+
+  useEffect(() => {
+    if (totalSuppliers === 0) {
+      setCurrentIndex(0);
+      return;
+    }
+    if (currentIndex > totalPages - 1) {
+      setCurrentIndex(Math.max(0, totalPages - 1));
+    }
+  }, [totalSuppliers, cardsPerPage, totalPages, currentIndex]);
 
   const handlePrev = () => {
     setFadeKey((k) => k + 1);
@@ -1017,6 +1029,13 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        className="supplier-info-icon-btn"
+                        onClick={() => navigate('/timeline', { state: { supplier } })}
+                        title="Ver Timeline"
+                      >
+                        <i className="bi bi-graph-up"></i>
+                      </button>
                       <button
                         className="supplier-info-icon-btn"
                         onClick={async () => {
@@ -1457,7 +1476,7 @@ function Score() {
   }, [selectedSuppliers, selectedMonth, selectedYear, importRefreshKey]);
 
   // Função para calcular o total score
-  const calculateTotalScore = (supplierId: string, values: Map<string, any>) => {
+  const calculateTotalScore = (supplierId: string, values: Map<string, any>): string | null => {
     const scores: { value: number, weight: number }[] = [];
     
     const otifValue = values.get(`${supplierId}-otif`);
@@ -1492,12 +1511,19 @@ function Score() {
       }
     }
     
-    if (scores.length === 0) return '0.00';
+    if (scores.length === 0) return null;
     
     const totalWeightedScore = scores.reduce((sum, s) => sum + (s.value * s.weight), 0);
     const totalWeight = scores.reduce((sum, s) => sum + s.weight, 0);
     
     return (totalWeightedScore / totalWeight).toFixed(2);
+  };
+
+  const formatTotalScore = (value: string | null | undefined) => {
+    if (value === null || value === undefined || value === '') return '-';
+    const num = parseFloat(value);
+    if (isNaN(num)) return '-';
+    return num.toFixed(1);
   };
 
   const handleSearchInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1650,7 +1676,7 @@ function Score() {
         nilScore: nilToSend,
         pickupScore: pickupToSend,
         packageScore: packageToSend,
-        totalScore: totalScore,
+        totalScore: totalScore === null ? null : totalScore,
         comments,
         userName,
         userWwid: userWwid3
@@ -2441,7 +2467,7 @@ function Score() {
                                   </td>
                                   <td className="total-cell">
                                     <span className="total-score">
-                                      {parseFloat(inputValues.get(`${supplierId}-total`) || calculateTotalScore(supplierId, inputValues)).toFixed(1)}
+                                      {formatTotalScore(inputValues.get(`${supplierId}-total`) ?? calculateTotalScore(supplierId, inputValues))}
                                     </span>
                                   </td>
                                   <td className="comment-cell">

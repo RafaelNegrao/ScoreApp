@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/tauri';
 import { useToastContext } from '../contexts/ToastContext';
 import SupplierEditModal from './SupplierEditModal';
 import ImportSupplierModal from './ImportSupplierModal';
+import DeleteModal from '../utils/DeleteModal';
 
 
 interface Supplier {
@@ -60,6 +61,10 @@ function SupplierManager() {
   const saveTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
+  const [deleteCode, setDeleteCode] = useState('');
+  const [deleteInput, setDeleteInput] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToastContext();
 
@@ -182,6 +187,74 @@ function SupplierManager() {
       pickup_target: supplier.pickup_target || '',
       package_target: supplier.package_target || '',
     });
+  };
+
+  const generateDeleteCode = () => {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let code = '';
+    for (let i = 0; i < 3; i += 1) {
+      code += letters.charAt(Math.floor(Math.random() * letters.length));
+    }
+    return code;
+  };
+
+  const handleRequestDelete = (supplier: Supplier) => {
+    if ((supplier.supplier_status || '').toLowerCase() === 'active') {
+      showToast('Não é possível excluir fornecedor com status Active', 'warning');
+      return;
+    }
+    const code = generateDeleteCode();
+    setDeleteTarget(supplier);
+    setDeleteCode(code);
+    setDeleteInput('');
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleCancelDelete = () => {
+    setIsDeleteModalOpen(false);
+    setDeleteTarget(null);
+    setDeleteCode('');
+    setDeleteInput('');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (deleteInput.trim().toUpperCase() !== deleteCode) {
+      showToast('Código de confirmação inválido', 'error');
+      return;
+    }
+
+    try {
+      await invoke('delete_supplier', { supplierId: deleteTarget.supplier_id });
+      setSuppliers(prev => prev.filter(s => s.supplier_id !== deleteTarget.supplier_id));
+      if (selectedSupplier?.supplier_id === deleteTarget.supplier_id) {
+        setSelectedSupplier(null);
+        setFormData({
+          supplier_id: '',
+          supplier_name: '',
+          supplier_po: '',
+          bu: '',
+          supplier_email: '',
+          supplier_status: '',
+          planner: '',
+          country: '',
+          supplier_category: '',
+          continuity: '',
+          sourcing: '',
+          sqie: '',
+          ssid: '',
+          otif_target: '',
+          nil_target: '',
+          pickup_target: '',
+          package_target: '',
+        });
+      }
+      handleCancelDelete();
+      showToast('Fornecedor excluído com sucesso', 'success');
+    } catch (error) {
+      console.error('Erro ao excluir fornecedor:', error);
+      showToast('Erro ao excluir fornecedor', 'error');
+    }
   };
 
 
@@ -374,7 +447,6 @@ function SupplierManager() {
                 Exportar
               </button>
               <button className="btn-secondary" onClick={handleImportSuppliers}>
-                <i className="bi bi-upload"></i>
                 Importar
               </button>
             </div>
@@ -436,7 +508,7 @@ function SupplierManager() {
                     )}
                     <button
                       className="btn-icon-action btn-delete"
-                      onClick={() => console.log('Deletar', supplier.supplier_id)}
+                      onClick={() => handleRequestDelete(supplier)}
                       title="Excluir"
                     >
                       <i className="bi bi-trash3"></i>
@@ -742,6 +814,20 @@ function SupplierManager() {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={handleImportSuccess}
+      />
+
+      <DeleteModal
+        isOpen={isDeleteModalOpen}
+        title="Confirmar exclusão do fornecedor"
+        description={`Você está prestes a excluir o fornecedor ${deleteTarget?.vendor_name || ''}. Esta ação não pode ser desfeita.`}
+        confirmationCode={deleteCode}
+        userInput={deleteInput}
+        onInputChange={setDeleteInput}
+        onCancel={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        disabled={deleteInput.trim().toUpperCase() !== deleteCode || !deleteTarget}
       />
     </div>
   );

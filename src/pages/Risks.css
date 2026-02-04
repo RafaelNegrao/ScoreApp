@@ -272,7 +272,7 @@
 }
 
 .risk-quarter:hover {
-  background: var(--bg-hover);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .quarter-label {

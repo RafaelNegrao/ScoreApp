@@ -4,6 +4,7 @@ import type { ToastData } from '../hooks/useToast';
 
 interface ToastContextType {
   toasts: ToastData[];
+  stackCount: number;
   showToast: (message: string, type?: 'success' | 'error' | 'warning' | 'info', duration?: number) => void;
   removeToast: (id: string) => void;
 }

@@ -48,7 +48,7 @@ function ConditionalBottomBar() {
  */
 function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const { toasts, removeToast } = useToastContext();
+  const { toasts, stackCount, removeToast } = useToastContext();
 
   // Log para debug do estado de autenticação
   useEffect(() => {
@@ -97,7 +97,7 @@ function AppContent() {
         />
       </Routes>
       <ConditionalBottomBar />
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      <ToastContainer toasts={toasts} stackCount={stackCount} onRemove={removeToast} />
     </BrowserRouter>
     </>
   );

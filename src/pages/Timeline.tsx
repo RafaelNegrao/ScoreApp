@@ -43,6 +43,7 @@ function Timeline() {
   const [isUnifiedCarousel, setIsUnifiedCarousel] = useState(false);
   const [unifiedCarouselIndex, setUnifiedCarouselIndex] = useState(0);
   const [isSmallHeight, setIsSmallHeight] = useState(false);
+  const carouselTotalPages = isSmallHeight ? 4 : 2;
 
   // Detectar altura pequena da tela
   useEffect(() => {
@@ -57,23 +58,57 @@ function Timeline() {
 
   // Buscar automaticamente quando vindo de outra página
   useEffect(() => {
-    const state = location.state as { searchSupplier?: string; supplier?: Supplier } | null;
+    const state = location.state as { searchSupplier?: string; supplier?: Supplier; supplierId?: string; year?: number | string } | null;
     
-    // Se veio com supplier completo (do Risks), usa diretamente
-    if (state?.supplier) {
-      setSelectedSupplier(state.supplier);
-      setSearchTerm(state.supplier.vendor_name);
-      setShowDropdown(false);
+    // Se não há state, não faz nada
+    if (!state) return;
+    
+    const supplierId = state?.supplierId || state?.supplier?.supplier_id || (state?.supplier as any)?.supplierId;
+
+    if (state?.year !== undefined && state?.year !== null) {
+      setSelectedYear(String(state.year));
+    }
+
+    // Se veio com supplierId (do Risks), garante dados completos pelo supplier_id
+    if (supplierId) {
+      const loadFullSupplier = async () => {
+        try {
+          console.log('🔍 Timeline: Buscando fornecedor completo para ID:', supplierId);
+          const fullSupplier = await invoke<Supplier | null>('get_supplier_data', {
+            supplierId,
+          });
+          console.log('📦 Timeline: Fornecedor recebido:', fullSupplier);
+
+          if (fullSupplier) {
+            setSelectedSupplier(fullSupplier);
+            setSearchTerm(fullSupplier.vendor_name);
+            setShowDropdown(false);
+          } else if (state?.supplier) {
+            // Fallback para o supplier parcial se não encontrou no banco
+            setSelectedSupplier(state.supplier as Supplier);
+            setSearchTerm(state.supplier.vendor_name);
+            setShowDropdown(false);
+          }
+        } catch (error) {
+          console.error('❌ Erro ao buscar fornecedor completo:', error);
+          if (state?.supplier) {
+            setSelectedSupplier(state.supplier as Supplier);
+            setSearchTerm(state.supplier.vendor_name);
+            setShowDropdown(false);
+          }
+        }
+      };
+
+      loadFullSupplier();
       return;
     }
-    
+
     // Se veio apenas com nome (fallback), busca e seleciona o primeiro
     if (state?.searchSupplier) {
       const searchAndSelect = async () => {
         try {
           const results = await invoke<Supplier[]>('search_suppliers', { query: state.searchSupplier!.trim() });
           if (results && results.length > 0) {
-            // Seleciona o primeiro resultado (geralmente será o exato)
             const supplier = results[0];
             setSelectedSupplier(supplier);
             setSearchTerm(supplier.vendor_name);
@@ -85,7 +120,7 @@ function Timeline() {
       };
       searchAndSelect();
     }
-  }, [location.state]);
+  }, [location.key]);
 
   const tabs = [
     { id: "metricas", label: "Metrics", icon: BarChart2 },
@@ -97,7 +132,7 @@ function Timeline() {
     const detectScreenSize = () => {
       if (typeof window === 'undefined') return;
       const width = window.innerWidth;
-      setIsUnifiedCarousel(width < 1200);
+      setIsUnifiedCarousel(width < 1000);
     };
 
     detectScreenSize();
@@ -161,6 +196,14 @@ function Timeline() {
     if (selectedSupplier) {
       setShowSupplierInfo(true);
     }
+  };
+
+  const handleCarouselPrev = () => {
+    setCarouselPage((prev) => (prev === 0 ? carouselTotalPages - 1 : prev - 1));
+  };
+
+  const handleCarouselNext = () => {
+    setCarouselPage((prev) => (prev === carouselTotalPages - 1 ? 0 : prev + 1));
   };
 
   return (
@@ -241,7 +284,6 @@ function Timeline() {
             onChange={(e) => setSelectedYear(e.target.value)}
             className="year-select"
           >
-            <option value="">Ano</option>
             {[2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040].map((year) => (
               <option key={year} value={year.toString()}>{year}</option>
             ))}
@@ -303,24 +345,39 @@ function Timeline() {
                   <ChevronLeft size={24} />
                 </button>
 
-                <div className="unified-carousel-track">
-                  <div className="unified-carousel-slide" key={`unified-${unifiedCarouselIndex}`}>
-                    {unifiedCarouselIndex === 0 && (
-                      <div className="metric-chart-card unified-chart-card">
-                        <PerformanceChart 
+                <div className="unified-carousel-center">
+                  <div className="unified-carousel-track">
+                    <div className="unified-carousel-slide" key={`unified-${unifiedCarouselIndex}`}>
+                      {unifiedCarouselIndex === 0 && (
+                        <div className="metric-chart-card unified-chart-card">
+                          <PerformanceChart 
+                            supplierId={selectedSupplier?.supplier_id || null}
+                            selectedYear={selectedYear}
+                          />
+                        </div>
+                      )}
+                      {unifiedCarouselIndex > 0 && (
+                        <IndividualMetrics 
                           supplierId={selectedSupplier?.supplier_id || null}
                           selectedYear={selectedYear}
+                          carouselPage={unifiedCarouselIndex - 1}
+                          singleMetricIndex={unifiedCarouselIndex - 1}
                         />
-                      </div>
-                    )}
-                    {unifiedCarouselIndex > 0 && (
-                      <IndividualMetrics 
-                        supplierId={selectedSupplier?.supplier_id || null}
-                        selectedYear={selectedYear}
-                        carouselPage={unifiedCarouselIndex - 1}
-                        singleMetricIndex={unifiedCarouselIndex - 1}
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="unified-carousel-indicators">
+                    {['Performance', 'OTIF', 'NIL', 'Pickup', 'Package'].map((label, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        className={`unified-carousel-dot ${index === unifiedCarouselIndex ? 'active' : ''}`}
+                        onClick={() => setUnifiedCarouselIndex(index)}
+                        aria-label={`Exibir gráfico ${label}`}
+                        title={label}
                       />
-                    )}
+                    ))}
                   </div>
                 </div>
 
@@ -332,19 +389,6 @@ function Timeline() {
                 >
                   <ChevronRight size={24} />
                 </button>
-              </div>
-              
-              <div className="unified-carousel-indicators">
-                {['Performance', 'OTIF', 'NIL', 'Pickup', 'Package'].map((label, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    className={`unified-carousel-dot ${index === unifiedCarouselIndex ? 'active' : ''}`}
-                    onClick={() => setUnifiedCarouselIndex(index)}
-                    aria-label={`Exibir gráfico ${label}`}
-                    title={label}
-                  />
-                ))}
               </div>
             </>
           ) : (
@@ -365,6 +409,15 @@ function Timeline() {
                   />
                 </div>
                 <div className="carousel-indicators-vertical">
+                  <button
+                    type="button"
+                    className="carousel-arrow-button"
+                    onClick={handleCarouselPrev}
+                    aria-label="Subir gráficos"
+                    title="Subir"
+                  >
+                    <ChevronUp size={16} />
+                  </button>
                   {isSmallHeight ? (
                     // Modo altura pequena: 4 páginas (1 gráfico por página)
                     <>
@@ -404,6 +457,15 @@ function Timeline() {
                       />
                     </>
                   )}
+                  <button
+                    type="button"
+                    className="carousel-arrow-button"
+                    onClick={handleCarouselNext}
+                    aria-label="Descer gráficos"
+                    title="Descer"
+                  >
+                    <ChevronDown size={16} />
+                  </button>
                 </div>
               </div>
             </div>

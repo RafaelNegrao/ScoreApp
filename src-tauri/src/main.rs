@@ -77,6 +77,12 @@ fn update_supplier_data(supplier: SupplierUpdate) -> Result<(), String> {
     DatabaseManager::update_supplier(supplier)
 }
 
+/// Comando Tauri para excluir fornecedor
+#[tauri::command]
+fn delete_supplier(supplier_id: String) -> Result<(), String> {
+    DatabaseManager::delete_supplier(supplier_id)
+}
+
 /// Comando Tauri para criar um novo fornecedor
 #[tauri::command]
 fn create_supplier(supplier: SupplierUpdate) -> Result<(), String> {
@@ -516,6 +522,11 @@ fn get_user_contributions_by_month(month: i32, year: i32) -> Result<Vec<(String,
     DatabaseManager::get_user_contributions_by_month(month, year)
 }
 
+#[tauri::command]
+fn get_user_contribution_calendar(year: i32) -> Result<Vec<(String, String, String, i32)>, String> {
+    DatabaseManager::get_user_contribution_calendar(year)
+}
+
 /// Comando para exportar formulário de avaliação
 #[tauri::command]
 async fn export_evaluation_form(
@@ -587,6 +598,7 @@ fn main() {
             get_all_suppliers_by_status,
             get_supplier_data,
             update_supplier_data,
+            delete_supplier,
             create_supplier,
             check_po_exists,
             check_table_schema,
@@ -621,6 +633,7 @@ fn main() {
             get_most_active_users,
             get_user_contributions,
             get_user_contributions_by_month,
+            get_user_contribution_calendar,
             // Lists management
             get_sqie_list,
             add_sqie_item,
