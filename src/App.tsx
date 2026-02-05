@@ -19,6 +19,7 @@ import Score from "./pages/Score";
 import Timeline from "./pages/Timeline";
 import Contributors from "./pages/Contributors";
 import Risks from "./pages/Risks";
+import EmailPlaceholder from "./pages/EmailPlaceholder";
 import Settings from "./pages/Settings";
 
 /**
@@ -88,6 +89,7 @@ function AppContent() {
           <Route path="timeline" element={<Timeline />} />
           <Route path="contributors" element={<Contributors />} />
           <Route path="risks" element={<Risks />} />
+          <Route path="email" element={<EmailPlaceholder />} />
           <Route path="settings" element={<Settings />} />
         </Route>
         {/* Redireciona qualquer rota desconhecida para login ou home */}

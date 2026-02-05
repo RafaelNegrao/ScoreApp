@@ -50,30 +50,18 @@ function Contributors() {
     return `${year}-${month}-${day}`;
   };
 
-  const buildCalendar = (year: number) => {
-    const start = new Date(year, 0, 1);
-    const end = new Date(year, 11, 31);
+  const buildMonthlyTotals = (dailyCounts: Map<string, number>, year: number) => {
+    const totals = Array.from({ length: 12 }, () => 0);
 
-    const startOffset = (start.getDay() + 6) % 7; // segunda-feira como início
-    const endOffset = (6 - ((end.getDay() + 6) % 7));
+    dailyCounts.forEach((count, dateKey) => {
+      const [keyYear, keyMonth] = dateKey.split('-').map(Number);
+      if (keyYear !== year || !keyMonth) return;
+      const monthIndex = keyMonth - 1;
+      if (monthIndex < 0 || monthIndex > 11) return;
+      totals[monthIndex] += count;
+    });
 
-    const calendarStart = new Date(year, 0, 1 - startOffset);
-    const calendarEnd = new Date(year, 11, 31 + endOffset);
-
-    const days: Date[] = [];
-    const cursor = new Date(calendarStart);
-
-    while (cursor <= calendarEnd) {
-      days.push(new Date(cursor));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-
-    const weeks: Date[][] = [];
-    for (let i = 0; i < days.length; i += 7) {
-      weeks.push(days.slice(i, i + 7));
-    }
-
-    return weeks;
+    return totals;
   };
 
   const getIntensity = (count: number, max: number) => {
@@ -176,7 +164,7 @@ function Contributors() {
       <div className="contributors-header">
         <div className="header-title">
           <h1>Contribuidores</h1>
-          <p>Contribuições por dia</p>
+          <p>Contribuições por mês</p>
         </div>
         
         <div className="view-controls">
@@ -202,13 +190,8 @@ function Contributors() {
         ) : (
           <div className="contributors-heatmap-list">
             {contributors.map((contributor) => {
-              const weeks = buildCalendar(selectedYear);
-              const maxCount = Math.max(0, ...Array.from(contributor.dailyCounts.values()));
-
-              const monthLabels = weeks.map((week) => {
-                const monthStart = week.find(day => day.getDate() === 1 && day.getFullYear() === selectedYear);
-                return monthStart ? months[monthStart.getMonth()] : '';
-              });
+              const monthlyTotals = buildMonthlyTotals(contributor.dailyCounts, selectedYear);
+              const maxCount = Math.max(0, ...monthlyTotals);
 
               return (
                 <div key={contributor.user_wwid} className="contributor-heatmap-card">
@@ -222,11 +205,10 @@ function Contributors() {
 
                   <div
                     className="contributor-heatmap"
-                    style={{ ['--heatmap-weeks' as any]: weeks.length }}
+                    style={{ ['--heatmap-months' as any]: months.length }}
                   >
                     <div className="heatmap-months">
-                      <div className="heatmap-month-spacer" />
-                      {monthLabels.map((label, index) => (
+                      {months.map((label, index) => (
                         <div key={`${contributor.user_wwid}-month-${index}`} className="heatmap-month">
                           {label}
                         </div>
@@ -234,37 +216,19 @@ function Contributors() {
                     </div>
 
                     <div className="heatmap-body">
-                      <div className="heatmap-weekdays">
-                        <span>Seg</span>
-                        <span>Ter</span>
-                        <span>Qua</span>
-                        <span>Qui</span>
-                        <span>Sex</span>
-                        <span></span>
-                        <span></span>
-                      </div>
                       <div className="heatmap-grid">
-                        {weeks.map((week, weekIndex) => (
-                          <div key={`${contributor.user_wwid}-week-${weekIndex}`} className="heatmap-week">
-                            {week.map((day) => {
-                              const isCurrentYear = day.getFullYear() === selectedYear;
-                              const dateKey = formatDateKey(day);
-                              const count = isCurrentYear ? (contributor.dailyCounts.get(dateKey) || 0) : 0;
-                              const level = isCurrentYear ? getIntensity(count, maxCount) : 0;
-                              const title = isCurrentYear
-                                ? `${count} contribuição(ões) em ${day.toLocaleDateString('pt-BR')}`
-                                : '';
+                        {monthlyTotals.map((count, monthIndex) => {
+                          const level = getIntensity(count, maxCount);
+                          const title = `${count} contribuição(ões) em ${months[monthIndex]}/${selectedYear}`;
 
-                              return (
-                                <span
-                                  key={`${contributor.user_wwid}-${dateKey}`}
-                                  className={`heatmap-day level-${level} ${!isCurrentYear ? 'out-of-range' : ''}`}
-                                  title={title}
-                                />
-                              );
-                            })}
-                          </div>
-                        ))}
+                          return (
+                            <span
+                              key={`${contributor.user_wwid}-month-${monthIndex}`}
+                              className={`heatmap-day level-${level}`}
+                              title={title}
+                            />
+                          );
+                        })}
                       </div>
                     </div>
 

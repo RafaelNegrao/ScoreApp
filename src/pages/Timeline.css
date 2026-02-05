@@ -197,6 +197,14 @@
   background: var(--card-bg);
 }
 
+/* Highlight Actions tab when there are actions */
+.timeline-tab.has-actions {
+  color: var(--accent-primary);
+}
+.timeline-tab.has-actions svg {
+  color: var(--accent-primary);
+}
+
 .timeline-tab.active {
   color: var(--accent-primary);
   border-bottom-color: var(--accent-primary);

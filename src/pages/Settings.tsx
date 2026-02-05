@@ -338,6 +338,10 @@ function Settings() {
     const saved = localStorage.getItem('allowSupplierEdit');
     return saved === 'true';
   });
+  const [allowEmailTab, setAllowEmailTab] = useState<boolean>(() => {
+    const saved = localStorage.getItem('allowEmailTab');
+    return saved === 'true';
+  });
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
 
   // Verificar se o usuário é Super Admin
@@ -392,6 +396,14 @@ function Settings() {
     console.log('✏️ Supplier Edit', checked ? 'PERMITIDO' : 'BLOQUEADO');
     
     window.dispatchEvent(new CustomEvent('supplierEditChanged', { detail: checked }));
+  };
+
+  const handleEmailTabToggle = (checked: boolean) => {
+    setAllowEmailTab(checked);
+    localStorage.setItem('allowEmailTab', checked.toString());
+    console.log('✉️ Email Tab', checked ? 'PERMITIDO' : 'BLOQUEADO');
+
+    window.dispatchEvent(new CustomEvent('emailTabChanged', { detail: checked }));
   };
 
   return (
@@ -495,6 +507,23 @@ function Settings() {
                               type="checkbox" 
                               checked={allowSupplierEdit}
                               onChange={(e) => handleSupplierEditToggle(e.target.checked)}
+                            />
+                            <span className="slider"></span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="settings-section">
+                        <div className="setting-row">
+                          <div className="setting-info">
+                            <h3><i className="bi bi-envelope"></i> Email Tab</h3>
+                            <p className="section-description">Exibir a aba Email para usuários que não são Super Admin</p>
+                          </div>
+                          <label className="switch">
+                            <input 
+                              type="checkbox" 
+                              checked={allowEmailTab}
+                              onChange={(e) => handleEmailTabToggle(e.target.checked)}
                             />
                             <span className="slider"></span>
                           </label>

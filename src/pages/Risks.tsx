@@ -2,10 +2,12 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { BarChart, Bar, ReferenceLine, ResponsiveContainer, Cell, XAxis } from "recharts";
+import { BarChart, Bar, ReferenceLine, ResponsiveContainer, Cell, XAxis, YAxis } from "recharts";
+import ActionsModal from "../components/ActionsModal";
 import "../pages/Page.css";
 import "./Score.css";
 import "./Risks.css";
+import { useMemo } from "react";
 
 interface RiskSupplier {
   supplier_id: string;
@@ -20,6 +22,27 @@ interface RiskSupplier {
   q3: number | null;
   q4: number | null;
   monthly_scores?: (number | null)[];
+  worst_metric_label?: string | null;
+  worst_metric_value?: number | null;
+  metric_averages?: {
+    otif: number | null;
+    nil: number | null;
+    pickup: number | null;
+    package: number | null;
+  };
+  metric_impacts?: {
+    otif: number;
+    nil: number;
+    pickup: number;
+    package: number;
+  };
+}
+
+interface ActionItem {
+  id: string;
+  text: string;
+  createdAt: string;
+  done: boolean;
 }
 
 interface ScoreRecord {
@@ -46,7 +69,17 @@ function Risks() {
     return Number.isFinite(parsed) ? parsed : new Date().getFullYear();
   });
   const [target, setTarget] = useState(8.7);
+  const [criteriaWeights, setCriteriaWeights] = useState({
+    otif: 0.25,
+    nil: 0.25,
+    pickup: 0.25,
+    package: 0.25,
+  });
   const [hoveredQuarter, setHoveredQuarter] = useState<{supplierId: string, quarter: string} | null>(null);
+  const [actionsModalOpen, setActionsModalOpen] = useState(false);
+  const [actionsSupplier, setActionsSupplier] = useState<RiskSupplier | null>(null);
+  const [actions, setActions] = useState<ActionItem[]>([]);
+  const [actionsVersion, setActionsVersion] = useState(0);
   const navigate = useNavigate();
 
   // Carregar target do banco ao montar o componente
@@ -62,6 +95,39 @@ function Risks() {
       }
     };
     loadTarget();
+  }, []);
+
+  useEffect(() => {
+    const loadCriteria = async () => {
+      try {
+        const criteria = await invoke<any[]>("get_criteria");
+        const weights: any = {};
+
+        criteria.forEach((crit: any) => {
+          const name = crit.criteria_name.toLowerCase();
+          if (name.includes('package')) {
+            weights.package = crit.criteria_weight;
+          } else if (name.includes('pick')) {
+            weights.pickup = crit.criteria_weight;
+          } else if (name.includes('nil')) {
+            weights.nil = crit.criteria_weight;
+          } else if (name.includes('otif')) {
+            weights.otif = crit.criteria_weight;
+          }
+        });
+
+        setCriteriaWeights({
+          otif: weights.otif || 0.25,
+          nil: weights.nil || 0.25,
+          pickup: weights.pickup || 0.25,
+          package: weights.package || 0.25,
+        });
+      } catch (error) {
+        console.error('Erro ao carregar critérios:', error);
+      }
+    };
+
+    loadCriteria();
   }, []);
 
   useEffect(() => {
@@ -84,6 +150,10 @@ function Risks() {
       // Função auxiliar para calcular total_score de um record
       // Mesma lógica do MetricsOverview - média simples dos critérios disponíveis
       const calculateTotalScore = (record: ScoreRecord): number | null => {
+        if (record.total_score !== null && record.total_score !== undefined && Number.isFinite(record.total_score)) {
+          return record.total_score;
+        }
+
         const scores: number[] = [];
         
         // Nota 0 é válida e deve ser incluída!
@@ -125,6 +195,50 @@ function Risks() {
                 monthlyScores[monthIndex] = score;
               }
             });
+
+            const averageFromRecords = (values: Array<number | null | undefined>): number | null => {
+              const valid = values.filter((value): value is number => value !== null && value !== undefined && !isNaN(value));
+              if (valid.length === 0) return null;
+              return valid.reduce((a, b) => a + b, 0) / valid.length;
+            };
+
+            const metricAverages = {
+              otif: averageFromRecords(yearRecords.map((record) => record.otif)),
+              nil: averageFromRecords(yearRecords.map((record) => record.nil)),
+              pickup: averageFromRecords(yearRecords.map((record) => record.quality_pickup)),
+              package: averageFromRecords(yearRecords.map((record) => record.quality_package)),
+            };
+
+            const worstMetricCandidates = [
+              { label: 'OTIF', value: metricAverages.otif },
+              { label: 'NIL', value: metricAverages.nil },
+              { label: 'PICKUP', value: metricAverages.pickup },
+              { label: 'PACKAGE', value: metricAverages.package },
+            ].filter((metric) => metric.value !== null);
+
+            const deficitTotals = {
+              otif: Math.max(0, (target - (metricAverages.otif ?? 0))) * criteriaWeights.otif,
+              nil: Math.max(0, (target - (metricAverages.nil ?? 0))) * criteriaWeights.nil,
+              pickup: Math.max(0, (target - (metricAverages.pickup ?? 0))) * criteriaWeights.pickup,
+              package: Math.max(0, (target - (metricAverages.package ?? 0))) * criteriaWeights.package,
+            };
+            const totalDeficit = Object.values(deficitTotals).reduce((sum, value) => sum + value, 0);
+            const metricImpacts = {
+              otif: totalDeficit > 0 ? deficitTotals.otif / totalDeficit : 0,
+              nil: totalDeficit > 0 ? deficitTotals.nil / totalDeficit : 0,
+              pickup: totalDeficit > 0 ? deficitTotals.pickup / totalDeficit : 0,
+              package: totalDeficit > 0 ? deficitTotals.package / totalDeficit : 0,
+            };
+
+            const worstMetric = worstMetricCandidates.reduce<
+              { label: string; value: number } | null
+            >((currentWorst, metric) => {
+              if (metric.value === null) return currentWorst;
+              if (!currentWorst || metric.value < currentWorst.value) {
+                return { label: metric.label, value: metric.value };
+              }
+              return currentWorst;
+            }, null);
             
             // Calcular médias trimestrais (mesma lógica do MetricsOverview)
             const getQuarterAverage = (startMonth: number, endMonth: number): number | null => {
@@ -154,7 +268,11 @@ function Risks() {
               q2,
               q3,
               q4,
-              avg_score: recalculatedAvg
+              avg_score: recalculatedAvg,
+              worst_metric_label: worstMetric?.label ?? null,
+              worst_metric_value: worstMetric?.value ?? null,
+              metric_averages: metricAverages,
+              metric_impacts: metricImpacts
             };
           } catch (error) {
             console.error(`Erro ao buscar dados mensais para ${supplier.supplier_id}:`, error);
@@ -192,6 +310,82 @@ function Risks() {
   const handleViewTimeline = (supplier: RiskSupplier) => {
     // Navegar para Timeline e passar o supplier_id e o ano selecionado
     navigate('/timeline', { state: { supplierId: supplier.supplier_id, supplier, year: selectedYear } });
+  };
+
+  const getActionsKey = (supplierId: string) => `riskActions:${supplierId}`;
+
+  const loadActions = (supplierId: string) => {
+    const stored = localStorage.getItem(getActionsKey(supplierId));
+    if (!stored) return [] as ActionItem[];
+    try {
+      const parsed = JSON.parse(stored) as ActionItem[];
+      return Array.isArray(parsed)
+        ? parsed.map((action) => ({
+            ...action,
+            done: action.done ?? false,
+          }))
+        : [];
+    } catch {
+      return [] as ActionItem[];
+    }
+  };
+
+  const openActionsModal = (supplier: RiskSupplier) => {
+    setActionsSupplier(supplier);
+    setActions(loadActions(supplier.supplier_id));
+    setActionsModalOpen(true);
+  };
+
+  useEffect(() => {
+    const handler = () => setActionsVersion((v) => v + 1);
+    window.addEventListener('riskActionsChanged', handler as EventListener);
+    return () => window.removeEventListener('riskActionsChanged', handler as EventListener);
+  }, []);
+
+  const handleAddAction = (text: string) => {
+    if (!actionsSupplier) return;
+    const newAction: ActionItem = {
+      id: `${Date.now()}`,
+      text,
+      createdAt: new Date().toLocaleString('pt-BR'),
+      done: false,
+    };
+    const updated = [newAction, ...actions];
+    setActions(updated);
+    localStorage.setItem(getActionsKey(actionsSupplier.supplier_id), JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('riskActionsChanged', { detail: actionsSupplier.supplier_id }));
+  };
+
+  const handleToggleAction = (id: string, done: boolean) => {
+    if (!actionsSupplier) return;
+    const updated = actions.map((action) =>
+      action.id === id ? { ...action, done } : action
+    );
+    setActions(updated);
+    localStorage.setItem(getActionsKey(actionsSupplier.supplier_id), JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('riskActionsChanged', { detail: actionsSupplier.supplier_id }));
+  };
+
+  const handleDeleteAction = (id: string) => {
+    if (!actionsSupplier) return;
+    const updated = actions.filter((action) => action.id !== id);
+    setActions(updated);
+    localStorage.setItem(getActionsKey(actionsSupplier.supplier_id), JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('riskActionsChanged', { detail: actionsSupplier.supplier_id }));
+  };
+
+  const handleEditAction = (id: string, newText: string) => {
+    if (!actionsSupplier) return;
+    const updated = actions.map((action) => action.id === id ? { ...action, text: newText } : action);
+    setActions(updated);
+    localStorage.setItem(getActionsKey(actionsSupplier.supplier_id), JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('riskActionsChanged', { detail: actionsSupplier.supplier_id }));
+  };
+
+  // Helper para renderizar valores de meta: mostra 'N/A' mas aplica classe para estilizar
+  const renderMetaValue = (val?: string | null) => {
+    const display = val || "N/A";
+    return <span className={`meta-value ${display === 'N/A' ? 'na' : ''}`}>{display}</span>;
   };
 
   // Lista fixa de anos: 2025 até 2040
@@ -251,30 +445,41 @@ function Risks() {
                 <div className="risk-card-header">
                   <div className="risk-card-title-row">
                     <h3>{supplier.vendor_name.replace(/\.\.\./g, '')}</h3>
-                    <button 
-                      className="chart-button"
-                      onClick={() => handleViewTimeline(supplier)}
-                      title="Ver Timeline"
-                    >
-                      <BarChart3 size={18} />
-                    </button>
+                      <div className="risk-card-actions">
+                        <button 
+                          className="chart-button"
+                          onClick={() => handleViewTimeline(supplier)}
+                          title="Ver Timeline"
+                        >
+                          <BarChart3 size={18} />
+                        </button>
+                        <button
+                          className={`chart-button ${localStorage.getItem(`riskActions:${supplier.supplier_id}`) ? 'has-actions' : ''}`}
+                          onClick={() => openActionsModal(supplier)}
+                          title="Adicionar ações"
+                        >
+                          <i className="bi bi-list-check" style={{ fontSize: 18 }}></i>
+                        </button>
+                      </div>
                     <div className="risk-score-large" style={{ color: getScoreColor(supplier.avg_score) }}>
                       {supplier.avg_score.toFixed(2)}
                     </div>
                   </div>
 
                   <div className="risk-card-content">
-                    <div className="risk-card-info-stacked">
-                      <span>BU: {supplier.bu || "N/A"}</span>
-                      <span>Origem: {supplier.country || "N/A"}</span>
-                      <span>PO: {supplier.po || "N/A"}</span>
-                      <span>SSID: {supplier.ssid || "N/A"}</span>
-                      <span>ID: {supplier.supplier_id}</span>
+                    <div className="risk-card-info-container">
+                      <div className="risk-card-info-stacked">
+                        <div className="meta-row"><span className="meta-label">BU:</span>{renderMetaValue(supplier.bu)}</div>
+                        <div className="meta-row"><span className="meta-label">Origem:</span>{renderMetaValue(supplier.country ?? null)}</div>
+                        <div className="meta-row"><span className="meta-label">PO:</span>{renderMetaValue(supplier.po)}</div>
+                        <div className="meta-row"><span className="meta-label">SSID:</span>{renderMetaValue(supplier.ssid)}</div>
+                        <div className="meta-row"><span className="meta-label">ID:</span><span className="meta-value">{supplier.supplier_id}</span></div>
+                      </div>
                     </div>
 
                     {/* Mini Chart */}
                     <div className="risk-mini-chart">
-                      <ResponsiveContainer width="100%" height={140}>
+                      <ResponsiveContainer width="100%" height={152}>
                         <BarChart 
                           data={
                             supplier.monthly_scores 
@@ -312,7 +517,8 @@ function Risks() {
                             axisLine={false}
                             tickLine={false}
                           />
-                          <ReferenceLine y={target} stroke="rgba(128, 128, 128, 0.3)" strokeDasharray="3 3" strokeWidth={1} />
+                          <YAxis domain={[0, 10]} hide />
+                          <ReferenceLine y={target} stroke="var(--target-line-color, rgba(234, 179, 8, 0.45))" strokeDasharray="3 3" strokeWidth={1} />
                           <Bar dataKey="score" radius={[2, 2, 0, 0]}>
                             {supplier.monthly_scores?.map((score, index) => {
                               // Determinar o quarter do mês
@@ -335,6 +541,45 @@ function Risks() {
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
+                  </div>
+                </div>
+
+                <div className="risk-metric-container">
+                  <div className="risk-metric-container-header">
+                    <span>Impacto na média</span>
+                    <i
+                      className="bi bi-info-circle"
+                      title="Mostra o quanto cada critério puxou o score para baixo (0 a 1)."
+                    ></i>
+                  </div>
+                  <div className="risk-metric-bars">
+                    {[
+                      { label: 'OTIF', impact: supplier.metric_impacts?.otif ?? 0 },
+                      { label: 'NIL', impact: supplier.metric_impacts?.nil ?? 0 },
+                      { label: 'PICKUP', impact: supplier.metric_impacts?.pickup ?? 0 },
+                      { label: 'PACKAGE', impact: supplier.metric_impacts?.package ?? 0 },
+                    ].map((metric) => {
+                      const normalized = Math.min(1, Math.max(0, metric.impact));
+                      const maxImpact = Math.max(
+                        supplier.metric_impacts?.otif ?? 0,
+                        supplier.metric_impacts?.nil ?? 0,
+                        supplier.metric_impacts?.pickup ?? 0,
+                        supplier.metric_impacts?.package ?? 0
+                      );
+                      const isImpactful = normalized === maxImpact && maxImpact > 0;
+
+                      return (
+                        <div key={metric.label} className={`risk-metric-row ${isImpactful ? 'impactful' : ''}`}>
+                          <span className="risk-metric-label">{metric.label}</span>
+                          <div className="risk-metric-bar">
+                            <div
+                              className="risk-metric-fill"
+                              style={{ width: `${normalized * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -379,6 +624,19 @@ function Risks() {
             ))
           )}
         </div>
+      )}
+
+      {actionsSupplier && (
+        <ActionsModal
+          isOpen={actionsModalOpen}
+          onClose={() => setActionsModalOpen(false)}
+          supplierName={actionsSupplier.vendor_name}
+          actions={actions}
+          onAddAction={handleAddAction}
+          onToggleDone={handleToggleAction}
+          onDeleteAction={handleDeleteAction}
+          onEditAction={handleEditAction}
+        />
       )}
     </div>
   );

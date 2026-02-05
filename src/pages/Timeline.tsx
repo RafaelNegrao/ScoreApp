@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { Search, Info, BarChart2, Grid3x3, TrendingUp, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Info, BarChart2, Grid3x3, TrendingUp, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ListChecks } from "lucide-react";
 import { invoke } from '@tauri-apps/api/tauri';
 import { useLocation } from 'react-router-dom';
 import SupplierInfoModal from "../components/SupplierInfoModal";
 import MetricsOverview from "../components/MetricsOverview";
+import DetailedRecordsTable from "../components/DetailedRecordsTable";
 import PerformanceChart from './Timeline/PerformanceChart';
 import IndividualMetrics from './Timeline/IndividualMetrics';
+import ActionsPanel from './Timeline/ActionsPanel';
 import { useTimelineContext } from '../contexts/TimelineContext';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import "../pages/Page.css";
@@ -43,6 +45,7 @@ function Timeline() {
   const [isUnifiedCarousel, setIsUnifiedCarousel] = useState(false);
   const [unifiedCarouselIndex, setUnifiedCarouselIndex] = useState(0);
   const [isSmallHeight, setIsSmallHeight] = useState(false);
+  const [hasActions, setHasActions] = useState(false);
   const carouselTotalPages = isSmallHeight ? 4 : 2;
 
   // Detectar altura pequena da tela
@@ -125,6 +128,8 @@ function Timeline() {
   const tabs = [
     { id: "metricas", label: "Metrics", icon: BarChart2 },
     { id: "graficos", label: "Charts", icon: TrendingUp },
+    { id: "tabela", label: "Tabela", icon: Grid3x3 },
+    { id: "actions", label: "Actions", icon: ListChecks },
   ];
 
   // Detectar tamanho de tela para carousel unificado
@@ -144,6 +149,35 @@ function Timeline() {
   useEffect(() => {
     setUnifiedCarouselIndex(0);
   }, [selectedSupplier, selectedYear]);
+
+  // Detectar se fornecedor selecionado tem ações
+  useEffect(() => {
+    const check = () => {
+      if (!selectedSupplier) {
+        setHasActions(false);
+        return;
+      }
+      try {
+        const stored = localStorage.getItem(`riskActions:${selectedSupplier.supplier_id}`);
+        if (!stored) { setHasActions(false); return; }
+        const parsed = JSON.parse(stored) as any[];
+        setHasActions(Array.isArray(parsed) && parsed.length > 0);
+      } catch {
+        setHasActions(false);
+      }
+    };
+
+    check();
+
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (!selectedSupplier) return;
+      if (!detail || detail === selectedSupplier.supplier_id) check();
+    };
+
+    window.addEventListener('riskActionsChanged', handler as EventListener);
+    return () => window.removeEventListener('riskActionsChanged', handler as EventListener);
+  }, [selectedSupplier]);
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -308,7 +342,7 @@ function Timeline() {
           return (
             <button
               key={tab.id}
-              className={`timeline-tab ${activeTab === tab.id ? "active" : ""}`}
+              className={`timeline-tab ${activeTab === tab.id ? "active" : ""} ${tab.id === 'actions' && hasActions ? 'has-actions' : ''}`}
               onClick={() => setActiveTab(tab.id)}
             >
               <Icon size={18} />
@@ -470,6 +504,26 @@ function Timeline() {
               </div>
             </div>
           )
+        )}
+
+        {activeTab === "tabela" && (
+          !selectedSupplier ? (
+            <div className="empty-state">
+              <i className="bi bi-table" style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.5 }}></i>
+              <p style={{ fontSize: '0.95rem', fontWeight: 400, color: 'var(--text-muted)', opacity: 0.85 }}>Selecione um fornecedor para visualizar a tabela</p>
+            </div>
+          ) : (
+            <DetailedRecordsTable
+              supplierId={selectedSupplier.supplier_id}
+              supplierName={selectedSupplier.vendor_name}
+              selectedYear={selectedYear}
+              userPermissions={null}
+            />
+          )
+        )}
+
+        {activeTab === "actions" && (
+          <ActionsPanel supplierId={selectedSupplier?.supplier_id || null} />
         )}
 
 

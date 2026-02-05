@@ -31,6 +31,12 @@ interface MetricsData {
   q2Trend: 'up' | 'down' | 'neutral';
   q3Trend: 'up' | 'down' | 'neutral';
   q4Trend: 'up' | 'down' | 'neutral';
+  metricImpacts: {
+    otif: number;
+    nil: number;
+    pickup: number;
+    package: number;
+  };
 }
 
 const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedYear }) => {
@@ -38,6 +44,13 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
   const [loading, setLoading] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [target, setTarget] = useState(8.7);
+  const [criteriaWeights, setCriteriaWeights] = useState({
+    otif: 0.25,
+    nil: 0.25,
+    pickup: 0.25,
+    package: 0.25,
+  });
 
   // Detectar zoom do sistema Windows
   useEffect(() => {
@@ -60,7 +73,47 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     }
 
     loadMetrics();
-  }, [supplierId, selectedYear]);
+  }, [supplierId, selectedYear, target, criteriaWeights.otif, criteriaWeights.nil, criteriaWeights.pickup, criteriaWeights.package]);
+
+  useEffect(() => {
+    const loadTargetAndCriteria = async () => {
+      try {
+        const targetValue = await invoke<number>('get_target');
+        setTarget(targetValue);
+      } catch (error) {
+        console.error('Erro ao carregar target:', error);
+      }
+
+      try {
+        const criteria = await invoke<any[]>('get_criteria');
+        const weights: any = {};
+
+        criteria.forEach((crit: any) => {
+          const name = crit.criteria_name.toLowerCase();
+          if (name.includes('package')) {
+            weights.package = crit.criteria_weight;
+          } else if (name.includes('pick')) {
+            weights.pickup = crit.criteria_weight;
+          } else if (name.includes('nil')) {
+            weights.nil = crit.criteria_weight;
+          } else if (name.includes('otif')) {
+            weights.otif = crit.criteria_weight;
+          }
+        });
+
+        setCriteriaWeights({
+          otif: weights.otif || 0.25,
+          nil: weights.nil || 0.25,
+          pickup: weights.pickup || 0.25,
+          package: weights.package || 0.25,
+        });
+      } catch (error) {
+        console.error('Erro ao carregar critérios:', error);
+      }
+    };
+
+    loadTargetAndCriteria();
+  }, []);
 
   const loadMetrics = async () => {
     if (!supplierId) return;
@@ -85,14 +138,18 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     // Função auxiliar para calcular total_score de um record
     // Mesma lógica do Risks.tsx - retorna null se não houver dados
     const calculateTotalScore = (record: ScoreRecord): number | null => {
+      if (record.total_score !== null && record.total_score !== undefined && Number.isFinite(record.total_score)) {
+        return record.total_score;
+      }
+
       const scores: number[] = [];
-      
+
       // Nota 0 é válida e deve ser incluída!
       if (record.otif !== null && record.otif !== undefined && !isNaN(record.otif)) scores.push(record.otif);
       if (record.nil !== null && record.nil !== undefined && !isNaN(record.nil)) scores.push(record.nil);
       if (record.quality_pickup !== null && record.quality_pickup !== undefined && !isNaN(record.quality_pickup)) scores.push(record.quality_pickup);
       if (record.quality_package !== null && record.quality_package !== undefined && !isNaN(record.quality_package)) scores.push(record.quality_package);
-      
+
       if (scores.length === 0) return null;
       return scores.reduce((a, b) => a + b, 0) / scores.length;
     };
@@ -216,6 +273,33 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       return parseFloat(value.toFixed(2));
     };
 
+    const averageFromRecords = (values: Array<number | null | undefined>): number | null => {
+      const valid = values.filter((value): value is number => value !== null && value !== undefined && !isNaN(value));
+      if (valid.length === 0) return null;
+      return valid.reduce((a, b) => a + b, 0) / valid.length;
+    };
+
+    const metricAverages = {
+      otif: averageFromRecords(yearRecords.map((record) => record.otif)),
+      nil: averageFromRecords(yearRecords.map((record) => record.nil)),
+      pickup: averageFromRecords(yearRecords.map((record) => record.quality_pickup)),
+      package: averageFromRecords(yearRecords.map((record) => record.quality_package)),
+    };
+
+    const deficitTotals = {
+      otif: Math.max(0, (target - (metricAverages.otif ?? 0))) * criteriaWeights.otif,
+      nil: Math.max(0, (target - (metricAverages.nil ?? 0))) * criteriaWeights.nil,
+      pickup: Math.max(0, (target - (metricAverages.pickup ?? 0))) * criteriaWeights.pickup,
+      package: Math.max(0, (target - (metricAverages.package ?? 0))) * criteriaWeights.package,
+    };
+    const totalDeficit = Object.values(deficitTotals).reduce((sum, value) => sum + value, 0);
+    const metricImpacts = {
+      otif: totalDeficit > 0 ? deficitTotals.otif / totalDeficit : 0,
+      nil: totalDeficit > 0 ? deficitTotals.nil / totalDeficit : 0,
+      pickup: totalDeficit > 0 ? deficitTotals.pickup / totalDeficit : 0,
+      package: totalDeficit > 0 ? deficitTotals.package / totalDeficit : 0,
+    };
+
     return {
       overallAverage: safeFormat(overallAverage),
       twelveMonthsAverage: safeFormat(twelveMonthsAverage),
@@ -228,6 +312,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       q2Trend: getTrend(q2Average, q1Average),
       q3Trend: getTrend(q3Average, q2Average),
       q4Trend: getTrend(q4Average, q3Average),
+      metricImpacts,
     };
   };
 
@@ -405,6 +490,45 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
             </div>
             <div className="quarterly-value">{formatMetric(metrics.q4Average)}</div>
             <div className="quarterly-period">Oct - Dec</div>
+          </div>
+        </div>
+
+        <div className="metrics-section-title metrics-impact-title">
+          <h3>Impacto na média</h3>
+          <i
+            className="bi bi-info-circle"
+            title="Mostra o quanto cada critério puxou o score para baixo (0 a 1)."
+          ></i>
+        </div>
+        <div className="metrics-impact-container">
+          <div className="metrics-impact-bars">
+            {[
+              { label: 'OTIF', impact: metrics.metricImpacts.otif },
+              { label: 'NIL', impact: metrics.metricImpacts.nil },
+              { label: 'PICKUP', impact: metrics.metricImpacts.pickup },
+              { label: 'PACKAGE', impact: metrics.metricImpacts.package },
+            ].map((metric) => {
+              const normalized = Math.min(1, Math.max(0, metric.impact));
+              const maxImpact = Math.max(
+                metrics.metricImpacts.otif,
+                metrics.metricImpacts.nil,
+                metrics.metricImpacts.pickup,
+                metrics.metricImpacts.package
+              );
+              const isImpactful = normalized === maxImpact && maxImpact > 0;
+
+              return (
+                <div key={metric.label} className={`metrics-impact-row ${isImpactful ? 'impactful' : ''}`}>
+                  <span className="metrics-impact-label">{metric.label}</span>
+                  <div className="metrics-impact-bar">
+                    <div
+                      className="metrics-impact-fill"
+                      style={{ width: `${normalized * 100}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

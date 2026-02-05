@@ -29,6 +29,7 @@ export interface Theme {
     sidebarActive: string;
     barBg: string;
     inputBg: string;
+    targetLineColor: string;
   };
 }
 
@@ -59,6 +60,7 @@ export const themes: Record<string, Theme> = {
       sidebarActive: "rgba(206, 17, 38, 0.25)",
       barBg: "#262626",
       inputBg: "#e5e7eb",
+      targetLineColor: "rgba(239, 68, 68, 0.45)",
     },
   },
   dark: {
@@ -87,6 +89,7 @@ export const themes: Record<string, Theme> = {
       sidebarActive: "rgba(59, 130, 246, 0.25)",
       barBg: "#1a1d24",
       inputBg: "#2d3139",
+      targetLineColor: "rgba(234, 179, 8, 0.45)",
     },
   },
   dracula: {
@@ -115,6 +118,7 @@ export const themes: Record<string, Theme> = {
       sidebarActive: "rgba(189, 147, 249, 0.25)",
       barBg: "#191a21",
       inputBg: "#44475a",
+      targetLineColor: "rgba(234, 179, 8, 0.45)",
     },
   },
 };

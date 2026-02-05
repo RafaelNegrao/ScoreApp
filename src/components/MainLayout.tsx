@@ -12,9 +12,12 @@ import { usePermissions } from "../contexts/PermissionsContext";
 function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { permissions } = usePermissions();
+  const { permissions, isSuperAdmin } = usePermissions();
   const [menuOpen, setMenuOpen] = useState(() => {
     return localStorage.getItem('menuOpen') === 'true';
+  });
+  const [allowEmailTab, setAllowEmailTab] = useState(() => {
+    return localStorage.getItem('allowEmailTab') === 'true';
   });
 
   // Efeito para aplicar estado inicial do menu
@@ -60,6 +63,15 @@ function MainLayout() {
     }
   }, [menuOpen]);
 
+  useEffect(() => {
+    const handleEmailTabChange = () => {
+      setAllowEmailTab(localStorage.getItem('allowEmailTab') === 'true');
+    };
+
+    window.addEventListener('emailTabChanged', handleEmailTabChange);
+    return () => window.removeEventListener('emailTabChanged', handleEmailTabChange);
+  }, []);
+
   const toggleMenu = () => {
     setMenuOpen(!menuOpen);
   };
@@ -70,6 +82,7 @@ function MainLayout() {
     { path: "/timeline", icon: "bi-clock-history", label: "Timeline", permission: permissions.canAccessTimeline },
     { path: "/contributors", icon: "bi-people", label: "Contributors", permission: permissions.canAccessContributors },
     { path: "/risks", icon: "bi-exclamation-triangle", label: "Risks", permission: permissions.canAccessRisks },
+    { path: "/email", icon: "bi-envelope", label: "Email", permission: permissions.canAccessEmail && (isSuperAdmin || allowEmailTab) },
   ];
   
   // Filtra apenas os itens que o usuário tem permissão

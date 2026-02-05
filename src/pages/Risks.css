@@ -155,6 +155,13 @@
   margin-bottom: 8px;
 }
 
+.risk-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .risk-card-content {
   display: flex;
   align-items: center;
@@ -199,14 +206,23 @@
   justify-content: center;
   transition: all 0.2s ease;
   flex-shrink: 0;
-  margin-left: auto;
   margin-right: -8px;
+}
+
+.chart-button i {
+  font-size: 18px;
 }
 
 .chart-button:hover {
   background: transparent;
   color: var(--accent-primary);
   transform: scale(1.05);
+}
+
+/* When supplier has actions, highlight the actions icon */
+.chart-button.has-actions,
+.chart-button.has-actions i {
+  color: var(--accent-primary);
 }
 
 .chart-button:active {
@@ -243,9 +259,103 @@
   color: var(--text-secondary);
 }
 
-.risk-card-info-stacked span {
+.risk-card-info-container {
+  background: var(--section-bg);
+  padding: 10px 12px;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+  min-width: 0;
+}
+
+.risk-card-info-stacked .meta-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.risk-card-info-stacked .meta-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+  min-width: 70px;
+}
+
+.risk-card-info-stacked .meta-value {
+  color: var(--text-primary);
   font-weight: 500;
-  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-card-info-stacked .meta-value.na {
+  color: var(--text-muted);
+  opacity: 0.65;
+}
+
+.risk-metric-container {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.risk-metric-container-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.risk-metric-container-header i {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.risk-metric-bars {
+  display: grid;
+  gap: 6px;
+}
+
+.risk-metric-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.risk-metric-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.4px;
+  min-width: 58px;
+}
+
+.risk-metric-bar {
+  position: relative;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+  flex: 1;
+}
+
+.risk-metric-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-primary);
+  transition: width 0.2s ease;
+}
+
+.risk-metric-row.impactful .risk-metric-label {
+  color: var(--text-primary);
+}
+
+.risk-metric-row.impactful .risk-metric-bar {
+  box-shadow: none;
 }
 
 /* Quarters */
@@ -384,14 +494,25 @@
   }
   
   .risk-page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
   }
   
   .risk-controls {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .risk-meta-badge {
+    padding: 6px 12px;
+    font-size: 12px;
+    margin-left: auto;
+  }
+
+  .risk-meta-badge i {
+    font-size: 14px;
   }
 }
 
