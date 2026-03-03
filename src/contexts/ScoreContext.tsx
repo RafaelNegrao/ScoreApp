@@ -32,7 +32,7 @@ export function ScoreProvider({ children }: { children: ReactNode }) {
   const [selectedSuppliers, setSelectedSuppliers] = useState<Set<string>>(new Set());
   const [selectedSuppliersData, setSelectedSuppliersData] = useState<Map<string, Supplier>>(new Map());
   const [selectedMonth, setSelectedMonth] = useState<string>('');
-  const [selectedYear, setSelectedYear] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [inputValues, setInputValues] = useState<Map<string, any>>(new Map());
   const [yearlyView, setYearlyView] = useState<boolean>(() => {

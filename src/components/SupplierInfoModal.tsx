@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import SupplierEditModal from './SupplierEditModal';
 import { usePermissions } from '../contexts/PermissionsContext';
+import { useToastContext } from '../contexts/ToastContext';
 import './SupplierInfoModal.css';
 
 interface ListItemThreeFields {
@@ -17,18 +17,129 @@ interface SupplierInfoModalProps {
   onEdit?: () => void;
 }
 
+interface SupplierUpdate {
+  supplier_id: string;
+  supplier_name: string;
+  supplier_po?: string;
+  bu?: string;
+  supplier_email?: string;
+  supplier_status?: string;
+  planner?: string;
+  country?: string;
+  supplier_category?: string;
+  continuity?: string;
+  sourcing?: string;
+  sqie?: string;
+  ssid?: string;
+}
+
+const emptyFormData: SupplierUpdate = {
+  supplier_id: '',
+  supplier_name: '',
+  supplier_po: '',
+  bu: '',
+  supplier_email: '',
+  supplier_status: '',
+  planner: '',
+  country: '',
+  supplier_category: '',
+  continuity: '',
+  sourcing: '',
+  sqie: '',
+  ssid: '',
+};
+
 const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier, onClose, onEdit }) => {
+  const { showToast } = useToastContext();
   const { permissions } = usePermissions();
-  const [planner, setPlanner] = useState<ListItemThreeFields | null>(null);
-  const [continuity, setContinuity] = useState<ListItemThreeFields | null>(null);
-  const [sourcing, setSourcing] = useState<ListItemThreeFields | null>(null);
-  const [sqie, setSqie] = useState<ListItemThreeFields | null>(null);
+  const [plannerList, setPlannerList] = useState<ListItemThreeFields[]>([]);
+  const [continuityList, setContinuityList] = useState<ListItemThreeFields[]>([]);
+  const [sourcingList, setSourcingList] = useState<ListItemThreeFields[]>([]);
+  const [sqieList, setSqieList] = useState<ListItemThreeFields[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [businessUnits, setBusinessUnits] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const [currentSupplier, setCurrentSupplier] = useState(supplier);
+  const [formData, setFormData] = useState<SupplierUpdate>(emptyFormData);
+  const [emailChips, setEmailChips] = useState<string[]>([]);
+  const [emailInput, setEmailInput] = useState('');
   const [allowSupplierEdit, setAllowSupplierEdit] = useState<boolean>(() => {
     return localStorage.getItem('allowSupplierEdit') === 'true';
   });
+
+  const mapSupplierToFormData = (supplierData: any): SupplierUpdate => ({
+    supplier_id: supplierData?.supplier_id || supplierData?.supplierId || '',
+    supplier_name: supplierData?.vendor_name || supplierData?.supplier_name || '',
+    supplier_po: supplierData?.supplier_po || '',
+    bu: supplierData?.bu || supplierData?.business_unit || '',
+    supplier_email: supplierData?.supplier_email || '',
+    supplier_status: supplierData?.supplier_status || '',
+    planner: supplierData?.planner || '',
+    country: supplierData?.country || '',
+    supplier_category: supplierData?.supplier_category || '',
+    continuity: supplierData?.continuity || '',
+    sourcing: supplierData?.sourcing || '',
+    sqie: supplierData?.sqie || '',
+    ssid: supplierData?.ssid || '',
+  });
+
+  const getResponsibleByName = (list: ListItemThreeFields[], name?: string) => {
+    if (!name) return null;
+    return list.find((item) => item.name === name) || null;
+  };
+
+  const splitEmails = (raw: string | undefined) => {
+    if (!raw) return [];
+    return raw
+      .split(/[;,\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
+
+  const syncEmailField = (chips: string[]) => {
+    const normalized = chips.join('; ');
+    setFormData((prev) => ({
+      ...prev,
+      supplier_email: normalized,
+    }));
+  };
+
+  const addEmailChip = (rawValue: string) => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) return;
+
+    const parts = splitEmails(trimmed);
+    if (parts.length === 0) return;
+
+    setEmailChips((prev) => {
+      const existing = new Set(prev.map((item) => item.toLowerCase()));
+      const next = [...prev];
+
+      for (const part of parts) {
+        const key = part.toLowerCase();
+        if (!existing.has(key)) {
+          existing.add(key);
+          next.push(part);
+        }
+      }
+
+      syncEmailField(next);
+      return next;
+    });
+
+    setEmailInput('');
+  };
+
+  const removeEmailChip = (target: string) => {
+    setEmailChips((prev) => {
+      const next = prev.filter((item) => item !== target);
+      syncEmailField(next);
+      return next;
+    });
+  };
 
   // Listener para mudanças na permissão de editar suppliers
   useEffect(() => {
@@ -62,32 +173,31 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
 
         setCurrentSupplier(resolvedSupplier);
 
-        // Carregar TODAS as listas de responsáveis
-        const [plannerList, continuityList, sourcingList, sqieList] = await Promise.all([
+        const [plannerData, continuityData, sourcingData, sqieData, businessUnitsData, categoriesData] = await Promise.all([
           invoke<ListItemThreeFields[]>('get_planner_list'),
           invoke<ListItemThreeFields[]>('get_continuity_list'),
           invoke<ListItemThreeFields[]>('get_sourcing_list'),
           invoke<ListItemThreeFields[]>('get_sqie_list'),
+          invoke<string[]>('get_business_units'),
+          invoke<string[]>('get_categories'),
         ]);
 
-        // Buscar os responsáveis específicos do fornecedor pelos nomes
-        const foundPlanner = plannerList.find(p => p.name === resolvedSupplier?.planner) || null;
-        const foundContinuity = continuityList.find(c => c.name === resolvedSupplier?.continuity) || null;
-        const foundSourcing = sourcingList.find(s => s.name === resolvedSupplier?.sourcing) || null;
-        const foundSqie = sqieList.find(sq => sq.name === resolvedSupplier?.sqie) || null;
-
-        setPlanner(foundPlanner);
-        setContinuity(foundContinuity);
-        setSourcing(foundSourcing);
-        setSqie(foundSqie);
+        setPlannerList(plannerData || []);
+        setContinuityList(continuityData || []);
+        setSourcingList(sourcingData || []);
+        setSqieList(sqieData || []);
+        setBusinessUnits(businessUnitsData || []);
+        setCategories(categoriesData || []);
+        setFormData(mapSupplierToFormData(resolvedSupplier));
+        setIsEditing(false);
 
       } catch (error) {
         console.error('Erro ao carregar responsáveis:', error);
-        // Em caso de erro, deixa tudo null
-        setPlanner(null);
-        setContinuity(null);
-        setSourcing(null);
-        setSqie(null);
+        setPlannerList([]);
+        setContinuityList([]);
+        setSourcingList([]);
+        setSqieList([]);
+        setFormData(mapSupplierToFormData(supplier));
       } finally {
         setLoading(false);
       }
@@ -96,83 +206,155 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
     loadSupplierData();
   }, [isOpen, supplier]);
 
-  const handleOpenEditModal = () => {
-    // Adicionar os responsáveis ao supplier antes de abrir o modal de edição
-    const supplierWithResponsibles = {
-      ...currentSupplier,
-      planner: planner?.name || currentSupplier.planner || '',
-      continuity: continuity?.name || currentSupplier.continuity || '',
-      sourcing: sourcing?.name || currentSupplier.sourcing || '',
-      sqie: sqie?.name || currentSupplier.sqie || ''
-    };
-    setCurrentSupplier(supplierWithResponsibles);
-    setIsEditModalOpen(true);
+  useEffect(() => {
+    if (isOpen) {
+      setIsClosing(false);
+    }
+  }, [isOpen, supplier]);
+
+  const handleInputChange = (field: keyof SupplierUpdate, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
-  const handleCloseEditModal = () => {
-    setIsEditModalOpen(false);
+  const handleStartEdit = () => {
+    const mapped = mapSupplierToFormData(currentSupplier);
+    setFormData(mapped);
+    setEmailChips(splitEmails(mapped.supplier_email));
+    setEmailInput('');
+    setIsEditing(true);
   };
 
-  const handleSaveSupplier = async (updatedSupplier: any) => {
-    setCurrentSupplier(updatedSupplier);
-    
-    // Recarregar os dados dos responsáveis após salvar
+  const handleCancelEdit = () => {
+    setFormData(mapSupplierToFormData(currentSupplier));
+    setEmailChips([]);
+    setEmailInput('');
+    setIsEditing(false);
+  };
+
+  const handleSaveSupplier = async () => {
+    if (!formData.supplier_name || formData.supplier_name.trim() === '') {
+      showToast('Nome do fornecedor é obrigatório', 'error');
+      return;
+    }
+
+    if (!formData.country || formData.country.trim() === '') {
+      showToast('Origem é obrigatória', 'error');
+      return;
+    }
+
+    if (formData.supplier_po && formData.supplier_po.trim() !== '') {
+      try {
+        const existingSupplier = await invoke<any>('check_po_exists', {
+          po: formData.supplier_po,
+          currentSupplierId: formData.supplier_id || '',
+        });
+
+        if (existingSupplier) {
+          showToast(`PO ${formData.supplier_po} já está sendo usado por ${existingSupplier.vendor_name}`, 'error');
+          return;
+        }
+      } catch (error) {
+        console.error('Erro ao verificar PO:', error);
+      }
+    }
+
     try {
-      const [plannerList, continuityList, sourcingList, sqieList] = await Promise.all([
-        invoke<ListItemThreeFields[]>('get_planner_list'),
-        invoke<ListItemThreeFields[]>('get_continuity_list'),
-        invoke<ListItemThreeFields[]>('get_sourcing_list'),
-        invoke<ListItemThreeFields[]>('get_sqie_list'),
-      ]);
+      setIsSaving(true);
+      await invoke('update_supplier_data', { supplier: formData });
 
-      const foundPlanner = plannerList.find(p => p.name === updatedSupplier.planner) || null;
-      const foundContinuity = continuityList.find(c => c.name === updatedSupplier.continuity) || null;
-      const foundSourcing = sourcingList.find(s => s.name === updatedSupplier.sourcing) || null;
-      const foundSqie = sqieList.find(sq => sq.name === updatedSupplier.sqie) || null;
+      const updatedSupplier = {
+        ...currentSupplier,
+        ...formData,
+        vendor_name: formData.supplier_name,
+        business_unit: formData.bu,
+      };
 
-      setPlanner(foundPlanner);
-      setContinuity(foundContinuity);
-      setSourcing(foundSourcing);
-      setSqie(foundSqie);
+      setCurrentSupplier(updatedSupplier);
+      setEmailChips([]);
+      setEmailInput('');
+      setIsEditing(false);
+      showToast('Fornecedor atualizado com sucesso!', 'success');
+
+      if (onEdit) {
+        onEdit();
+      }
     } catch (error) {
-      console.error('Erro ao recarregar responsáveis:', error);
+      console.error('Erro ao atualizar fornecedor:', error);
+      showToast('Erro ao atualizar fornecedor', 'error');
+    } finally {
+      setIsSaving(false);
     }
-    
-    if (onEdit) {
-      onEdit();
-    }
+  };
+
+  const requestClose = () => {
+    if (isClosing) return;
+    setIsClosing(true);
+    window.setTimeout(() => {
+      onClose();
+    }, 220);
   };
 
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Fecha o modal apenas se clicar no overlay, não no conteúdo
     if (e.target === e.currentTarget) {
-      onClose();
+      requestClose();
     }
   };
+
+  const planner = getResponsibleByName(plannerList, isEditing ? formData.planner : currentSupplier?.planner);
+  const continuity = getResponsibleByName(continuityList, isEditing ? formData.continuity : currentSupplier?.continuity);
+  const sourcing = getResponsibleByName(sourcingList, isEditing ? formData.sourcing : currentSupplier?.sourcing);
+  const sqie = getResponsibleByName(sqieList, isEditing ? formData.sqie : currentSupplier?.sqie);
 
   if (!isOpen || !supplier) return null;
 
   return (
     <>
-      <div className="supplier-info-modal-overlay" onClick={handleOverlayClick}>
-        <div className="supplier-info-modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`supplier-info-modal-overlay ${isClosing ? 'closing' : 'open'}`} onClick={handleOverlayClick}>
+        <div className={`supplier-info-modal ${isClosing ? 'closing' : 'open'}`} onClick={(e) => e.stopPropagation()}>
           <div className="supplier-info-header">
             <span className="supplier-info-title">
-              <i className="bi bi-buildings"></i> {currentSupplier.vendor_name}
+              <i className="bi bi-buildings"></i> {isEditing ? (formData.supplier_name || currentSupplier.vendor_name) : currentSupplier.vendor_name}
             </span>
             <div className="supplier-info-header-actions">
               {(permissions.canManageSuppliers || allowSupplierEdit) && (
-                <button className="supplier-info-edit" onClick={handleOpenEditModal} title="Editar">
-                  <i className="bi bi-pencil"></i>
+                isEditing ? (
+                  <>
+                    <button
+                      className="supplier-info-header-btn supplier-info-header-cancel"
+                      onClick={handleCancelEdit}
+                      disabled={isSaving}
+                      title="Cancelar"
+                    >
+                      <i className="bi bi-x-lg"></i>
+                    </button>
+                    <button
+                      className="supplier-info-header-btn supplier-info-header-save"
+                      onClick={handleSaveSupplier}
+                      disabled={isSaving}
+                      title="Salvar"
+                    >
+                      <i className="bi bi-check-lg"></i>
+                    </button>
+                  </>
+                ) : (
+                  <button className="supplier-info-edit" onClick={handleStartEdit} title="Editar">
+                    <i className="bi bi-pencil"></i>
+                  </button>
+                )
+              )}
+              {!isEditing && (
+                <button className="supplier-info-close" onClick={requestClose}>
+                  <i className="bi bi-x-lg"></i>
                 </button>
               )}
-              <button className="supplier-info-close" onClick={onClose}>
-                <i className="bi bi-x-lg"></i>
-              </button>
             </div>
           </div>
           <div className="supplier-info-main">
             <div className="supplier-info-scrollable">
+              <div className="supplier-info-section-title">Infos</div>
               <div className="supplier-info-fields">
               <div className="supplier-info-row">
                 <div className="supplier-info-item">
@@ -180,45 +362,180 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                   <span className="supplier-info-value">{currentSupplier.supplier_id}</span>
                 </div>
                 <div className="supplier-info-item">
-                  <span className="supplier-info-label">Categoria:</span>
-                  <span className="supplier-info-value">{currentSupplier.supplier_category || '-'}</span>
+                  <span className="supplier-info-label">Fornecedor:</span>
+                  {isEditing ? (
+                    <input
+                      className="supplier-info-inline-input"
+                      value={formData.supplier_name || ''}
+                      onChange={(e) => handleInputChange('supplier_name', e.target.value)}
+                      placeholder="Nome do fornecedor"
+                    />
+                  ) : (
+                    <span className="supplier-info-value">{currentSupplier.vendor_name || '-'}</span>
+                  )}
                 </div>
               </div>
 
               <div className="supplier-info-row">
+                <div className="supplier-info-item">
+                  <span className="supplier-info-label">Categoria:</span>
+                  {isEditing ? (
+                    <div className="supplier-info-inline-select-wrapper">
+                      <select
+                        className="supplier-info-inline-select"
+                        value={formData.supplier_category || ''}
+                        onChange={(e) => handleInputChange('supplier_category', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        {categories.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <i className="bi bi-chevron-down"></i>
+                    </div>
+                  ) : (
+                    <span className="supplier-info-value">{currentSupplier.supplier_category || '-'}</span>
+                  )}
+                </div>
                 <div className="supplier-info-item">
                   <span className="supplier-info-label">BU:</span>
-                  <span className="supplier-info-value">{currentSupplier.bu || currentSupplier.business_unit || '-'}</span>
+                  {isEditing ? (
+                    <div className="supplier-info-inline-select-wrapper">
+                      <select
+                        className="supplier-info-inline-select"
+                        value={formData.bu || ''}
+                        onChange={(e) => handleInputChange('bu', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        {businessUnits.map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                      <i className="bi bi-chevron-down"></i>
+                    </div>
+                  ) : (
+                    <span className="supplier-info-value">{currentSupplier.bu || currentSupplier.business_unit || '-'}</span>
+                  )}
                 </div>
+              </div>
+
+              <div className="supplier-info-row">
                 <div className="supplier-info-item">
                   <span className="supplier-info-label">Origem:</span>
-                  <span className="supplier-info-value">{currentSupplier.country || '-'}</span>
+                  {isEditing ? (
+                    <div className="supplier-info-inline-select-wrapper">
+                      <select
+                        className="supplier-info-inline-select"
+                        value={formData.country || ''}
+                        onChange={(e) => handleInputChange('country', e.target.value)}
+                      >
+                        <option value="">Selecione</option>
+                        <option value="Nacional">Nacional</option>
+                        <option value="Importado">Importado</option>
+                      </select>
+                      <i className="bi bi-chevron-down"></i>
+                    </div>
+                  ) : (
+                    <span className="supplier-info-value">{currentSupplier.country || '-'}</span>
+                  )}
                 </div>
-              </div>
-
-              <div className="supplier-info-row">
                 <div className="supplier-info-item">
                   <span className="supplier-info-label">SSID:</span>
-                  <span className="supplier-info-value">{currentSupplier.ssid || '-'}</span>
-                </div>
-                <div className="supplier-info-item">
-                  <span className="supplier-info-label">PO:</span>
-                  <span className="supplier-info-value">{currentSupplier.supplier_po || '-'}</span>
+                  {isEditing ? (
+                    <input
+                      className="supplier-info-inline-input"
+                      value={formData.ssid || ''}
+                      onChange={(e) => handleInputChange('ssid', e.target.value)}
+                      placeholder="SSID"
+                    />
+                  ) : (
+                    <span className="supplier-info-value">{currentSupplier.ssid || '-'}</span>
+                  )}
                 </div>
               </div>
 
               <div className="supplier-info-row">
                 <div className="supplier-info-item">
+                  <span className="supplier-info-label">PO:</span>
+                  {isEditing ? (
+                    <input
+                      className="supplier-info-inline-input"
+                      value={formData.supplier_po || ''}
+                      onChange={(e) => handleInputChange('supplier_po', e.target.value)}
+                      placeholder="PO"
+                    />
+                  ) : (
+                    <span className="supplier-info-value">{currentSupplier.supplier_po || '-'}</span>
+                  )}
+                </div>
+                <div className="supplier-info-item">
                   <span className="supplier-info-label">Status:</span>
-                  <span className="supplier-info-value">{currentSupplier.supplier_status || '-'}</span>
+                  {isEditing ? (
+                    <div className="supplier-info-inline-select-wrapper">
+                      <select
+                        className="supplier-info-inline-select"
+                        value={formData.supplier_status || ''}
+                        onChange={(e) => handleInputChange('supplier_status', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                      </select>
+                      <i className="bi bi-chevron-down"></i>
+                    </div>
+                  ) : (
+                    <span className="supplier-info-value">{currentSupplier.supplier_status || '-'}</span>
+                  )}
                 </div>
               </div>
 
+              <div className="supplier-info-section-title supplier-info-section-title-contact">Contatos</div>
               <div className="supplier-info-email">
-                <span className="supplier-info-label supplier-info-email-label">Email</span>
                 <div className="supplier-info-email-box">
-                  {currentSupplier.supplier_email ? (
-                    <span className="supplier-info-email-value">{currentSupplier.supplier_email}</span>
+                  {isEditing ? (
+                    <div className="supplier-info-email-chips-box">
+                      <div className="supplier-info-email-chips-list">
+                        {emailChips.map((email) => (
+                          <span key={email} className="supplier-info-email-chip">
+                            <span>{email}</span>
+                            <button
+                              type="button"
+                              className="supplier-info-email-chip-remove"
+                              onClick={() => removeEmailChip(email)}
+                              title="Remover email"
+                            >
+                              <i className="bi bi-x"></i>
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <input
+                        className="supplier-info-inline-input supplier-info-email-chip-input"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ';' || e.key === ',') {
+                            e.preventDefault();
+                            addEmailChip(emailInput);
+                          }
+
+                          if (e.key === 'Backspace' && !emailInput && emailChips.length > 0) {
+                            e.preventDefault();
+                            removeEmailChip(emailChips[emailChips.length - 1]);
+                          }
+                        }}
+                        onBlur={() => addEmailChip(emailInput)}
+                        placeholder="Digite email e pressione Enter"
+                      />
+                    </div>
+                  ) : splitEmails(currentSupplier.supplier_email).length > 0 ? (
+                    <div className="supplier-info-email-chips-list">
+                      {splitEmails(currentSupplier.supplier_email).map((email) => (
+                        <span key={email} className="supplier-info-email-chip supplier-info-email-chip-readonly">
+                          <span>{email}</span>
+                        </span>
+                      ))}
+                    </div>
                   ) : (
                     <span className="supplier-info-email-placeholder">-</span>
                   )}
@@ -228,6 +545,7 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
             </div>
           
             <div className="supplier-info-responsibles">
+            <div className="supplier-info-section-title">Responsáveis Cummins</div>
             {loading ? (
               <div style={{ textAlign: 'center', padding: '20px' }}>
                 <i className="bi bi-arrow-repeat spin"></i> Carregando...
@@ -240,7 +558,23 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                     <i className="bi bi-person-badge"></i>
                     Planner
                   </span>
-                  <div className="responsible-name">{planner?.name || '-'}</div>
+                  {isEditing ? (
+                    <div className="supplier-info-inline-select-wrapper">
+                      <select
+                        className="supplier-info-inline-select"
+                        value={formData.planner || ''}
+                        onChange={(e) => handleInputChange('planner', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        {plannerList.map((item) => (
+                          <option key={item.name} value={item.name}>{item.name}</option>
+                        ))}
+                      </select>
+                      <i className="bi bi-chevron-down"></i>
+                    </div>
+                  ) : (
+                    <div className="responsible-name">{planner?.name || '-'}</div>
+                  )}
                   <div className="responsible-divider"></div>
                   <div className="responsible-info">
                     <div>
@@ -260,7 +594,23 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                     <i className="bi bi-lightning-charge"></i>
                     Continuity
                   </span>
-                  <div className="responsible-name">{continuity?.name || '-'}</div>
+                  {isEditing ? (
+                    <div className="supplier-info-inline-select-wrapper">
+                      <select
+                        className="supplier-info-inline-select"
+                        value={formData.continuity || ''}
+                        onChange={(e) => handleInputChange('continuity', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        {continuityList.map((item) => (
+                          <option key={item.name} value={item.name}>{item.name}</option>
+                        ))}
+                      </select>
+                      <i className="bi bi-chevron-down"></i>
+                    </div>
+                  ) : (
+                    <div className="responsible-name">{continuity?.name || '-'}</div>
+                  )}
                   <div className="responsible-divider"></div>
                   <div className="responsible-info">
                     <div>
@@ -280,7 +630,23 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                     <i className="bi bi-cart"></i>
                     Sourcing
                   </span>
-                  <div className="responsible-name">{sourcing?.name || '-'}</div>
+                  {isEditing ? (
+                    <div className="supplier-info-inline-select-wrapper">
+                      <select
+                        className="supplier-info-inline-select"
+                        value={formData.sourcing || ''}
+                        onChange={(e) => handleInputChange('sourcing', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        {sourcingList.map((item) => (
+                          <option key={item.name} value={item.name}>{item.name}</option>
+                        ))}
+                      </select>
+                      <i className="bi bi-chevron-down"></i>
+                    </div>
+                  ) : (
+                    <div className="responsible-name">{sourcing?.name || '-'}</div>
+                  )}
                   <div className="responsible-divider"></div>
                   <div className="responsible-info">
                     <div>
@@ -300,7 +666,23 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                     <i className="bi bi-patch-check"></i>
                     SQIE
                   </span>
-                  <div className="responsible-name">{sqie?.name || '-'}</div>
+                  {isEditing ? (
+                    <div className="supplier-info-inline-select-wrapper">
+                      <select
+                        className="supplier-info-inline-select"
+                        value={formData.sqie || ''}
+                        onChange={(e) => handleInputChange('sqie', e.target.value)}
+                      >
+                        <option value="">-</option>
+                        {sqieList.map((item) => (
+                          <option key={item.name} value={item.name}>{item.name}</option>
+                        ))}
+                      </select>
+                      <i className="bi bi-chevron-down"></i>
+                    </div>
+                  ) : (
+                    <div className="responsible-name">{sqie?.name || '-'}</div>
+                  )}
                   <div className="responsible-divider"></div>
                   <div className="responsible-info">
                     <div>
@@ -319,13 +701,6 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
           </div>
         </div>
       </div>
-
-    <SupplierEditModal
-      isOpen={isEditModalOpen}
-      supplier={currentSupplier}
-      onClose={handleCloseEditModal}
-      onSave={handleSaveSupplier}
-    />
   </>
   );
 };

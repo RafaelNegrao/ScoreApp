@@ -13,36 +13,92 @@
   animation: spin 1s linear infinite;
 }
 
+@keyframes supplierSidebarIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0.96;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes supplierSidebarOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0.96;
+  }
+}
+
+@keyframes supplierOverlayIn {
+  from {
+    background: rgba(0, 0, 0, 0);
+  }
+  to {
+    background: rgba(0, 0, 0, 0.34);
+  }
+}
+
+@keyframes supplierOverlayOut {
+  from {
+    background: rgba(0, 0, 0, 0.34);
+  }
+  to {
+    background: rgba(0, 0, 0, 0);
+  }
+}
+
 /* ==================== MODAL ==================== */
 
 /* Overlay escurecido */
 .supplier-info-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.55);
+  background: rgba(0, 0, 0, 0.34);
   z-index: 9999;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: flex-end;
   transition: background 0.2s;
+}
+
+.supplier-info-modal-overlay.open {
+  animation: supplierOverlayIn 0.22s ease-out;
+}
+
+.supplier-info-modal-overlay.closing {
+  animation: supplierOverlayOut 0.22s ease-in forwards;
 }
 
 /* Modal principal */
 .supplier-info-modal {
   background: var(--bg-primary, #1e293b);
   color: var(--text-primary, #f1f5f9);
-  border-radius: 18px;
+  border-radius: 0;
   box-shadow: 0 8px 32px rgba(0,0,0,0.28);
-  width: 700px;
-  max-width: 90vw;
-  min-height: 450px;
-  max-height: 85vh;
+  width: min(780px, 52vw);
+  min-width: 520px;
+  height: 100vh;
+  max-height: 100vh;
   padding: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1.5px solid transparent;
+  border-left: 1px solid var(--border-color, #334155);
   transition: background 0.2s, color 0.2s;
+}
+
+.supplier-info-modal.open {
+  animation: supplierSidebarIn 0.22s ease-out;
+}
+
+.supplier-info-modal.closing {
+  animation: supplierSidebarOut 0.22s ease-in forwards;
 }
 
 /* Tema Cummins (branco) - fundo mais escuro */
@@ -60,7 +116,7 @@
   align-items: center;
   justify-content: space-between;
   background: var(--bg-secondary, #0f172a);
-  padding: 14px 24px 8px 24px;
+  padding: 14px 20px 10px 20px;
   font-size: 0.95rem;
   font-weight: 600;
   border-bottom: 1px solid var(--border-color, #334155);
@@ -93,6 +149,131 @@
   color: var(--accent-primary);
   background: rgba(139, 92, 246, 0.08);
 }
+
+/* Botões salvar/cancelar no header */
+.supplier-info-header-btn {
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 700;
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, transform 0.2s, background 0.2s;
+}
+.supplier-info-header-btn:hover {
+  opacity: 0.92;
+}
+.supplier-info-header-btn:active {
+  transform: translateY(1px);
+}
+.supplier-info-header-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+.supplier-info-header-save {
+  background: #16a34a;
+  color: #ffffff;
+}
+.supplier-info-header-save:hover {
+  background: #15803d;
+}
+.supplier-info-header-cancel {
+  background: #334155;
+  color: #ffffff;
+}
+.supplier-info-header-cancel:hover {
+  background: #475569;
+}
+
+.supplier-info-save,
+.supplier-info-cancel {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition: color 0.18s;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.supplier-info-save:hover {
+  color: var(--accent-primary);
+  background: rgba(139, 92, 246, 0.08);
+}
+.supplier-info-cancel:hover {
+  color: var(--danger, #e74c3c);
+  background: rgba(231,76,60,0.08);
+}
+.supplier-info-save:disabled,
+.supplier-info-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.supplier-info-footer-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 12px 20px 14px 20px;
+  border-top: 1px solid var(--border-color, #334155);
+  background: var(--bg-primary, #1e293b);
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
+.supplier-info-footer-btn {
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  width: 40px;
+  height: 34px;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, transform 0.2s, background 0.2s;
+}
+
+.supplier-info-footer-btn:hover {
+  opacity: 0.92;
+}
+
+.supplier-info-footer-btn:active {
+  transform: translateY(1px);
+}
+
+.supplier-info-footer-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.supplier-info-footer-save {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.supplier-info-footer-cancel {
+  background: #334155;
+  color: #ffffff;
+}
+
+.supplier-info-footer-save:hover {
+  background: #15803d;
+}
+
+.supplier-info-footer-cancel:hover {
+  background: #475569;
+}
 .supplier-info-close {
   background: none;
   border: none;
@@ -110,20 +291,22 @@
 
 /* Conteúdo principal */
 .supplier-info-main {
-  padding: 0;
+  padding: 0 0 12px 0;
   flex: 1;
   background: var(--bg-primary, #1e293b);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
   box-sizing: border-box;
 }
 
 .supplier-info-scrollable {
-  padding: 18px 24px 18px 24px;
-  overflow-y: auto;
-  flex-shrink: 0;
-  max-height: 35vh;
+  padding: 14px 20px 12px 20px;
+  overflow: visible;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
 }
 .supplier-info-name {
@@ -133,25 +316,48 @@
   color: var(--accent-primary);
   letter-spacing: 0.01em;
 }
+
+.supplier-info-section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 2px 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color, #334155);
+}
+
+.supplier-info-section-title-contact {
+  margin-top: 14px;
+  flex-shrink: 0;
+}
 .supplier-info-fields {
   display: flex;
   flex-direction: column;
   gap: 14px;
   margin-bottom: 0;
+  flex: 1;
+  min-height: 0;
 }
 .supplier-info-row {
-  display: flex;
-  gap: clamp(16px, 6vw, 64px);
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  align-items: start;
+  flex-shrink: 0;
 }
 .supplier-info-item {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   min-width: 0;
   font-size: 0.8rem;
   color: var(--text-primary, #f1f5f9);
-  flex: 1 1 220px;
+  background: var(--bg-secondary, #0f172a);
+  border-radius: 8px;
+  padding: 8px 12px;
 }
 
 /* Tema Cummins - adicionar borda aos campos */
@@ -161,6 +367,10 @@
   padding: 8px 12px;
   background: #d1d5db;
 }
+
+[data-theme="cummins"] .supplier-info-footer-actions {
+  background: #e9ecef;
+}
 .supplier-info-label {
   color: var(--accent-primary);
   font-weight: 600;
@@ -168,12 +378,15 @@
   text-transform: uppercase;
   letter-spacing: 0.02em;
   opacity: 0.92;
+  display: block;
 }
 .supplier-info-value {
   color: var(--text-secondary, #cbd5e1);
   font-size: 0.8rem;
   line-height: 1.4;
   word-break: break-word;
+  display: block;
+  width: 100%;
 }
 .supplier-info-email {
   display: flex;
@@ -181,6 +394,8 @@
   gap: 8px;
   font-size: 0.8rem;
   color: var(--text-primary, #f1f5f9);
+  flex: 1;
+  min-height: 0;
 }
 .supplier-info-email-box {
   background: var(--bg-secondary, #0f172a);
@@ -190,7 +405,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 12px;
-  min-height: 52px;
+  flex: 1;
+  min-height: 0;
   box-sizing: border-box;
 }
 
@@ -209,9 +425,137 @@
   color: var(--text-secondary, #cbd5e1);
 }
 
+.supplier-info-inline-input,
+.supplier-info-inline-select,
+.supplier-info-inline-textarea {
+  width: 100%;
+  background: var(--bg-secondary, #0f172a);
+  border: 1px solid var(--border-color, #334155);
+  color: var(--text-primary, #f1f5f9);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  padding: 7px 10px;
+  box-sizing: border-box;
+}
+
+.supplier-info-inline-input:focus,
+.supplier-info-inline-select:focus,
+.supplier-info-inline-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.supplier-info-inline-textarea {
+  resize: vertical;
+  min-height: 92px;
+}
+
+.supplier-info-email-chips-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.supplier-info-email-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+  align-content: flex-start;
+}
+
+.supplier-info-email-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-primary);
+  color: var(--bg-primary, #1e293b);
+  border: 1px solid var(--accent-primary);
+  border-radius: 999px;
+  padding: 4px 8px;
+  max-width: 100%;
+  font-size: 0.78rem;
+}
+
+.supplier-info-email-chip-readonly {
+  padding: 5px 10px;
+}
+
+.supplier-info-email-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.supplier-info-email-chip-remove {
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.supplier-info-email-chip-remove:hover {
+  color: #ffffff;
+  opacity: 0.85;
+}
+
+.supplier-info-email-chip-input {
+  width: 100%;
+  margin-top: auto;
+}
+
+.supplier-info-inline-select-wrapper {
+  width: 100%;
+  position: relative;
+}
+
+.supplier-info-inline-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 28px;
+}
+
+.supplier-info-inline-select-wrapper i {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+[data-theme="cummins"] .supplier-info-inline-input,
+[data-theme="cummins"] .supplier-info-inline-select,
+[data-theme="cummins"] .supplier-info-inline-textarea {
+  background: #d1d5db;
+  border: 1px solid #b8bec6;
+  color: #1f2937;
+}
+
+[data-theme="cummins"] .supplier-info-email-chip {
+  background: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  color: #ffffff;
+}
+
+[data-theme="cummins"] .supplier-info-section-title {
+  color: #d62027;
+}
+
 /* Responsáveis */
 .supplier-info-responsibles {
-  padding: 18px 24px;
+  padding: 8px 20px 12px 20px;
   color: var(--text-primary, #f1f5f9);
   flex-shrink: 0;
   overflow: visible;
@@ -296,24 +640,30 @@
 
 @media (max-width: 768px) {
   .supplier-info-modal {
-    min-width: 96vw;
+    min-width: 100vw;
+    width: 100vw;
+    border-left: none;
     padding: 0;
   }
   .supplier-info-main {
-    padding: 12px 6px 12px 6px;
-    max-height: 54vh;
+    padding: 0 0 8px 0;
+    max-height: 100vh;
   }
-  .supplier-info-footer, .supplier-info-header {
-    padding-left: 8px;
-    padding-right: 8px;
+  .supplier-info-header {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .supplier-info-scrollable,
+  .supplier-info-responsibles {
+    padding-left: 12px;
+    padding-right: 12px;
   }
   .supplier-info-row {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 8px;
   }
   .supplier-info-item,
   .supplier-info-email {
-    flex-direction: column;
     gap: 8px;
   }
   .responsibles-grid {

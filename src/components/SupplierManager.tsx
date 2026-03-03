@@ -4,6 +4,7 @@ import { useToastContext } from '../contexts/ToastContext';
 import SupplierEditModal from './SupplierEditModal';
 import ImportSupplierModal from './ImportSupplierModal';
 import DeleteModal from '../utils/DeleteModal';
+import './SupplierManager.css';
 
 
 interface Supplier {
@@ -65,7 +66,9 @@ function SupplierManager() {
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
   const [deleteCode, setDeleteCode] = useState('');
   const [deleteInput, setDeleteInput] = useState('');
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [emailChipsMap, setEmailChipsMap] = useState<Map<string, string[]>>(new Map());
+  const [emailInputMap, setEmailInputMap] = useState<Map<string, string>>(new Map());
   const { showToast } = useToastContext();
 
   // Estados para dropdowns
@@ -362,18 +365,68 @@ function SupplierManager() {
 
 
 
-  const scrollLeft = () => {
-    if (scrollContainerRef.current) {
-      const containerWidth = scrollContainerRef.current.offsetWidth;
-      scrollContainerRef.current.scrollBy({ left: -containerWidth, behavior: 'smooth' });
-    }
+  const splitEmails = (raw: string | undefined): string[] => {
+    if (!raw) return [];
+    return raw.split(/[;,\n]/).map(s => s.trim()).filter(Boolean);
   };
 
-  const scrollRight = () => {
-    if (scrollContainerRef.current) {
-      const containerWidth = scrollContainerRef.current.offsetWidth;
-      scrollContainerRef.current.scrollBy({ left: containerWidth, behavior: 'smooth' });
-    }
+  const initEmailChips = (supplierId: string, emailStr: string) => {
+    const chips = splitEmails(emailStr);
+    setEmailChipsMap(prev => new Map(prev).set(supplierId, chips));
+    setEmailInputMap(prev => new Map(prev).set(supplierId, ''));
+  };
+
+  const addEmailChip = (supplier: Supplier, rawValue: string) => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) return;
+    const parts = splitEmails(trimmed);
+    if (parts.length === 0) return;
+
+    setEmailChipsMap(prev => {
+      const current = prev.get(supplier.supplier_id) || [];
+      const existing = new Set(current.map(e => e.toLowerCase()));
+      const next = [...current];
+      for (const part of parts) {
+        if (!existing.has(part.toLowerCase())) {
+          existing.add(part.toLowerCase());
+          next.push(part);
+        }
+      }
+      const updated = new Map(prev).set(supplier.supplier_id, next);
+      // Sync to formData
+      const normalized = next.join('; ');
+      handleFieldChange(supplier, 'supplier_email', normalized);
+      return updated;
+    });
+    setEmailInputMap(prev => new Map(prev).set(supplier.supplier_id, ''));
+  };
+
+  const removeEmailChip = (supplier: Supplier, target: string) => {
+    setEmailChipsMap(prev => {
+      const current = prev.get(supplier.supplier_id) || [];
+      const next = current.filter(e => e !== target);
+      const updated = new Map(prev).set(supplier.supplier_id, next);
+      const normalized = next.join('; ');
+      handleFieldChange(supplier, 'supplier_email', normalized);
+      return updated;
+    });
+  };
+
+  const toggleRowExpanded = (supplierId: string, supplier: Supplier) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(supplierId)) {
+        next.delete(supplierId);
+      } else {
+        next.add(supplierId);
+        // Init chips when expanding
+        const emailStr = selectedSupplier?.supplier_id === supplierId
+          ? formData.supplier_email
+          : supplier.supplier_email || '';
+        initEmailChips(supplierId, emailStr || '');
+      }
+      return next;
+    });
   };
 
   const handleExportSuppliers = async () => {
@@ -454,323 +507,307 @@ function SupplierManager() {
         </div>
       </div>
 
-      {/* Carousel de Fornecedores */}
+      {/* Tabela de Fornecedores */}
       {isSearching ? (
-        <div className="supplier-carousel-container">
-          <div className="supplier-carousel">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="supplier-card skeleton-card">
-                <div className="supplier-card-header">
-                  <div className="skeleton skeleton-title"></div>
-                  <div className="skeleton skeleton-subtitle"></div>
-                </div>
-                <div className="supplier-card-body">
-                  <div className="skeleton skeleton-line"></div>
-                  <div className="skeleton skeleton-line"></div>
-                  <div className="skeleton skeleton-line"></div>
-                  <div className="skeleton skeleton-line"></div>
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="supplier-table-container">
+          <table className="supplier-table">
+            <thead>
+              <tr>
+                <th className="col-arrow"></th>
+                <th className="col-id">ID</th>
+                <th className="col-name">Nome</th>
+                <th className="col-status">Status</th>
+                <th className="col-po">PO</th>
+                <th className="col-bu">BU</th>
+                <th className="col-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[1, 2, 3].map((i) => (
+                <tr key={i} className="supplier-row skeleton-row">
+                  <td><div className="skeleton skeleton-sm"></div></td>
+                  <td><div className="skeleton skeleton-sm"></div></td>
+                  <td><div className="skeleton skeleton-md"></div></td>
+                  <td><div className="skeleton skeleton-sm"></div></td>
+                  <td><div className="skeleton skeleton-sm"></div></td>
+                  <td><div className="skeleton skeleton-sm"></div></td>
+                  <td><div className="skeleton skeleton-sm"></div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : suppliers.length > 0 ? (
-        <div className="supplier-carousel-container">
-          <button className="carousel-nav carousel-nav-left" onClick={scrollLeft}>
-            <i className="bi bi-chevron-left"></i>
-          </button>
+        <div className="supplier-table-container">
+          <table className="supplier-table">
+            <thead>
+              <tr>
+                <th className="col-arrow"></th>
+                <th className="col-id">ID</th>
+                <th className="col-name">Nome</th>
+                <th className="col-status">Status</th>
+                <th className="col-po">PO</th>
+                <th className="col-bu">BU</th>
+                <th className="col-actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {suppliers.map((supplier) => {
+                const isExpanded = expandedRows.has(supplier.supplier_id);
+                const isSelected = selectedSupplier?.supplier_id === supplier.supplier_id;
+                const statusValue = isSelected ? formData.supplier_status : supplier.supplier_status || '';
+                const poValue = isSelected ? formData.supplier_po : supplier.supplier_po || '';
+                const buValue = isSelected ? formData.bu : supplier.bu || '';
 
-          <div className="supplier-carousel" ref={scrollContainerRef}>
-            {suppliers.map((supplier) => (
-              <div
-                key={supplier.supplier_id}
-                className={`supplier-card ${
-                  selectedSupplier?.supplier_id === supplier.supplier_id ? 'selected' : ''
-                }`}
-              >
-                <div className="supplier-card-header">
-                  <div className="supplier-card-title">
-                    <i className="bi bi-building-fill"></i>
-                    <h3 
-                      className="supplier-card-name" 
-                      title={supplier.vendor_name || 'Sem Nome'}
+                return (
+                  <>
+                    <tr
+                      key={supplier.supplier_id}
+                      className={`supplier-row ${isExpanded ? 'expanded' : ''}`}
+                      onClick={() => {
+                        toggleRowExpanded(supplier.supplier_id, supplier);
+                        if (!isSelected) handleSelectSupplier(supplier);
+                      }}
                     >
-                      {supplier.vendor_name || 'Sem Nome'}
-                    </h3>
-                    <span className="supplier-card-id">#{supplier.supplier_id}</span>
-                  </div>
-                  <div className="supplier-card-actions-header">
-                    {savingSuppliers.has(supplier.supplier_id) && (
-                      <span className="auto-save-indicator">
-                        <i className="bi bi-arrow-repeat spin"></i>
-                        Salvando...
-                      </span>
+                      <td className="col-arrow">
+                        <i className={`bi bi-chevron-${isExpanded ? 'down' : 'right'} row-expand-icon`}></i>
+                      </td>
+                      <td className="col-id">{supplier.supplier_id}</td>
+                      <td className="col-name" title={supplier.vendor_name || 'Sem Nome'}>
+                        {supplier.vendor_name || 'Sem Nome'}
+                      </td>
+                      <td className="col-status">
+                        <span className={`status-badge ${(statusValue || '').toLowerCase()}`}>
+                          {statusValue || '—'}
+                        </span>
+                      </td>
+                      <td className="col-po">{poValue || '—'}</td>
+                      <td className="col-bu">{buValue || '—'}</td>
+                      <td className="col-actions" onClick={(e) => e.stopPropagation()}>
+                        {savingSuppliers.has(supplier.supplier_id) && (
+                          <span className="auto-save-indicator">
+                            <i className="bi bi-arrow-repeat spin"></i>
+                          </span>
+                        )}
+                        <button
+                          className="btn-icon-action btn-delete"
+                          onClick={() => handleRequestDelete(supplier)}
+                          title="Excluir"
+                        >
+                          <i className="bi bi-trash3"></i>
+                        </button>
+                      </td>
+                    </tr>
+
+                    {isExpanded && (
+                      <tr key={`${supplier.supplier_id}-expanded`} className="supplier-expanded-row">
+                        <td colSpan={7}>
+                          <div className="supplier-expanded-content">
+                            <div className="expanded-fields-grid">
+                              <div className="form-field-inline">
+                                <label>Status</label>
+                                <div className="custom-select-wrapper">
+                                  <select
+                                    value={isSelected ? formData.supplier_status : supplier.supplier_status || ''}
+                                    onChange={(e) => handleFieldChange(supplier, 'supplier_status', e.target.value)}
+                                    className={`form-input status-select ${((isSelected ? formData.supplier_status : supplier.supplier_status) || '').toLowerCase()}`}
+                                  >
+                                    <option value=""></option>
+                                    <option value="Active">Active</option>
+                                    <option value="Inactive">Inactive</option>
+                                  </select>
+                                  <i className="bi bi-chevron-down select-icon"></i>
+                                </div>
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>Origem</label>
+                                <div className="custom-select-wrapper">
+                                  <select
+                                    value={isSelected ? formData.country : supplier.country || ''}
+                                    onChange={(e) => handleFieldChange(supplier, 'country', e.target.value)}
+                                    className="form-input"
+                                  >
+                                    <option value=""></option>
+                                    <option value="Nacional">Nacional</option>
+                                    <option value="Importado">Importado</option>
+                                  </select>
+                                  <i className="bi bi-chevron-down select-icon"></i>
+                                </div>
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>SSID</label>
+                                <input
+                                  type="text"
+                                  value={isSelected ? formData.ssid : supplier.ssid || ''}
+                                  onChange={(e) => handleFieldChange(supplier, 'ssid', e.target.value)}
+                                  className="form-input"
+                                />
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>PO</label>
+                                <input
+                                  type="text"
+                                  value={isSelected ? formData.supplier_po : supplier.supplier_po || ''}
+                                  onChange={(e) => handleFieldChange(supplier, 'supplier_po', e.target.value)}
+                                  className="form-input"
+                                />
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>BU (Business Unit)</label>
+                                <div className="custom-select-wrapper">
+                                  <select
+                                    value={isSelected ? formData.bu : supplier.bu || ''}
+                                    onChange={(e) => handleFieldChange(supplier, 'bu', e.target.value)}
+                                    className="form-input"
+                                  >
+                                    <option value=""></option>
+                                    {businessUnits.map(bu => (
+                                      <option key={bu} value={bu}>{bu}</option>
+                                    ))}
+                                  </select>
+                                  <i className="bi bi-chevron-down select-icon"></i>
+                                </div>
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>Planner</label>
+                                <div className="custom-select-wrapper">
+                                  <select
+                                    value={isSelected ? formData.planner : supplier.planner || ''}
+                                    onChange={(e) => handleFieldChange(supplier, 'planner', e.target.value)}
+                                    className="form-input"
+                                  >
+                                    <option value=""></option>
+                                    {planners.map((planner) => (
+                                      <option key={planner} value={planner}>{planner}</option>
+                                    ))}
+                                  </select>
+                                  <i className="bi bi-chevron-down select-icon"></i>
+                                </div>
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>Continuity</label>
+                                <div className="custom-select-wrapper">
+                                  <select
+                                    value={isSelected ? formData.continuity : supplier.continuity || ''}
+                                    onChange={(e) => handleFieldChange(supplier, 'continuity', e.target.value)}
+                                    className="form-input"
+                                  >
+                                    <option value=""></option>
+                                    {continuityOptions.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                  <i className="bi bi-chevron-down select-icon"></i>
+                                </div>
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>Sourcing</label>
+                                <div className="custom-select-wrapper">
+                                  <select
+                                    value={isSelected ? formData.sourcing : supplier.sourcing || ''}
+                                    onChange={(e) => handleFieldChange(supplier, 'sourcing', e.target.value)}
+                                    className="form-input"
+                                  >
+                                    <option value=""></option>
+                                    {sourcingOptions.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                  <i className="bi bi-chevron-down select-icon"></i>
+                                </div>
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>SQIE</label>
+                                <div className="custom-select-wrapper">
+                                  <select
+                                    value={isSelected ? formData.sqie : supplier.sqie || ''}
+                                    onChange={(e) => handleFieldChange(supplier, 'sqie', e.target.value)}
+                                    className="form-input"
+                                  >
+                                    <option value=""></option>
+                                    {sqieOptions.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                  <i className="bi bi-chevron-down select-icon"></i>
+                                </div>
+                              </div>
+
+                              <div className="form-field-inline">
+                                <label>Categoria</label>
+                                <div className="custom-select-wrapper">
+                                  <select
+                                    value={isSelected ? formData.supplier_category : supplier.supplier_category || ''}
+                                    onChange={(e) => handleFieldChange(supplier, 'supplier_category', e.target.value)}
+                                    className="form-input"
+                                  >
+                                    <option value=""></option>
+                                    {categories.map(cat => (
+                                      <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                  </select>
+                                  <i className="bi bi-chevron-down select-icon"></i>
+                                </div>
+                              </div>
+
+                              <div className="form-field-inline full-width">
+                                <label>Email</label>
+                                <div className="sm-email-chips-box">
+                                  <div className="sm-email-chips-list">
+                                    {(emailChipsMap.get(supplier.supplier_id) || []).map((email) => (
+                                      <span key={email} className="sm-email-chip">
+                                        <span>{email}</span>
+                                        <button
+                                          type="button"
+                                          className="sm-email-chip-remove"
+                                          onClick={() => removeEmailChip(supplier, email)}
+                                          title="Remover email"
+                                        >
+                                          <i className="bi bi-x"></i>
+                                        </button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <input
+                                    className="form-input sm-email-chip-input"
+                                    value={emailInputMap.get(supplier.supplier_id) || ''}
+                                    onChange={(e) => setEmailInputMap(prev => new Map(prev).set(supplier.supplier_id, e.target.value))}
+                                    onKeyDown={(e) => {
+                                      const val = emailInputMap.get(supplier.supplier_id) || '';
+                                      if (e.key === 'Enter' || e.key === ';' || e.key === ',') {
+                                        e.preventDefault();
+                                        addEmailChip(supplier, val);
+                                      }
+                                      if (e.key === 'Backspace' && !val) {
+                                        const chips = emailChipsMap.get(supplier.supplier_id) || [];
+                                        if (chips.length > 0) {
+                                          e.preventDefault();
+                                          removeEmailChip(supplier, chips[chips.length - 1]);
+                                        }
+                                      }
+                                    }}
+                                    onBlur={() => addEmailChip(supplier, emailInputMap.get(supplier.supplier_id) || '')}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                    <button
-                      className="btn-icon-action btn-delete"
-                      onClick={() => handleRequestDelete(supplier)}
-                      title="Excluir"
-                    >
-                      <i className="bi bi-trash3"></i>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="supplier-card-body">
-                  <div className="form-field-inline">
-                    <label>Status</label>
-                    <div className="custom-select-wrapper">
-                      <select
-                        value={
-                          selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.supplier_status
-                            : supplier.supplier_status || ''
-                        }
-                        onChange={(e) => {
-                          handleFieldChange(supplier, 'supplier_status', e.target.value);
-                        }}
-                        className={`form-input status-select ${
-                          ((selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.supplier_status
-                            : supplier.supplier_status) || '').toLowerCase()
-                        }`}
-                      >
-                        <option value="">Status</option>
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                      </select>
-                      <i className="bi bi-chevron-down select-icon"></i>
-                    </div>
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>Origem</label>
-                    <div className="custom-select-wrapper">
-                      <select
-                        value={
-                          selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.country
-                            : supplier.country || ''
-                        }
-                        onChange={(e) => {
-                          handleFieldChange(supplier, 'country', e.target.value);
-                        }}
-                        className="form-input"
-                      >
-                        <option value="">Origem</option>
-                        <option value="Nacional">Nacional</option>
-                        <option value="Importado">Importado</option>
-                      </select>
-                      <i className="bi bi-chevron-down select-icon"></i>
-                    </div>
-                  </div>
-
-                  <div className="form-field-inline full-width">
-                    <label>Email (use ; para separar os contatos)</label>
-                    <textarea
-                      value={
-                        selectedSupplier?.supplier_id === supplier.supplier_id
-                          ? formData.supplier_email
-                          : supplier.supplier_email || ''
-                      }
-                      onChange={(e) => {
-                        handleFieldChange(supplier, 'supplier_email', e.target.value);
-                      }}
-                      className="form-input form-textarea"
-                      placeholder="Email (use ; para separar os contatos)"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>SSID</label>
-                    <input
-                      type="text"
-                      value={
-                        selectedSupplier?.supplier_id === supplier.supplier_id
-                          ? formData.ssid
-                          : supplier.ssid || ''
-                      }
-                      onChange={(e) => {
-                        handleFieldChange(supplier, 'ssid', e.target.value);
-                      }}
-                      className="form-input"
-                      placeholder="SSID"
-                    />
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>PO</label>
-                    <input
-                      type="text"
-                      value={
-                        selectedSupplier?.supplier_id === supplier.supplier_id
-                          ? formData.supplier_po
-                          : supplier.supplier_po || ''
-                      }
-                      onChange={(e) => {
-                        handleFieldChange(supplier, 'supplier_po', e.target.value);
-                      }}
-                      className="form-input"
-                      placeholder="PO"
-                    />
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>BU (Business Unit)</label>
-                    <div className="custom-select-wrapper">
-                      <select
-                        value={
-                          selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.bu
-                            : supplier.bu || ''
-                        }
-                        onChange={(e) => {
-                          handleFieldChange(supplier, 'bu', e.target.value);
-                        }}
-                        className="form-input"
-                      >
-                        <option value=""></option>
-                        {businessUnits.map(bu => (
-                          <option key={bu} value={bu}>{bu}</option>
-                        ))}
-                      </select>
-                      <i className="bi bi-chevron-down select-icon"></i>
-                    </div>
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>Categoria</label>
-                    <div className="custom-select-wrapper">
-                      <select
-                        value={
-                          selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.supplier_category
-                            : supplier.supplier_category || ''
-                        }
-                        onChange={(e) => {
-                          handleFieldChange(supplier, 'supplier_category', e.target.value);
-                        }}
-                        className="form-input"
-                      >
-                        <option value=""></option>
-                        {categories.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                      <i className="bi bi-chevron-down select-icon"></i>
-                    </div>
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>Planner</label>
-                    <div className="custom-select-wrapper">
-                      <select
-                        value={
-                          selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.planner
-                            : supplier.planner || ''
-                        }
-                        onChange={(e) => {
-                          handleFieldChange(supplier, 'planner', e.target.value);
-                        }}
-                        className="form-input"
-                      >
-                        <option value=""></option>
-                        {planners.map((planner) => (
-                          <option key={planner} value={planner}>{planner}</option>
-                        ))}
-                      </select>
-                      <i className="bi bi-chevron-down select-icon"></i>
-                    </div>
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>Continuity</label>
-                    <div className="custom-select-wrapper">
-                      <select
-                        value={
-                          selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.continuity
-                            : supplier.continuity || ''
-                        }
-                        onChange={(e) => {
-                          handleFieldChange(supplier, 'continuity', e.target.value);
-                        }}
-                        className="form-input"
-                      >
-                        <option value=""></option>
-                        {continuityOptions.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                      <i className="bi bi-chevron-down select-icon"></i>
-                    </div>
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>Sourcing</label>
-                    <div className="custom-select-wrapper">
-                      <select
-                        value={
-                          selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.sourcing
-                            : supplier.sourcing || ''
-                        }
-                        onChange={(e) => {
-                          handleFieldChange(supplier, 'sourcing', e.target.value);
-                        }}
-                        className="form-input"
-                      >
-                        <option value=""></option>
-                        {sourcingOptions.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                      <i className="bi bi-chevron-down select-icon"></i>
-                    </div>
-                  </div>
-
-                  <div className="form-field-inline">
-                    <label>SQIE</label>
-                    <div className="custom-select-wrapper">
-                      <select
-                        value={
-                          selectedSupplier?.supplier_id === supplier.supplier_id
-                            ? formData.sqie
-                            : supplier.sqie || ''
-                        }
-                        onChange={(e) => {
-                          handleFieldChange(supplier, 'sqie', e.target.value);
-                        }}
-                        className="form-input"
-                      >
-                        <option value=""></option>
-                        {sqieOptions.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                      <i className="bi bi-chevron-down select-icon"></i>
-                    </div>
-                  </div>
-
-                </div>
-
-
-
-                {supplier.total_score && (
-                  <div className="supplier-score-badge">
-                    <i className="bi bi-trophy-fill"></i>
-                    Score Total: {supplier.total_score}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <button className="carousel-nav carousel-nav-right" onClick={scrollRight}>
-            <i className="bi bi-chevron-right"></i>
-          </button>
+                  </>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : !isSearching && (
         searchQuery.trim().length >= 1 ? (
