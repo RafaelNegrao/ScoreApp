@@ -69,6 +69,10 @@ function SupplierManager() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [emailChipsMap, setEmailChipsMap] = useState<Map<string, string[]>>(new Map());
   const [emailInputMap, setEmailInputMap] = useState<Map<string, string>>(new Map());
+  const [selectedSuppliers, setSelectedSuppliers] = useState<Set<string>>(new Set());
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [bulkDeleteCode, setBulkDeleteCode] = useState('');
+  const [bulkDeleteInput, setBulkDeleteInput] = useState('');
   const { showToast } = useToastContext();
 
   // Estados para dropdowns
@@ -110,7 +114,7 @@ function SupplierManager() {
           invoke<string[]>('get_sourcing_options'),
           invoke<string[]>('get_sqie_options'),
         ]);
-        
+
         setPlanners(plannersData);
         setContinuityOptions(continuityData);
         setSourcingOptions(sourcingData);
@@ -145,6 +149,7 @@ function SupplierManager() {
         await handleSearch();
       } else if (searchQuery.trim().length === 0) {
         setSuppliers([]);
+        setSelectedSuppliers(new Set());
       }
     }, 300);
 
@@ -167,6 +172,40 @@ function SupplierManager() {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleListAll = async () => {
+    try {
+      setSearchQuery('%');
+      setIsSearching(true);
+      const results = await invoke<Supplier[]>('search_suppliers_data', {
+        query: '%',
+      });
+      setSuppliers(results);
+    } catch (error) {
+      console.error('❌ Erro ao listar todos:', error);
+      showToast('Erro ao listar fornecedores', 'error');
+      setSuppliers([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedSuppliers.size === suppliers.length && suppliers.length > 0) {
+      setSelectedSuppliers(new Set());
+    } else {
+      setSelectedSuppliers(new Set(suppliers.map(s => s.supplier_id)));
+    }
+  };
+
+  const toggleSelectSupplier = (id: string) => {
+    setSelectedSuppliers(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const handleSelectSupplier = async (supplier: Supplier) => {
@@ -195,7 +234,7 @@ function SupplierManager() {
   const generateDeleteCode = () => {
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     let code = '';
-    for (let i = 0; i < 3; i += 1) {
+    for (let i = 0; i < 5; i += 1) {
       code += letters.charAt(Math.floor(Math.random() * letters.length));
     }
     return code;
@@ -260,6 +299,50 @@ function SupplierManager() {
     }
   };
 
+  const handleBulkDeleteRequest = () => {
+    const code = generateDeleteCode();
+    setBulkDeleteCode(code);
+    setBulkDeleteInput('');
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const handleCancelBulkDelete = () => {
+    setIsBulkDeleteModalOpen(false);
+    setBulkDeleteCode('');
+    setBulkDeleteInput('');
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (bulkDeleteInput.trim().toUpperCase() !== bulkDeleteCode) {
+      showToast('Código de confirmação inválido', 'error');
+      return;
+    }
+
+    try {
+      for (const id of selectedSuppliers) {
+        await invoke('delete_supplier', { supplierId: id });
+      }
+      setSuppliers(prev => prev.filter(s => !selectedSuppliers.has(s.supplier_id)));
+      if (selectedSupplier && selectedSuppliers.has(selectedSupplier.supplier_id)) {
+        setSelectedSupplier(null);
+        setFormData({
+          supplier_id: '', supplier_name: '', supplier_po: '', bu: '',
+          supplier_email: '', supplier_status: '', planner: '', country: '',
+          supplier_category: '', continuity: '', sourcing: '', sqie: '',
+          ssid: '', otif_target: '', nil_target: '', pickup_target: '',
+          package_target: '',
+        });
+      }
+      const count = selectedSuppliers.size;
+      setSelectedSuppliers(new Set());
+      handleCancelBulkDelete();
+      showToast(`${count} fornecedor(es) excluído(s) com sucesso`, 'success');
+    } catch (error) {
+      console.error('Erro ao excluir em massa:', error);
+      showToast('Erro ao excluir fornecedores', 'error');
+    }
+  };
+
 
 
   const handleInputChange = (field: keyof SupplierUpdate, value: string) => {
@@ -293,7 +376,7 @@ function SupplierManager() {
   const autoSave = async (supplierId: string, field: keyof SupplierUpdate, value: string) => {
     try {
       setSavingSuppliers(prev => new Set(prev).add(supplierId));
-      
+
       // Buscar dados atuais do fornecedor
       const currentSupplier = suppliers.find(s => s.supplier_id === supplierId);
       if (!currentSupplier) return;
@@ -320,12 +403,12 @@ function SupplierManager() {
       };
 
       await invoke('update_supplier_data', { supplier: updateData });
-      
+
       // Atualizar a lista local
       setSuppliers(prev =>
         prev.map(s => s.supplier_id === supplierId ? { ...s, [field]: value } : s)
       );
-      
+
       showToast('Salvo automaticamente', 'success');
     } catch (error) {
       console.error('Erro ao salvar automaticamente:', error);
@@ -345,7 +428,7 @@ function SupplierManager() {
       setIsSaving(true);
       await invoke('update_supplier_data', { supplier: formData });
       showToast('Fornecedor atualizado com sucesso!', 'success');
-      
+
       // Atualiza a lista de fornecedores
       const updatedSupplier = {
         ...selectedSupplier!,
@@ -432,12 +515,12 @@ function SupplierManager() {
   const handleExportSuppliers = async () => {
     try {
       console.log('📤 Iniciando exportação de suppliers...');
-      
+
       const excelBuffer = await invoke<number[]>('export_suppliers');
       const uint8Array = new Uint8Array(excelBuffer);
-      
+
       const fileName = `Suppliers_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
-      
+
       const { save } = await import('@tauri-apps/api/dialog');
       const filePath = await save({
         defaultPath: fileName,
@@ -495,6 +578,16 @@ function SupplierManager() {
               )}
             </div>
             <div className="supplier-actions">
+              <button className="btn-secondary" onClick={handleListAll}>
+                <i className="bi bi-list-task"></i>
+                Listar Todos
+              </button>
+              {selectedSuppliers.size > 0 && (
+                <button className="btn-secondary btn-danger-outline" onClick={handleBulkDeleteRequest}>
+                  <i className="bi bi-trash"></i>
+                  Excluir Selecionados ({selectedSuppliers.size})
+                </button>
+              )}
               <button className="btn-secondary" onClick={handleExportSuppliers}>
                 <i className="bi bi-download"></i>
                 Exportar
@@ -513,6 +606,9 @@ function SupplierManager() {
           <table className="supplier-table">
             <thead>
               <tr>
+                <th className="col-checkbox">
+                  <input type="checkbox" disabled />
+                </th>
                 <th className="col-arrow"></th>
                 <th className="col-id">ID</th>
                 <th className="col-name">Nome</th>
@@ -525,6 +621,7 @@ function SupplierManager() {
             <tbody>
               {[1, 2, 3].map((i) => (
                 <tr key={i} className="supplier-row skeleton-row">
+                  <td><div className="skeleton skeleton-sm"></div></td>
                   <td><div className="skeleton skeleton-sm"></div></td>
                   <td><div className="skeleton skeleton-sm"></div></td>
                   <td><div className="skeleton skeleton-md"></div></td>
@@ -542,6 +639,13 @@ function SupplierManager() {
           <table className="supplier-table">
             <thead>
               <tr>
+                <th className="col-checkbox" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={suppliers.length > 0 && selectedSuppliers.size === suppliers.length}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
                 <th className="col-arrow"></th>
                 <th className="col-id">ID</th>
                 <th className="col-name">Nome</th>
@@ -563,12 +667,19 @@ function SupplierManager() {
                   <>
                     <tr
                       key={supplier.supplier_id}
-                      className={`supplier-row ${isExpanded ? 'expanded' : ''}`}
+                      className={`supplier-row ${isExpanded ? 'expanded' : ''} ${selectedSuppliers.has(supplier.supplier_id) ? 'selected' : ''}`}
                       onClick={() => {
                         toggleRowExpanded(supplier.supplier_id, supplier);
                         if (!isSelected) handleSelectSupplier(supplier);
                       }}
                     >
+                      <td className="col-checkbox" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedSuppliers.has(supplier.supplier_id)}
+                          onChange={() => toggleSelectSupplier(supplier.supplier_id)}
+                        />
+                      </td>
                       <td className="col-arrow">
                         <i className={`bi bi-chevron-${isExpanded ? 'down' : 'right'} row-expand-icon`}></i>
                       </td>
@@ -576,10 +687,36 @@ function SupplierManager() {
                       <td className="col-name" title={supplier.vendor_name || 'Sem Nome'}>
                         {supplier.vendor_name || 'Sem Nome'}
                       </td>
-                      <td className="col-status">
-                        <span className={`status-badge ${(statusValue || '').toLowerCase()}`}>
-                          {statusValue || '—'}
-                        </span>
+                      <td className="col-status" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className={`status-switch ${(statusValue || '').toLowerCase() === 'active' ? 'is-active' : ''}`}
+                          title="Arraste para os lados para alterar o status"
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            e.currentTarget.dataset.startX = e.clientX.toString();
+                          }}
+                          onPointerUp={(e) => {
+                            e.stopPropagation();
+                            e.currentTarget.releasePointerCapture(e.pointerId);
+                            const startX = parseFloat(e.currentTarget.dataset.startX || '0');
+                            const diff = e.clientX - startX;
+
+                            // 10px threshold to trigger toggle
+                            if (Math.abs(diff) > 10) {
+                              const isCurrentlyActive = (statusValue || '').toLowerCase() === 'active';
+                              if (diff > 10 && !isCurrentlyActive) {
+                                handleFieldChange(supplier, 'supplier_status', 'Active');
+                              } else if (diff < -10 && isCurrentlyActive) {
+                                handleFieldChange(supplier, 'supplier_status', 'Inactive');
+                              }
+                            }
+                          }}
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          <span className="slider round"></span>
+                          <span className="status-text">{statusValue || '—'}</span>
+                        </div>
                       </td>
                       <td className="col-po">{poValue || '—'}</td>
                       <td className="col-bu">{buValue || '—'}</td>
@@ -590,9 +727,15 @@ function SupplierManager() {
                           </span>
                         )}
                         <button
-                          className="btn-icon-action btn-delete"
-                          onClick={() => handleRequestDelete(supplier)}
-                          title="Excluir"
+                          className={`btn-icon-action btn-delete ${(statusValue || '').toLowerCase() === 'active' ? 'disabled' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if ((statusValue || '').toLowerCase() !== 'active') {
+                              handleRequestDelete(supplier);
+                            }
+                          }}
+                          title={(statusValue || '').toLowerCase() === 'active' ? "Não é possível excluir fornecedor ativo" : "Excluir"}
+                          disabled={(statusValue || '').toLowerCase() === 'active'}
                         >
                           <i className="bi bi-trash3"></i>
                         </button>
@@ -825,7 +968,7 @@ function SupplierManager() {
       )}
 
       {/* Botão Flutuante para Adicionar Fornecedor */}
-      <button 
+      <button
         className="btn-add-supplier-fab"
         title="Adicionar Fornecedor"
         onClick={() => setIsAddModalOpen(true)}
@@ -865,6 +1008,21 @@ function SupplierManager() {
         confirmLabel="Excluir"
         cancelLabel="Cancelar"
         disabled={deleteInput.trim().toUpperCase() !== deleteCode || !deleteTarget}
+      />
+
+      {/* Bulk Delete Modal */}
+      <DeleteModal
+        isOpen={isBulkDeleteModalOpen}
+        title="Excluir Vários Fornecedores"
+        description={`Você está prestes a excluir ${selectedSuppliers.size} fornecedor(es). Esta ação não pode ser desfeita.`}
+        confirmationCode={bulkDeleteCode}
+        userInput={bulkDeleteInput}
+        onInputChange={setBulkDeleteInput}
+        onCancel={handleCancelBulkDelete}
+        onConfirm={handleConfirmBulkDelete}
+        confirmLabel="Excluir Todos"
+        cancelLabel="Cancelar"
+        disabled={bulkDeleteInput.trim().toUpperCase() !== bulkDeleteCode}
       />
     </div>
   );

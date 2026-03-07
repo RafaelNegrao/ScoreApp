@@ -36,11 +36,11 @@ interface CriteriaWeights {
   package: number;
 }
 
-export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({ 
-  supplierId, 
-  supplierName, 
+export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
+  supplierId,
+  supplierName,
   selectedYear,
-  userPermissions 
+  userPermissions
 }) => {
   const [records, setRecords] = useState<MonthRecord[]>([]);
   const [inputValues, setInputValues] = useState<Map<string, any>>(new Map());
@@ -86,7 +86,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
       try {
         const criteria = await invoke<any[]>('get_criteria');
         const weights: any = {};
-        
+
         criteria.forEach((crit: any) => {
           const name = crit.criteria_name.toLowerCase();
           if (name.includes('package')) {
@@ -140,12 +140,12 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
         const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
         const newInputValues = new Map<string, any>();
         const monthRecords: MonthRecord[] = [];
-        
+
         // Carregar scores para cada mês do ano (IGUAL AO SCORE.TSX)
         for (let monthIdx = 0; monthIdx < 12; monthIdx++) {
           const monthNumber = monthIdx + 1;
           const monthName = months[monthIdx];
-          
+
           try {
             const loadedScores = await invoke<any[]>('get_supplier_scores', {
               supplierIds: [supplierId],
@@ -156,10 +156,10 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
             if (loadedScores && loadedScores.length > 0) {
               const score = loadedScores[0];
               const rowKey = `${monthNumber}`;
-              
+
               console.log(`📦 Mês ${monthNumber} - Score completo:`, JSON.stringify(score, null, 2));
               console.log(`📦 Campos disponíveis:`, Object.keys(score));
-              
+
               // Extrair valores (IGUAL AO SCORE.TSX)
               const otif = score.otif_score ? parseFloat(score.otif_score).toFixed(1) : '';
               const nil = score.nil_score ? parseFloat(score.nil_score).toFixed(1) : '';
@@ -167,12 +167,12 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
               const pack = score.package_score ? parseFloat(score.package_score).toFixed(1) : '';
               const total = score.total_score || '';
               const comment = score.comment || '';
-              
+
               console.log(`💬 Comentário extraído: "${comment}"`);
-              
+
               // Verificar se tem dados
               const hasData = otif !== '' || nil !== '' || pickup !== '' || pack !== '' || comment !== '';
-              
+
               if (hasData) {
                 // Inicializar inputValues (IGUAL AO SCORE.TSX)
                 newInputValues.set(`${rowKey}-otif`, otif);
@@ -180,7 +180,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                 newInputValues.set(`${rowKey}-pickup`, pickup);
                 newInputValues.set(`${rowKey}-package`, pack);
                 newInputValues.set(`${rowKey}-comments`, comment);
-                
+
                 // Calcular total se não existir
                 if (total) {
                   newInputValues.set(`${rowKey}-total`, total);
@@ -188,7 +188,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                   const calculatedTotal = calculateTotalScore(monthNumber, newInputValues);
                   newInputValues.set(`${rowKey}-total`, calculatedTotal);
                 }
-                
+
                 monthRecords.push({
                   month: `${monthName}/${selectedYear}`,
                   monthNumber,
@@ -209,7 +209,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
 
         setRecords(monthRecords);
         setInputValues(newInputValues);
-        
+
         console.log('📊 Dados carregados - Total de registros:', monthRecords.length);
         console.log('📝 InputValues após carregar:', Array.from(newInputValues.entries()).filter(([key]) => key.includes('comment')));
       } catch (error) {
@@ -229,14 +229,14 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
   // Formata o valor para sempre ter uma casa decimal
   const formatScoreValue = (value: string): string => {
     if (!value || value.trim() === '') return '';
-    
+
     const normalized = value.replace(',', '.');
     const numValue = parseFloat(normalized);
-    
+
     if (isNaN(numValue)) return '';
-    
+
     const clamped = Math.max(0, Math.min(10, numValue));
-    
+
     return clamped.toFixed(1);
   };
 
@@ -244,7 +244,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
   const calculateTotalScore = (monthNumber: number, values: Map<string, any>) => {
     const rowKey = `${monthNumber}`;
     const scores: { value: number, weight: number }[] = [];
-    
+
     const otifValue = values.get(`${rowKey}-otif`);
     if (otifValue !== null && otifValue !== undefined && otifValue !== '') {
       const otif = parseFloat(otifValue);
@@ -252,7 +252,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
         scores.push({ value: otif, weight: criteriaWeights.otif });
       }
     }
-    
+
     const nilValue = values.get(`${rowKey}-nil`);
     if (nilValue !== null && nilValue !== undefined && nilValue !== '') {
       const nil = parseFloat(nilValue);
@@ -260,7 +260,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
         scores.push({ value: nil, weight: criteriaWeights.nil });
       }
     }
-    
+
     const pickupValue = values.get(`${rowKey}-pickup`);
     if (pickupValue !== null && pickupValue !== undefined && pickupValue !== '') {
       const pickup = parseFloat(pickupValue);
@@ -268,7 +268,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
         scores.push({ value: pickup, weight: criteriaWeights.pickup });
       }
     }
-    
+
     const packageValue = values.get(`${rowKey}-package`);
     if (packageValue !== null && packageValue !== undefined && packageValue !== '') {
       const packageScore = parseFloat(packageValue);
@@ -276,24 +276,26 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
         scores.push({ value: packageScore, weight: criteriaWeights.package });
       }
     }
-    
+
     if (scores.length === 0) return '0.0';
-    
+
     const totalWeightedScore = scores.reduce((sum, s) => sum + (s.value * s.weight), 0);
     const totalWeight = scores.reduce((sum, s) => sum + s.weight, 0);
-    
+
     return (totalWeightedScore / totalWeight).toFixed(1);
   };
 
   // Função para salvar um score individual
   const saveScore = async (monthNumber: number, updatedValues?: Map<string, any>) => {
     if (!selectedYear || isSaving) return;
-    
+
     try {
       setIsSaving(true);
 
       const storedUser = sessionStorage.getItem('user');
-      const userName = storedUser ? JSON.parse(storedUser).user_name : 'Unknown';
+      const parsedUser = storedUser ? JSON.parse(storedUser) : null;
+      const userName = parsedUser ? parsedUser.user_name : 'Unknown';
+      const userWwid = parsedUser ? String(parsedUser.user_wwid || parsedUser.user_id || 'Unknown') : 'Unknown';
 
       const month = monthNumber;
       const year = parseInt(selectedYear);
@@ -302,31 +304,37 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
       const valuesToUse = updatedValues || inputValues;
 
       const rowKey = `${monthNumber}`;
-      const otif = valuesToUse.get(`${rowKey}-otif`) || null;
-      const nil = valuesToUse.get(`${rowKey}-nil`) || null;
-      const pickup = valuesToUse.get(`${rowKey}-pickup`) || null;
-      const packageScore = valuesToUse.get(`${rowKey}-package`) || null;
+      const otifRaw = valuesToUse.get(`${rowKey}-otif`);
+      const nilRaw = valuesToUse.get(`${rowKey}-nil`);
+      const pickupRaw = valuesToUse.get(`${rowKey}-pickup`);
+      const packageRaw = valuesToUse.get(`${rowKey}-package`);
       const comments = valuesToUse.get(`${rowKey}-comments`) || null;
       const totalScore = calculateTotalScore(monthNumber, valuesToUse);
 
-      console.log('💾 Salvando score:', { supplierId, month, year, otif, nil, pickup, packageScore, totalScore, comments });
+      const otifToSend = otifRaw !== undefined && otifRaw !== null ? (otifRaw === '' ? '' : String(otifRaw)) : null;
+      const nilToSend = nilRaw !== undefined && nilRaw !== null ? (nilRaw === '' ? '' : String(nilRaw)) : null;
+      const pickupToSend = pickupRaw !== undefined && pickupRaw !== null ? (pickupRaw === '' ? '' : String(pickupRaw)) : null;
+      const packageToSend = packageRaw !== undefined && packageRaw !== null ? (packageRaw === '' ? '' : String(packageRaw)) : null;
+
+      console.log('💾 Salvando score:', { supplierId, month, year, otifToSend, nilToSend, pickupToSend, packageToSend, totalScore, comments, userName, userWwid });
 
       await invoke('save_supplier_score', {
         supplierId: supplierId,
         supplierName: supplierName,
         month,
         year,
-        otifScore: otif,
-        nilScore: nil,
-        pickupScore: pickup,
-        packageScore: packageScore,
-        totalScore: totalScore,
+        otifScore: otifToSend,
+        nilScore: nilToSend,
+        pickupScore: pickupToSend,
+        packageScore: packageToSend,
+        totalScore: totalScore === '0.0' ? null : totalScore.toString(),
         comments,
         userName,
+        userWwid,
       });
 
       console.log('✅ Score salvo com sucesso!');
-      
+
       // Remover linha do set de modificadas
       setModifiedRows(prev => {
         const newSet = new Set(prev);
@@ -356,21 +364,21 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
   // Função para salvar comentário do modal
   const handleSaveComment = async (comment: string) => {
     if (!selectedMonth) return;
-    
+
     const rowKey = `${selectedMonth.monthNumber}`;
     const newValues = new Map(inputValues);
     newValues.set(`${rowKey}-comments`, comment);
-    
+
     console.log('💾 Salvando comentário:', { month: selectedMonth.monthNumber, comment });
-    
+
     setInputValues(newValues);
-    
+
     // SEMPRE salvar o comentário no banco quando o modal for salvo
     // Passar os valores atualizados diretamente para evitar problemas de timing
     try {
       await saveScore(selectedMonth.monthNumber, newValues);
       console.log('✅ Comentário salvo com sucesso!');
-      
+
       // Remover da lista de modificados após salvar
       setModifiedRows(prev => {
         const newSet = new Set(prev);
@@ -393,269 +401,269 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
         comment={selectedMonth ? (inputValues.get(`${selectedMonth.monthNumber}-comments`) || '') : ''}
         onSave={handleSaveComment}
       />
-      
+
       <div className="table-container yearly-table-wrapper" style={{
-      overflowX: 'auto',
-      overflowY: 'auto',
-      maxHeight: 'calc(100vh - 350px)',
-      position: 'relative'
-    }}>
-      <table className="yearly-view-table" style={{width:'100%', borderCollapse: 'collapse'}}>
-        <thead style={{
-          position: 'sticky',
-          top: 0,
-          backgroundColor: 'var(--section-bg)',
-          zIndex: 100,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-        }}>
-          <tr>
-            <th>Período</th>
-            <th>OTIF</th>
-            <th>NIL</th>
-            <th>Pickup</th>
-            <th>Package</th>
-            <th>Total</th>
-            <th>Comments</th>
-            {!autoSave && <th>Ações</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {records.length === 0 ? (
+        overflowX: 'auto',
+        overflowY: 'auto',
+        maxHeight: 'calc(100vh - 350px)',
+        position: 'relative'
+      }}>
+        <table className="yearly-view-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead style={{
+            position: 'sticky',
+            top: 0,
+            backgroundColor: 'var(--section-bg)',
+            zIndex: 100,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}>
             <tr>
-              <td colSpan={!autoSave ? 8 : 7} style={{
-                textAlign: 'center',
-                padding: '2rem',
-                color: 'var(--text-muted)',
-                fontStyle: 'italic'
-              }}>
-                Nenhum dado disponível para o ano selecionado
-              </td>
+              <th>Período</th>
+              <th>OTIF</th>
+              <th>NIL</th>
+              <th>Pickup</th>
+              <th>Package</th>
+              <th>Total</th>
+              <th>Comments</th>
+              {!autoSave && <th>Ações</th>}
             </tr>
-          ) : (
-            records.map((rec) => {
-              const rowKey = `${rec.monthNumber}`;
-              
-              return (
-                <tr key={rec.month}>
-                  <td className="month-cell">{rec.month}</td>
-                  <td>
-                  <input 
-                    type="number" 
-                    className={`yearly-score-input ${!canEdit('otif') ? 'readonly' : ''}`}
-                    min="0" 
-                    max="10" 
-                    step="0.1"
-                    value={inputValues.get(`${rowKey}-otif`) || ''}
-                    readOnly={!canEdit('otif')}
-                    disabled={!canEdit('otif')}
-                    onChange={(e) => {
-                      if (!canEdit('otif')) return;
-                      let value = e.target.value;
-                      const numValue = parseFloat(value);
-                      if (numValue > 10) value = '10';
-                      if (numValue < 0) value = '0';
-                      const newValues = new Map(inputValues);
-                      newValues.set(`${rowKey}-otif`, value);
-                      
-                      const totalScore = calculateTotalScore(rec.monthNumber, newValues);
-                      newValues.set(`${rowKey}-total`, totalScore);
-                      
-                      setModifiedRows(prev => new Set(prev).add(rowKey));
-                      
-                      setInputValues(newValues);
-                    }}
-                    onBlur={(e) => {
-                      if (!canEdit('otif')) return;
-                      const formatted = formatScoreValue(e.target.value);
-                      if (formatted !== '') {
-                        const newValues = new Map(inputValues);
-                        newValues.set(`${rowKey}-otif`, formatted);
-                        
-                        const totalScore = calculateTotalScore(rec.monthNumber, newValues);
-                        newValues.set(`${rowKey}-total`, totalScore);
-                        
-                        setInputValues(newValues);
-                      }
-                      if (autoSave) {
-                        saveScore(rec.monthNumber);
-                      }
-                    }}
-                  />
+          </thead>
+          <tbody>
+            {records.length === 0 ? (
+              <tr>
+                <td colSpan={!autoSave ? 8 : 7} style={{
+                  textAlign: 'center',
+                  padding: '2rem',
+                  color: 'var(--text-muted)',
+                  fontStyle: 'italic'
+                }}>
+                  Nenhum dado disponível para o ano selecionado
                 </td>
-                <td>
-                  <input 
-                    type="number" 
-                    className={`yearly-score-input ${!canEdit('nil') ? 'readonly' : ''}`}
-                    min="0" 
-                    max="10" 
-                    step="0.1"
-                    value={inputValues.get(`${rowKey}-nil`) || ''}
-                    readOnly={!canEdit('nil')}
-                    disabled={!canEdit('nil')}
-                    onChange={(e) => {
-                      if (!canEdit('nil')) return;
-                      let value = e.target.value;
-                      const numValue = parseFloat(value);
-                      if (numValue > 10) value = '10';
-                      if (numValue < 0) value = '0';
-                      const newValues = new Map(inputValues);
-                      newValues.set(`${rowKey}-nil`, value);
-                      
-                      const totalScore = calculateTotalScore(rec.monthNumber, newValues);
-                      newValues.set(`${rowKey}-total`, totalScore);
-                      
-                      setModifiedRows(prev => new Set(prev).add(rowKey));
-                      
-                      setInputValues(newValues);
-                    }}
-                    onBlur={(e) => {
-                      if (!canEdit('nil')) return;
-                      const formatted = formatScoreValue(e.target.value);
-                      if (formatted !== '') {
-                        const newValues = new Map(inputValues);
-                        newValues.set(`${rowKey}-nil`, formatted);
-                        
-                        const totalScore = calculateTotalScore(rec.monthNumber, newValues);
-                        newValues.set(`${rowKey}-total`, totalScore);
-                        
-                        setInputValues(newValues);
-                      }
-                      if (autoSave) {
-                        saveScore(rec.monthNumber);
-                      }
-                    }}
-                  />
-                </td>
-                <td>
-                  <input 
-                    type="number" 
-                    className={`yearly-score-input ${!canEdit('pickup') ? 'readonly' : ''}`}
-                    min="0" 
-                    max="10" 
-                    step="0.1"
-                    value={inputValues.get(`${rowKey}-pickup`) || ''}
-                    readOnly={!canEdit('pickup')}
-                    disabled={!canEdit('pickup')}
-                    onChange={(e) => {
-                      if (!canEdit('pickup')) return;
-                      let value = e.target.value;
-                      const numValue = parseFloat(value);
-                      if (numValue > 10) value = '10';
-                      if (numValue < 0) value = '0';
-                      const newValues = new Map(inputValues);
-                      newValues.set(`${rowKey}-pickup`, value);
-                      
-                      const totalScore = calculateTotalScore(rec.monthNumber, newValues);
-                      newValues.set(`${rowKey}-total`, totalScore);
-                      
-                      setModifiedRows(prev => new Set(prev).add(rowKey));
-                      
-                      setInputValues(newValues);
-                    }}
-                    onBlur={(e) => {
-                      if (!canEdit('pickup')) return;
-                      const formatted = formatScoreValue(e.target.value);
-                      if (formatted !== '') {
-                        const newValues = new Map(inputValues);
-                        newValues.set(`${rowKey}-pickup`, formatted);
-                        
-                        const totalScore = calculateTotalScore(rec.monthNumber, newValues);
-                        newValues.set(`${rowKey}-total`, totalScore);
-                        
-                        setInputValues(newValues);
-                      }
-                      if (autoSave) {
-                        saveScore(rec.monthNumber);
-                      }
-                    }}
-                  />
-                </td>
-                <td>
-                  <input 
-                    type="number" 
-                    className={`yearly-score-input ${!canEdit('package') ? 'readonly' : ''}`}
-                    min="0" 
-                    max="10" 
-                    step="0.1"
-                    value={inputValues.get(`${rowKey}-package`) || ''}
-                    readOnly={!canEdit('package')}
-                    disabled={!canEdit('package')}
-                    onChange={(e) => {
-                      if (!canEdit('package')) return;
-                      let value = e.target.value;
-                      const numValue = parseFloat(value);
-                      if (numValue > 10) value = '10';
-                      if (numValue < 0) value = '0';
-                      const newValues = new Map(inputValues);
-                      newValues.set(`${rowKey}-package`, value);
-                      
-                      const totalScore = calculateTotalScore(rec.monthNumber, newValues);
-                      newValues.set(`${rowKey}-total`, totalScore);
-                      
-                      setModifiedRows(prev => new Set(prev).add(rowKey));
-                      
-                      setInputValues(newValues);
-                    }}
-                    onBlur={(e) => {
-                      if (!canEdit('package')) return;
-                      const formatted = formatScoreValue(e.target.value);
-                      if (formatted !== '') {
-                        const newValues = new Map(inputValues);
-                        newValues.set(`${rowKey}-package`, formatted);
-                        
-                        const totalScore = calculateTotalScore(rec.monthNumber, newValues);
-                        newValues.set(`${rowKey}-total`, totalScore);
-                        
-                        setInputValues(newValues);
-                      }
-                      if (autoSave) {
-                        saveScore(rec.monthNumber);
-                      }
-                    }}
-                  />
-                </td>
-                <td className="total-cell">
-                  {(() => {
-                    const total = inputValues.get(`${rowKey}-total`);
-                    if (!total || total === '') return '-';
-                    const numValue = parseFloat(total);
-                    return isNaN(numValue) ? total : numValue.toFixed(1);
-                  })()}
-                </td>
-                <td className="comment-cell">
-                  <button
-                    className="comment-icon-btn"
-                    onClick={() => openCommentModal(rec.monthNumber, rec.month)}
-                    title={inputValues.get(`${rowKey}-comments`) ? 'Ver/editar comentário' : 'Adicionar comentário'}
-                    style={{
-                      color: inputValues.get(`${rowKey}-comments`) ? 'var(--accent-primary)' : 'var(--text-muted)',
-                      opacity: inputValues.get(`${rowKey}-comments`) ? 1 : 0.5
-                    }}
-                  >
-                    <i className="bi bi-chat-left-text-fill"></i>
-                  </button>
-                </td>
-                {!autoSave && (
-                  <td className="action-cell">
-                    {modifiedRows.has(rowKey) && (
-                      <button
-                        className="save-score-btn"
-                        onClick={() => saveScore(rec.monthNumber)}
-                        disabled={isSaving}
-                        title="Salvar alterações"
-                      >
-                        <i className="bi bi-floppy"></i>
-                      </button>
-                    )}
-                  </td>
-                )}
               </tr>
-            );
-          })
-          )}
-        </tbody>
-      </table>
-    </div>
+            ) : (
+              records.map((rec) => {
+                const rowKey = `${rec.monthNumber}`;
+
+                return (
+                  <tr key={rec.month}>
+                    <td className="month-cell">{rec.month}</td>
+                    <td>
+                      <input
+                        type="number"
+                        className={`yearly-score-input ${!canEdit('otif') ? 'readonly' : ''}`}
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={inputValues.get(`${rowKey}-otif`) || ''}
+                        readOnly={!canEdit('otif')}
+                        disabled={!canEdit('otif')}
+                        onChange={(e) => {
+                          if (!canEdit('otif')) return;
+                          let value = e.target.value;
+                          const numValue = parseFloat(value);
+                          if (numValue > 10) value = '10';
+                          if (numValue < 0) value = '0';
+                          const newValues = new Map(inputValues);
+                          newValues.set(`${rowKey}-otif`, value);
+
+                          const totalScore = calculateTotalScore(rec.monthNumber, newValues);
+                          newValues.set(`${rowKey}-total`, totalScore);
+
+                          setModifiedRows(prev => new Set(prev).add(rowKey));
+
+                          setInputValues(newValues);
+                        }}
+                        onBlur={(e) => {
+                          if (!canEdit('otif')) return;
+                          const formatted = formatScoreValue(e.target.value);
+                          if (formatted !== '') {
+                            const newValues = new Map(inputValues);
+                            newValues.set(`${rowKey}-otif`, formatted);
+
+                            const totalScore = calculateTotalScore(rec.monthNumber, newValues);
+                            newValues.set(`${rowKey}-total`, totalScore);
+
+                            setInputValues(newValues);
+                          }
+                          if (autoSave) {
+                            saveScore(rec.monthNumber);
+                          }
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className={`yearly-score-input ${!canEdit('nil') ? 'readonly' : ''}`}
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={inputValues.get(`${rowKey}-nil`) || ''}
+                        readOnly={!canEdit('nil')}
+                        disabled={!canEdit('nil')}
+                        onChange={(e) => {
+                          if (!canEdit('nil')) return;
+                          let value = e.target.value;
+                          const numValue = parseFloat(value);
+                          if (numValue > 10) value = '10';
+                          if (numValue < 0) value = '0';
+                          const newValues = new Map(inputValues);
+                          newValues.set(`${rowKey}-nil`, value);
+
+                          const totalScore = calculateTotalScore(rec.monthNumber, newValues);
+                          newValues.set(`${rowKey}-total`, totalScore);
+
+                          setModifiedRows(prev => new Set(prev).add(rowKey));
+
+                          setInputValues(newValues);
+                        }}
+                        onBlur={(e) => {
+                          if (!canEdit('nil')) return;
+                          const formatted = formatScoreValue(e.target.value);
+                          if (formatted !== '') {
+                            const newValues = new Map(inputValues);
+                            newValues.set(`${rowKey}-nil`, formatted);
+
+                            const totalScore = calculateTotalScore(rec.monthNumber, newValues);
+                            newValues.set(`${rowKey}-total`, totalScore);
+
+                            setInputValues(newValues);
+                          }
+                          if (autoSave) {
+                            saveScore(rec.monthNumber);
+                          }
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className={`yearly-score-input ${!canEdit('pickup') ? 'readonly' : ''}`}
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={inputValues.get(`${rowKey}-pickup`) || ''}
+                        readOnly={!canEdit('pickup')}
+                        disabled={!canEdit('pickup')}
+                        onChange={(e) => {
+                          if (!canEdit('pickup')) return;
+                          let value = e.target.value;
+                          const numValue = parseFloat(value);
+                          if (numValue > 10) value = '10';
+                          if (numValue < 0) value = '0';
+                          const newValues = new Map(inputValues);
+                          newValues.set(`${rowKey}-pickup`, value);
+
+                          const totalScore = calculateTotalScore(rec.monthNumber, newValues);
+                          newValues.set(`${rowKey}-total`, totalScore);
+
+                          setModifiedRows(prev => new Set(prev).add(rowKey));
+
+                          setInputValues(newValues);
+                        }}
+                        onBlur={(e) => {
+                          if (!canEdit('pickup')) return;
+                          const formatted = formatScoreValue(e.target.value);
+                          if (formatted !== '') {
+                            const newValues = new Map(inputValues);
+                            newValues.set(`${rowKey}-pickup`, formatted);
+
+                            const totalScore = calculateTotalScore(rec.monthNumber, newValues);
+                            newValues.set(`${rowKey}-total`, totalScore);
+
+                            setInputValues(newValues);
+                          }
+                          if (autoSave) {
+                            saveScore(rec.monthNumber);
+                          }
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className={`yearly-score-input ${!canEdit('package') ? 'readonly' : ''}`}
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={inputValues.get(`${rowKey}-package`) || ''}
+                        readOnly={!canEdit('package')}
+                        disabled={!canEdit('package')}
+                        onChange={(e) => {
+                          if (!canEdit('package')) return;
+                          let value = e.target.value;
+                          const numValue = parseFloat(value);
+                          if (numValue > 10) value = '10';
+                          if (numValue < 0) value = '0';
+                          const newValues = new Map(inputValues);
+                          newValues.set(`${rowKey}-package`, value);
+
+                          const totalScore = calculateTotalScore(rec.monthNumber, newValues);
+                          newValues.set(`${rowKey}-total`, totalScore);
+
+                          setModifiedRows(prev => new Set(prev).add(rowKey));
+
+                          setInputValues(newValues);
+                        }}
+                        onBlur={(e) => {
+                          if (!canEdit('package')) return;
+                          const formatted = formatScoreValue(e.target.value);
+                          if (formatted !== '') {
+                            const newValues = new Map(inputValues);
+                            newValues.set(`${rowKey}-package`, formatted);
+
+                            const totalScore = calculateTotalScore(rec.monthNumber, newValues);
+                            newValues.set(`${rowKey}-total`, totalScore);
+
+                            setInputValues(newValues);
+                          }
+                          if (autoSave) {
+                            saveScore(rec.monthNumber);
+                          }
+                        }}
+                      />
+                    </td>
+                    <td className="total-cell">
+                      {(() => {
+                        const total = inputValues.get(`${rowKey}-total`);
+                        if (!total || total === '') return '-';
+                        const numValue = parseFloat(total);
+                        return isNaN(numValue) ? total : numValue.toFixed(1);
+                      })()}
+                    </td>
+                    <td className="comment-cell">
+                      <button
+                        className="comment-icon-btn"
+                        onClick={() => openCommentModal(rec.monthNumber, rec.month)}
+                        title={inputValues.get(`${rowKey}-comments`) ? 'Ver/editar comentário' : 'Adicionar comentário'}
+                        style={{
+                          color: inputValues.get(`${rowKey}-comments`) ? 'var(--accent-primary)' : 'var(--text-muted)',
+                          opacity: inputValues.get(`${rowKey}-comments`) ? 1 : 0.5
+                        }}
+                      >
+                        <i className="bi bi-chat-left-text-fill"></i>
+                      </button>
+                    </td>
+                    {!autoSave && (
+                      <td className="action-cell">
+                        {modifiedRows.has(rowKey) && (
+                          <button
+                            className="save-score-btn"
+                            onClick={() => saveScore(rec.monthNumber)}
+                            disabled={isSaving}
+                            title="Salvar alterações"
+                          >
+                            <i className="bi bi-floppy"></i>
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 };

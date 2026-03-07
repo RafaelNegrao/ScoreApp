@@ -1797,29 +1797,34 @@ impl DatabaseManager {
             .unwrap_or(0);
         println!("🔍 Registros que correspondem à busca: {}", match_count);
         
+        let limit_clause = if query == "%" { "" } else { "LIMIT 50" };
+
+        let query_string = format!(
+            "SELECT DISTINCT 
+                 COALESCE(CAST(supplier_id AS TEXT), '') as supplier_id,
+                 COALESCE(CAST(supplier_po AS TEXT), '') as supplier_po, 
+                 COALESCE(vendor_name, '') as vendor_name,
+                 bu,
+                 supplier_email,
+                 supplier_status,
+                 planner,
+                 country,
+                 supplier_category,
+                 continuity,
+                 sourcing,
+                 sqie,
+                 ssid
+             FROM supplier_database_table 
+             WHERE LOWER(COALESCE(CAST(supplier_po AS TEXT), '')) LIKE LOWER(?1) 
+                 OR LOWER(COALESCE(vendor_name, '')) LIKE LOWER(?1)
+                 OR LOWER(COALESCE(bu, '')) LIKE LOWER(?1)
+             ORDER BY vendor_name
+             {}",
+             limit_clause
+        );
+
         let mut stmt = conn
-            .prepare(
-                     "SELECT DISTINCT 
-                          COALESCE(CAST(supplier_id AS TEXT), '') as supplier_id,
-                          COALESCE(CAST(supplier_po AS TEXT), '') as supplier_po, 
-                          COALESCE(vendor_name, '') as vendor_name,
-                          bu,
-                          supplier_email,
-                          supplier_status,
-                          planner,
-                          country,
-                          supplier_category,
-                          continuity,
-                          sourcing,
-                          sqie,
-                          ssid
-                 FROM supplier_database_table 
-                          WHERE LOWER(COALESCE(CAST(supplier_po AS TEXT), '')) LIKE LOWER(?1) 
-                              OR LOWER(COALESCE(vendor_name, '')) LIKE LOWER(?1)
-                              OR LOWER(COALESCE(bu, '')) LIKE LOWER(?1)
-                 ORDER BY vendor_name
-                 LIMIT 50"
-            )
+            .prepare(&query_string)
             .map_err(|e| {
                 println!("❌ Erro ao preparar statement: {}", e);
                 format!("Erro ao preparar query: {}", e)

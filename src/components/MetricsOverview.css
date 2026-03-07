@@ -366,7 +366,7 @@
   .metrics-overview {
     padding: 0 1.5rem 1.5rem;
   }
-  
+
   .metrics-top-cards {
     gap: 1rem;
   }
@@ -374,7 +374,7 @@
   .metrics-quarterly-cards {
     gap: 1rem;
   }
-  
+
   .metrics-title {
     font-size: 1.3rem;
   }
@@ -388,19 +388,19 @@
   .metrics-overview {
     padding: 0 1rem 1rem;
   }
-  
+
   .metrics-top-cards {
     gap: 1rem;
   }
-  
+
   .metrics-quarterly-cards {
     gap: 0.85rem;
   }
-  
+
   .metric-card {
     padding: 1.25rem;
   }
-  
+
   .quarterly-card {
     padding: 1.25rem;
   }
@@ -410,7 +410,7 @@
   .metrics-overview {
     padding: 0 1rem 1rem;
   }
-  
+
   .metrics-top-cards {
     gap: 1rem;
   }
@@ -423,15 +423,15 @@
   .quarterly-value {
     font-size: 2rem;
   }
-  
+
   .metrics-title {
     font-size: 1.2rem;
   }
-  
+
   .metric-card {
     padding: 1.25rem;
   }
-  
+
   .quarterly-card {
     padding: 1.25rem;
   }
@@ -442,7 +442,7 @@
     flex-wrap: nowrap;
     overflow-x: hidden;
   }
-  
+
   .quarterly-card {
     flex: 1 1 0;
     min-width: 0;
@@ -453,44 +453,44 @@
   .metrics-overview {
     padding: 0 0.75rem 0.75rem;
   }
-  
+
   .metrics-top-cards {
     gap: 0.75rem;
   }
-  
+
   .metrics-quarterly-cards {
     gap: 0.75rem;
     flex-wrap: nowrap;
     overflow-x: hidden;
   }
-  
+
   .quarterly-card {
     flex: 1 1 0;
     min-width: 0;
   }
-  
+
   .metric-card {
     padding: 1rem;
     gap: 1rem;
   }
-  
+
   .metric-icon {
     width: 40px;
     height: 40px;
   }
-  
+
   .metric-icon i {
     font-size: 20px;
   }
-  
+
   .metric-value {
     font-size: 1.75rem;
   }
-  
+
   .quarterly-value {
     font-size: 2rem;
   }
-  
+
   .quarterly-card {
     padding: 1rem;
   }
@@ -579,4 +579,144 @@
   opacity: 0.5;
   z-index: 2;
   filter: brightness(0.85);
+}
+
+/* Info Modal */
+.metrics-info-btn {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.metrics-info-btn:hover {
+  color: var(--accent-primary);
+}
+
+.metrics-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: metricsModalFadeIn 0.15s ease;
+}
+
+.metrics-modal {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  width: 340px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: metricsModalSlideIn 0.2s ease;
+}
+
+.metrics-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.metrics-modal__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.metrics-modal__close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.metrics-modal__close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.metrics-modal__body {
+  padding: 0.85rem 1rem;
+  text-align: left;
+}
+
+.metrics-modal__body p {
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0 0 0.6rem 0;
+}
+
+.metrics-modal__body p:last-child {
+  margin-bottom: 0;
+}
+
+.metrics-formula-box {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin: 0.6rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: var(--accent-primary);
+}
+
+.metrics-formula-box span {
+  display: block;
+  line-height: 1.4;
+}
+
+.metrics-formula-box b {
+  color: var(--text-primary);
+}
+
+@keyframes metricsModalFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes metricsModalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }

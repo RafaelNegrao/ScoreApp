@@ -53,7 +53,7 @@ function Timeline() {
     const checkHeight = () => {
       setIsSmallHeight(window.innerHeight < 700);
     };
-    
+
     checkHeight();
     window.addEventListener('resize', checkHeight);
     return () => window.removeEventListener('resize', checkHeight);
@@ -62,10 +62,10 @@ function Timeline() {
   // Buscar automaticamente quando vindo de outra página
   useEffect(() => {
     const state = location.state as { searchSupplier?: string; supplier?: Supplier; supplierId?: string; year?: number | string } | null;
-    
+
     // Se não há state, não faz nada
     if (!state) return;
-    
+
     const supplierId = state?.supplierId || state?.supplier?.supplier_id || (state?.supplier as any)?.supplierId;
 
     if (state?.year !== undefined && state?.year !== null) {
@@ -326,10 +326,10 @@ function Timeline() {
         </div>
 
         <div title={selectedSupplier ? "Informações do fornecedor" : "Selecione um fornecedor"}>
-          <Info 
-            size={20} 
-            color="var(--accent-primary)" 
-            style={{ cursor: selectedSupplier ? "pointer" : "not-allowed", opacity: selectedSupplier ? 1 : 0.5 }} 
+          <Info
+            size={20}
+            color="var(--accent-primary)"
+            style={{ cursor: selectedSupplier ? "pointer" : "not-allowed", opacity: selectedSupplier ? 1 : 0.5 }}
             onClick={handleOpenSupplierInfo}
           />
         </div>
@@ -355,7 +355,7 @@ function Timeline() {
       {/* Content Area */}
       <div className="timeline-content">
         {activeTab === "metricas" && (
-          <MetricsOverview 
+          <MetricsOverview
             supplierId={selectedSupplier?.supplier_id || null}
             selectedYear={selectedYear}
           />
@@ -384,14 +384,14 @@ function Timeline() {
                     <div className="unified-carousel-slide" key={`unified-${unifiedCarouselIndex}`}>
                       {unifiedCarouselIndex === 0 && (
                         <div className="metric-chart-card unified-chart-card">
-                          <PerformanceChart 
+                          <PerformanceChart
                             supplierId={selectedSupplier?.supplier_id || null}
                             selectedYear={selectedYear}
                           />
                         </div>
                       )}
                       {unifiedCarouselIndex > 0 && (
-                        <IndividualMetrics 
+                        <IndividualMetrics
                           supplierId={selectedSupplier?.supplier_id || null}
                           selectedYear={selectedYear}
                           carouselPage={unifiedCarouselIndex - 1}
@@ -428,77 +428,36 @@ function Timeline() {
           ) : (
             <div className="charts-unified-layout">
               <div className="chart-main">
-                <PerformanceChart 
+                <PerformanceChart
                   supplierId={selectedSupplier?.supplier_id || null}
                   selectedYear={selectedYear}
                 />
               </div>
               <div className="charts-carousel-container">
                 <div className="charts-grid">
-                  <IndividualMetrics 
+                  <button
+                    type="button"
+                    className="chart-nav-arrow chart-nav-arrow--top"
+                    onClick={handleCarouselPrev}
+                    aria-label="Subir gráficos"
+                  >
+                    <ChevronUp size={20} />
+                  </button>
+
+                  <IndividualMetrics
                     supplierId={selectedSupplier?.supplier_id || null}
                     selectedYear={selectedYear}
                     carouselPage={carouselPage}
                     isSmallHeight={isSmallHeight}
                   />
-                </div>
-                <div className="carousel-indicators-vertical">
+
                   <button
                     type="button"
-                    className="carousel-arrow-button"
-                    onClick={handleCarouselPrev}
-                    aria-label="Subir gráficos"
-                    title="Subir"
-                  >
-                    <ChevronUp size={16} />
-                  </button>
-                  {isSmallHeight ? (
-                    // Modo altura pequena: 4 páginas (1 gráfico por página)
-                    <>
-                      <button
-                        className={`carousel-indicator-vertical ${carouselPage === 0 ? 'active' : ''}`}
-                        onClick={() => setCarouselPage(0)}
-                        aria-label="OTIF"
-                      />
-                      <button
-                        className={`carousel-indicator-vertical ${carouselPage === 1 ? 'active' : ''}`}
-                        onClick={() => setCarouselPage(1)}
-                        aria-label="NIL"
-                      />
-                      <button
-                        className={`carousel-indicator-vertical ${carouselPage === 2 ? 'active' : ''}`}
-                        onClick={() => setCarouselPage(2)}
-                        aria-label="Pickup"
-                      />
-                      <button
-                        className={`carousel-indicator-vertical ${carouselPage === 3 ? 'active' : ''}`}
-                        onClick={() => setCarouselPage(3)}
-                        aria-label="Package"
-                      />
-                    </>
-                  ) : (
-                    // Modo altura normal: 2 páginas (2 gráficos por página)
-                    <>
-                      <button
-                        className={`carousel-indicator-vertical ${carouselPage === 0 ? 'active' : ''}`}
-                        onClick={() => setCarouselPage(0)}
-                        aria-label="Página 1"
-                      />
-                      <button
-                        className={`carousel-indicator-vertical ${carouselPage === 1 ? 'active' : ''}`}
-                        onClick={() => setCarouselPage(1)}
-                        aria-label="Página 2"
-                      />
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    className="carousel-arrow-button"
+                    className="chart-nav-arrow chart-nav-arrow--bottom"
                     onClick={handleCarouselNext}
                     aria-label="Descer gráficos"
-                    title="Descer"
                   >
-                    <ChevronDown size={16} />
+                    <ChevronDown size={20} />
                   </button>
                 </div>
               </div>

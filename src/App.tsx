@@ -4,7 +4,6 @@ import { appWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/tauri";
 import { applyTheme, getStoredTheme } from "./themes";
 import { userStatusManager } from "./utils/userStatus";
-import SplashScreen from "./components/SplashScreen";
 import TitleBar from "./components/TitleBar";
 import BottomBar from "./components/BottomBar";
 import { ToastContainer } from "./components/ToastContainer";
@@ -123,11 +122,7 @@ function App() {
 
         // Previne o fechamento imediato
         event.preventDefault();
-        
-        console.log('🔴 ========================================');
-        console.log('🔴 BOTÃO X CLICADO - Iniciando processo de fechamento');
-        console.log('🔴 ========================================');
-        
+
         try {
           // Para o gerenciamento de status (define is_online = 0) - AGUARDA
           console.log('⏳ Chamando userStatusManager.stop()...');

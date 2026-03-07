@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { TrendingUp, TrendingDown, Calendar, CalendarRange, CalendarCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import ScoreGauge from './ScoreGauge';
 import './MetricsOverview.css';
 
 interface MetricsOverviewProps {
@@ -37,7 +38,49 @@ interface MetricsData {
     pickup: number;
     package: number;
   };
+  metricAverages: {
+    otif: number | null;
+    nil: number | null;
+    pickup: number | null;
+    package: number | null;
+  };
+  metricCVs: {
+    overall: number | null;
+    otif: number | null;
+    nil: number | null;
+    pickup: number | null;
+    package: number | null;
+  };
 }
+
+const MetricsInfoModal: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        className="metrics-info-btn"
+        onClick={() => setOpen(true)}
+        type="button"
+        aria-label="Informação"
+      >
+        <i className="bi bi-info-circle"></i>
+      </button>
+      {open && (
+        <div className="metrics-modal-overlay" onClick={() => setOpen(false)}>
+          <div className="metrics-modal" onClick={e => e.stopPropagation()}>
+            <div className="metrics-modal__header">
+              <span className="metrics-modal__title">{title}</span>
+              <button className="metrics-modal__close" onClick={() => setOpen(false)} type="button">×</button>
+            </div>
+            <div className="metrics-modal__body">
+              {children}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
 
 const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedYear }) => {
   const [metrics, setMetrics] = useState<MetricsData | null>(null);
@@ -59,10 +102,10 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       console.log('MetricsOverview - Zoom detectado:', zoom, '%');
       setZoomLevel(zoom);
     };
-    
+
     detectZoom();
     window.addEventListener('resize', detectZoom);
-    
+
     return () => window.removeEventListener('resize', detectZoom);
   }, []);
 
@@ -127,7 +170,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       const calculatedMetrics = calculateMetrics(records, selectedYear);
       setMetrics(calculatedMetrics);
     } catch (error) {
-  console.error('Erro ao carregar metrics:', error);
+      console.error('Erro ao carregar metrics:', error);
       setMetrics(null);
     } finally {
       setLoading(false);
@@ -161,7 +204,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
 
     // Filtrar apenas registros com scores válidos
     const allScores = records.map(r => getScore(r)).filter((s): s is number => s !== null);
-    
+
     // Overall Average (todos os dados)
     const overallAverage = allScores.length > 0
       ? allScores.reduce((a, b) => a + b, 0) / allScores.length
@@ -217,11 +260,11 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     // Buscar último quarter disponível do ano anterior para comparar com Q1
     const previousYear = year ? (parseInt(year) - 1).toString() : null;
     let lastQuarterPreviousYear: number | null = null;
-    
+
     if (previousYear) {
       const previousYearRecords = records.filter(r => r.year === previousYear);
       const previousYearMonthlyScores: (number | null)[] = Array(12).fill(null);
-      
+
       previousYearRecords.forEach((record) => {
         const monthIndex = record.month - 1;
         const score = getScore(record);
@@ -229,7 +272,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
           previousYearMonthlyScores[monthIndex] = score;
         }
       });
-      
+
       // Calcular quarters do ano anterior
       const getPreviousYearQuarterAverage = (quarter: number): number | null => {
         const startMonth = (quarter - 1) * 3;
@@ -241,13 +284,13 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
         if (quarterScores.length === 0) return null;
         return quarterScores.reduce((a, b) => a + b, 0) / quarterScores.length;
       };
-      
+
       // Pegar o último quarter disponível do ano anterior (Q4 -> Q3 -> Q2 -> Q1)
       const prevQ4 = getPreviousYearQuarterAverage(4);
       const prevQ3 = getPreviousYearQuarterAverage(3);
       const prevQ2 = getPreviousYearQuarterAverage(2);
       const prevQ1 = getPreviousYearQuarterAverage(1);
-      
+
       lastQuarterPreviousYear = prevQ4 ?? prevQ3 ?? prevQ2 ?? prevQ1;
     }
 
@@ -286,6 +329,24 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       package: averageFromRecords(yearRecords.map((record) => record.quality_package)),
     };
 
+    const cvFromRecords = (values: Array<number | null | undefined>): number | null => {
+      const valid = values.filter((value): value is number => value !== null && value !== undefined && !isNaN(value));
+      const n = valid.length;
+      if (n === 0) return null;
+      const mean = valid.reduce((a, b) => a + b, 0) / n;
+      const variance = valid.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / n;
+      const stdDev = Math.sqrt(variance);
+      return mean !== 0 ? (stdDev / mean) * 100 : 0;
+    };
+
+    const metricCVs = {
+      overall: cvFromRecords(allScores),
+      otif: cvFromRecords(yearRecords.map(r => r.otif)),
+      nil: cvFromRecords(yearRecords.map(r => r.nil)),
+      pickup: cvFromRecords(yearRecords.map(r => r.quality_pickup)),
+      package: cvFromRecords(yearRecords.map(r => r.quality_package)),
+    };
+
     const deficitTotals = {
       otif: Math.max(0, (target - (metricAverages.otif ?? 0))) * criteriaWeights.otif,
       nil: Math.max(0, (target - (metricAverages.nil ?? 0))) * criteriaWeights.nil,
@@ -313,6 +374,19 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
       q3Trend: getTrend(q3Average, q2Average),
       q4Trend: getTrend(q4Average, q3Average),
       metricImpacts,
+      metricAverages: {
+        otif: safeFormat(metricAverages.otif),
+        nil: safeFormat(metricAverages.nil),
+        pickup: safeFormat(metricAverages.pickup),
+        package: safeFormat(metricAverages.package),
+      },
+      metricCVs: {
+        overall: safeFormat(metricCVs.overall),
+        otif: safeFormat(metricCVs.otif),
+        nil: safeFormat(metricCVs.nil),
+        pickup: safeFormat(metricCVs.pickup),
+        package: safeFormat(metricCVs.package),
+      }
     };
   };
 
@@ -330,7 +404,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     return (
       <div className="metrics-empty-state">
         <i className="bi bi-bar-chart-fill" style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.5 }}></i>
-  <p>Selecione um fornecedor para visualizar as metrics</p>
+        <p>Selecione um fornecedor para visualizar as metrics</p>
       </div>
     );
   }
@@ -339,7 +413,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
     return (
       <div className="metrics-loading">
         <div className="spinner"></div>
-  <p>Carregando metrics...</p>
+        <p>Carregando metrics...</p>
       </div>
     );
   }
@@ -360,7 +434,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
           <i className="bi bi-bar-chart-fill"></i>
           Visão Geral das Metrics
         </h2>
-        
+
         {/* Cards superiores - Médias gerais */}
         {zoomLevel >= 120 ? (
           // Modo Carousel para zoom >= 120%
@@ -368,7 +442,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
             <button className="metrics-carousel-btn" onClick={handlePrevCard}>
               <ChevronLeft size={24} />
             </button>
-            
+
             <div className="metrics-carousel-wrapper">
               <div className={`metrics-carousel-card metric-card ${currentCardIndex === 0 ? 'center' : currentCardIndex === 1 ? 'left' : 'right'}`}>
                 <div className="metric-icon">
@@ -403,7 +477,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
                 </div>
               </div>
             </div>
-            
+
             <button className="metrics-carousel-btn" onClick={handleNextCard}>
               <ChevronRight size={24} />
             </button>
@@ -446,7 +520,7 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
           </div>
         )}
 
-  {/* Cards inferiores - Metrics trimestrais */}
+        {/* Cards inferiores - Metrics trimestrais */}
         <div className="metrics-section-title">
           <h3>Metrics Trimestrais</h3>
         </div>
@@ -494,41 +568,68 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({ supplierId, selectedY
         </div>
 
         <div className="metrics-section-title metrics-impact-title">
-          <h3>Impacto na média</h3>
-          <i
-            className="bi bi-info-circle"
-            title="Mostra o quanto cada critério puxou o score para baixo (0 a 1)."
-          ></i>
+          <h3>Coeficiente de Variação</h3>
+          <MetricsInfoModal title="Coeficiente de Variação (CV)">
+            <p><strong>Impacto na média:</strong> Mostra o quanto cada critério puxou o score para baixo (0 a 1).</p>
+            <p><strong>Coeficiente de Variação (CV):</strong> Mede o quanto os scores variam em relação à média. Quanto menor, mais consistente.</p>
+            <div className="metrics-formula-box">
+              <span><b>CV = (Desvio Padrão ÷ Média) × 100</b></span>
+            </div>
+            <div className="metrics-formula-box">
+              <span>Até <b>25%</b> = OK (consistente)</span>
+              <span>Acima de <b>25%</b> = Ruim (disperso)</span>
+            </div>
+          </MetricsInfoModal>
         </div>
-        <div className="metrics-impact-container">
-          <div className="metrics-impact-bars">
-            {[
-              { label: 'OTIF', impact: metrics.metricImpacts.otif },
-              { label: 'NIL', impact: metrics.metricImpacts.nil },
-              { label: 'PICKUP', impact: metrics.metricImpacts.pickup },
-              { label: 'PACKAGE', impact: metrics.metricImpacts.package },
-            ].map((metric) => {
-              const normalized = Math.min(1, Math.max(0, metric.impact));
-              const maxImpact = Math.max(
-                metrics.metricImpacts.otif,
-                metrics.metricImpacts.nil,
-                metrics.metricImpacts.pickup,
-                metrics.metricImpacts.package
-              );
-              const isImpactful = normalized === maxImpact && maxImpact > 0;
+        <div className="metrics-impact-container" style={{ display: 'flex', gap: '1rem', alignItems: 'stretch' }}>
+          <div className="metrics-impact-bars-wrapper" style={{ flex: '0 0 auto', background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div className="metrics-impact-bars" style={{ width: '250px' }}>
+              {[
+                { label: 'OTIF', impact: metrics.metricImpacts.otif },
+                { label: 'NIL', impact: metrics.metricImpacts.nil },
+                { label: 'PICKUP', impact: metrics.metricImpacts.pickup },
+                { label: 'PACKAGE', impact: metrics.metricImpacts.package },
+              ].map((metric) => {
+                const normalized = Math.min(1, Math.max(0, metric.impact));
+                const maxImpact = Math.max(
+                  metrics.metricImpacts.otif,
+                  metrics.metricImpacts.nil,
+                  metrics.metricImpacts.pickup,
+                  metrics.metricImpacts.package
+                );
+                const isImpactful = normalized === maxImpact && maxImpact > 0;
 
-              return (
-                <div key={metric.label} className={`metrics-impact-row ${isImpactful ? 'impactful' : ''}`}>
-                  <span className="metrics-impact-label">{metric.label}</span>
-                  <div className="metrics-impact-bar">
-                    <div
-                      className="metrics-impact-fill"
-                      style={{ width: `${normalized * 100}%` }}
-                    />
+                return (
+                  <div key={metric.label} className={`metrics-impact-row ${isImpactful ? 'impactful' : ''}`}>
+                    <span className="metrics-impact-label">{metric.label}</span>
+                    <div className="metrics-impact-bar">
+                      <div
+                        className="metrics-impact-fill"
+                        style={{ width: `${normalized * 100}%`, backgroundColor: isImpactful ? 'var(--accent-primary)' : 'rgba(148, 163, 184, 0.5)' }}
+                      />
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="metrics-gauges-wrapper" style={{ flex: '1', display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px', alignItems: 'stretch' }}>
+            <div style={{ flex: 1.5, minWidth: '180px', display: 'flex' }}>
+              <ScoreGauge title="Performance" value={metrics.metricCVs.overall} isCV={true} />
+            </div>
+            <div style={{ flex: 1, minWidth: '120px', display: 'flex' }}>
+              <ScoreGauge title="OTIF" value={metrics.metricCVs.otif} isCV={true} />
+            </div>
+            <div style={{ flex: 1, minWidth: '120px', display: 'flex' }}>
+              <ScoreGauge title="NIL" value={metrics.metricCVs.nil} isCV={true} />
+            </div>
+            <div style={{ flex: 1, minWidth: '120px', display: 'flex' }}>
+              <ScoreGauge title="PACKAGE" value={metrics.metricCVs.package} isCV={true} />
+            </div>
+            <div style={{ flex: 1, minWidth: '120px', display: 'flex' }}>
+              <ScoreGauge title="PICKUP" value={metrics.metricCVs.pickup} isCV={true} />
+            </div>
           </div>
         </div>
       </div>

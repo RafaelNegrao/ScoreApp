@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
-import { Info } from 'lucide-react';
-import RegressionModal from '../../components/RegressionModal';
-import '../../components/RegressionModal.css';
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 
 interface ScoreRecord {
   supplier_id: string;
@@ -19,12 +16,14 @@ interface ScoreRecord {
 interface PerformanceChartProps {
   supplierId: string | null;
   selectedYear: string;
+  onRegressionChange?: (data: RegressionData | null) => void;
 }
 
 interface RegressionData {
   slope: number;
   intercept: number;
   r2: number;
+  cv: number;
   trend: 'Crescente' | 'Decrescente' | 'Estável';
   equation: string;
   monthsAnalyzed: number;
@@ -42,11 +41,10 @@ const months = [
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ];
 
-const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selectedYear }) => {
+const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selectedYear, onRegressionChange }) => {
   const [data, setData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [regressionData, setRegressionData] = useState<RegressionData | null>(null);
-  const [showModal, setShowModal] = useState(false);
   const [target, setTarget] = useState<number | null>(null);
   const [zoomLevel, setZoomLevel] = useState(100);
 
@@ -56,10 +54,10 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
       const zoom = Math.round((window.outerWidth / window.innerWidth) * 100);
       setZoomLevel(zoom);
     };
-    
+
     detectZoom();
     window.addEventListener('resize', detectZoom);
-    
+
     return () => window.removeEventListener('resize', detectZoom);
   }, []);
 
@@ -88,10 +86,16 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
     if (!supplierId) {
       setData([]);
       setRegressionData(null);
+      onRegressionChange?.(null);
       return;
     }
     loadData();
   }, [supplierId, selectedYear]);
+
+  // Notify parent whenever regression data changes
+  useEffect(() => {
+    onRegressionChange?.(regressionData);
+  }, [regressionData]);
 
   const calculateLinearRegression = (dataPoints: ChartDataPoint[]): RegressionData => {
     // Filtra apenas pontos com score válido (incluindo 0) e não-null
@@ -103,6 +107,7 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
         slope: 0,
         intercept: 0,
         r2: 0,
+        cv: 0,
         trend: 'Estável',
         equation: 'y = 0',
         monthsAnalyzed: 0,
@@ -155,10 +160,16 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
       difference: p.y - yPredicted[i]
     }));
 
+    // Calcula CV (Coeficiente de Variação)
+    const variance = points.reduce((sum, p) => sum + Math.pow(p.y - meanY, 2), 0) / n;
+    const stdDev = Math.sqrt(variance);
+    const cv = meanY !== 0 ? (stdDev / meanY) * 100 : 0;
+
     return {
       slope,
       intercept,
       r2: Math.max(0, r2), // Garante que R² não seja negativo
+      cv: parseFloat(cv.toFixed(2)),
       trend,
       equation,
       monthsAnalyzed: n,
@@ -174,15 +185,15 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
       console.log('📊 Performance Chart - ALL Records:', records);
       console.log('📊 Performance Chart - Supplier ID:', supplierId);
       console.log('📊 Performance Chart - Selected Year:', selectedYear);
-      
+
       // Filtra por ano e agrupa por mês
       const monthlyScores = months.map((m, idx) => {
         const monthNumber = idx + 1; // Mês de 1 a 12
         // Busca registros que correspondem ao ano e mês específico
         const monthRecords = records.filter(r => r.year === selectedYear && r.month === monthNumber);
-        
+
         console.log(`📊 Mês ${monthNumber} (${m}):`, monthRecords.length, 'registros encontrados', monthRecords);
-        
+
         // Usa o total_score diretamente
         if (monthRecords.length > 0) {
           const totalScores: number[] = [];
@@ -191,24 +202,24 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
               totalScores.push(r.total_score);
             }
           });
-          
+
           if (totalScores.length > 0) {
             const avg = totalScores.reduce((sum, s) => sum + s, 0) / totalScores.length;
             console.log(`📊 Mês ${monthNumber} (${m}) - Total Scores:`, totalScores, '| Média:', avg);
             return { month: m, score: parseFloat(avg.toFixed(1)) };
           }
         }
-        
+
         return { month: m, score: null };
       });
-      
+
       console.log('📊 Performance Chart - Final Monthly Scores:', monthlyScores);
       setData(monthlyScores);
-      
+
       // Calcula regressão linear
       const regression = calculateLinearRegression(monthlyScores);
       setRegressionData(regression);
-      
+
       // Adiciona linha de tendência aos dados
       const dataWithTrend = monthlyScores.map((item, index) => ({
         ...item,
@@ -234,7 +245,10 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
   }
 
   return (
-    <>
+    <div
+      onClick={() => onRegressionChange?.(regressionData)}
+      style={{ cursor: onRegressionChange ? 'pointer' : 'default', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
       <div className="metric-chart-header">
         <h3 className="metric-chart-title">Performance</h3>
         <div className="metric-chart-info">
@@ -247,113 +261,81 @@ const PerformanceChart: React.FC<PerformanceChartProps> = ({ supplierId, selecte
           </span>
         </div>
       </div>
-        <div style={{ 
-          width: '100%', 
-          flex: 1,
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          boxSizing: 'border-box'
-        }}>
-          {loading ? (
-            <div style={{ color: 'var(--text-secondary)' }}>Carregando...</div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} margin={{ top: 25, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid 
-                  strokeDasharray="2 6" 
-                  stroke="rgba(148, 163, 184, 0.3)" 
-                  vertical={false}
-                  horizontal={true}
-                />
-                <XAxis dataKey="month" stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
-                <YAxis
-                  domain={[0, 10]}
-                  ticks={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
-                  allowDecimals={false}
-                  stroke="var(--text-secondary)"
-                  style={{ fontSize: getFontSize().axis }}
-                />
-                {/* Tooltip removido para não mostrar hover */}
-                <Bar 
-                  dataKey="score" 
-                  radius={[6, 6, 0, 0]} 
-                  label={(props: any) => {
-                    const { x, y, width, value } = props;
-                    if (value === null || value === undefined) return null;
-                    return (
-                      <text 
-                        x={x + width / 2} 
-                        y={y - 5} 
-                        fill="var(--text-secondary)" 
-                        textAnchor="middle" 
-                        fontSize={11}
-                      >
-                        {value.toFixed(1)}
-                      </text>
-                    );
-                  }}
-                >
-                  {data.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={
-                        entry.score === null ? 'transparent' : 
-                        entry.score === 0 ? '#fbbf24' : 
-                        (target !== null && entry.score < target ? '#ef4444' : '#22c55e')
-                      }
-                    />
-                  ))}
-                </Bar>
-                {/* Linha de Target - renderizada após as barras para ficar sobreposta */}
-                {target !== null && (
-                  <ReferenceLine
-                    y={target}
-                    stroke="var(--accent-primary)"
-                    strokeWidth={2.5}
-                    strokeDasharray="5 5"
-                    label={{ value: 'Target', position: 'right', fill: 'var(--accent-primary)', fontSize: 12 }}
+      <div style={{
+        width: '100%',
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box'
+      }}>
+        {loading ? (
+          <div style={{ color: 'var(--text-secondary)' }}>Carregando...</div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 25, right: 10, left: -10, bottom: 0 }}>
+              <CartesianGrid
+                strokeDasharray="2 6"
+                stroke="rgba(148, 163, 184, 0.3)"
+                vertical={false}
+                horizontal={true}
+              />
+              <XAxis dataKey="month" stroke="var(--text-secondary)" style={{ fontSize: getFontSize().axis }} />
+              <YAxis
+                domain={[0, 10]}
+                ticks={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
+                allowDecimals={false}
+                stroke="var(--text-secondary)"
+                style={{ fontSize: getFontSize().axis }}
+              />
+              {/* Tooltip removido para não mostrar hover */}
+              <Bar
+                dataKey="score"
+                radius={[6, 6, 0, 0]}
+                isAnimationActive={false}
+                label={(props: any) => {
+                  const { x, y, width, value } = props;
+                  if (value === null || value === undefined) return null;
+                  return (
+                    <text
+                      x={x + width / 2}
+                      y={y - 5}
+                      fill="var(--text-secondary)"
+                      textAnchor="middle"
+                      fontSize={11}
+                    >
+                      {value.toFixed(1)}
+                    </text>
+                  );
+                }}
+              >
+                {data.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={
+                      entry.score === null ? 'transparent' :
+                        entry.score === 0 ? '#fbbf24' :
+                          (target !== null && entry.score < target ? '#ef4444' : '#22c55e')
+                    }
                   />
-                )}
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+                ))}
+              </Bar>
+              {/* Linha de Tendência Removida */}
+              {/* Linha de Target - renderizada após as barras para ficar sobreposta */}
+              {target !== null && (
+                <ReferenceLine
+                  y={target}
+                  stroke="var(--accent-primary)"
+                  strokeWidth={2.5}
+                  strokeDasharray="5 5"
+                  label={{ value: 'Target', position: 'right', fill: 'var(--accent-primary)', fontSize: 12 }}
+                />
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
       </div>
-
-      {/* Barra de Informações de Regressão */}
-      {regressionData && (
-        <div className="regression-info-bar">
-          <div className="regression-info-content">
-            <div className="regression-info-item">
-              <span className="regression-info-label">y={regressionData.slope.toFixed(2)}x{regressionData.intercept >= 0 ? '+' : ''}{regressionData.intercept.toFixed(1)}</span>
-            </div>
-            <div className="regression-info-item">
-              <span className={`regression-trend ${regressionData.trend.toLowerCase()}`}>
-                {regressionData.trend === 'Crescente' && '↗ Crescente'}
-                {regressionData.trend === 'Decrescente' && '↘ Decrescente'}
-                {regressionData.trend === 'Estável' && '→ Estável'}
-              </span>
-            </div>
-            <div className="regression-info-item">
-              <span className="regression-info-label">R²={regressionData.r2.toFixed(2)}</span>
-            </div>
-          </div>
-          <button className="regression-info-button" onClick={() => setShowModal(true)}>
-            <Info size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* Modal de Regressão */}
-      {regressionData && (
-        <RegressionModal
-          isOpen={showModal}
-          onClose={() => setShowModal(false)}
-          data={regressionData}
-          metricName="Performance"
-        />
-      )}
-    </>
+    </div>
   );
 };
 

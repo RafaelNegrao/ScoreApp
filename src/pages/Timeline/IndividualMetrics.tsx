@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
-import { Info, ChevronLeft, ChevronRight } from 'lucide-react';
-import RegressionModal from '../../components/RegressionModal';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import './IndividualMetrics.css';
 
 interface ScoreRecord {
@@ -21,12 +20,14 @@ interface IndividualMetricsProps {
   carouselPage?: number;
   singleMetricIndex?: number;
   isSmallHeight?: boolean;
+  onRegressionSelect?: (data: RegressionData, metricName: string) => void;
 }
 
 interface RegressionData {
   slope: number;
   intercept: number;
   r2: number;
+  cv: number;
   trend: 'Crescente' | 'Decrescente' | 'Estável';
   equation: string;
   monthsAnalyzed: number;
@@ -44,15 +45,12 @@ const months = [
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
 ];
 
-const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selectedYear, carouselPage = 0, singleMetricIndex, isSmallHeight = false }) => {
+const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selectedYear, carouselPage = 0, singleMetricIndex, isSmallHeight = false, onRegressionSelect }) => {
   const [otifData, setOtifData] = useState<ChartDataPoint[]>([]);
   const [nilData, setNilData] = useState<ChartDataPoint[]>([]);
   const [pickupData, setPickupData] = useState<ChartDataPoint[]>([]);
   const [packageData, setPackageData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [currentMetric, setCurrentMetric] = useState<string>('');
-  const [currentRegression, setCurrentRegression] = useState<RegressionData | null>(null);
   const [isMobileCarousel, setIsMobileCarousel] = useState(false);
   const [isCompactCarousel, setIsCompactCarousel] = useState(false);
   const [currentCarouselIndex, setCurrentCarouselIndex] = useState(0);
@@ -66,10 +64,10 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
       console.log('Zoom detectado:', zoom, '%');
       setZoomLevel(zoom);
     };
-    
+
     detectZoom();
     window.addEventListener('resize', detectZoom);
-    
+
     return () => window.removeEventListener('resize', detectZoom);
   }, []);
 
@@ -149,6 +147,7 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
         slope: 0,
         intercept: 0,
         r2: 0,
+        cv: 0,
         trend: 'Estável',
         equation: 'y = 0',
         monthsAnalyzed: 0,
@@ -201,10 +200,16 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
       difference: p.y - yPredicted[i]
     }));
 
+    // Calcula CV (Coeficiente de Variação)
+    const variance = points.reduce((sum, p) => sum + Math.pow(p.y - meanY, 2), 0) / n;
+    const stdDev = Math.sqrt(variance);
+    const cv = meanY !== 0 ? (stdDev / meanY) * 100 : 0;
+
     return {
       slope,
       intercept,
       r2: Math.max(0, r2), // Garante que R² não seja negativo
+      cv: parseFloat(cv.toFixed(2)),
       trend,
       equation,
       monthsAnalyzed: n,
@@ -220,14 +225,14 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
       console.log('📈 Individual Metrics - ALL Records:', records);
       console.log('📈 Individual Metrics - Supplier ID:', supplierId);
       console.log('📈 Individual Metrics - Selected Year:', selectedYear);
-      
+
       // Processar dados para cada métrica
       const processMetric = (metricField: keyof ScoreRecord): ChartDataPoint[] => {
         return months.map((m, idx) => {
           const monthNumber = idx + 1; // Mês de 1 a 12
           // Busca registros que correspondem ao ano e mês específico
           const monthRecords = records.filter(r => r.year === selectedYear && r.month === monthNumber);
-          
+
           const scores = monthRecords.map(r => r[metricField] as number).filter(s => s !== undefined && s !== null);
           if (scores.length > 0) {
             const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
@@ -272,33 +277,23 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
 
   const renderChart = (data: ChartDataPoint[], title: string, color: string) => {
     const regression = calculateLinearRegression(data);
-    
-    const handleOpenModal = () => {
-      setCurrentMetric(title);
-      setCurrentRegression(regression);
-      setShowModal(true);
-    };
 
     return (
-      <div className="metric-chart-card" key={title}>
+      <div
+        className="metric-chart-card"
+        key={title}
+        onClick={() => onRegressionSelect?.(regression, title)}
+        style={{ cursor: onRegressionSelect ? 'pointer' : 'default' }}
+      >
         <div className="metric-chart-header">
           <h3 className="metric-chart-title">{title}</h3>
-          <div className="metric-chart-info">
-            <span className="metric-chart-label">Média:</span>
-            <span className="metric-chart-value" style={{ color }}>
-              {data.length > 0 ? (() => {
-                const validData = data.filter(d => d.score !== null && d.score !== undefined && !isNaN(d.score as number));
-                return validData.length > 0 ? (validData.reduce((sum, d) => sum + (d.score as number), 0) / validData.length).toFixed(1) : '0.0';
-              })() : '0.0'}
-            </span>
-          </div>
         </div>
         <div style={{ width: '100%', height: getChartHeight(), boxSizing: 'border-box' }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 25, right: 10, left: -10, bottom: 0 }}>
-              <CartesianGrid 
-                strokeDasharray="2 6" 
-                stroke="rgba(148, 163, 184, 0.3)" 
+              <CartesianGrid
+                strokeDasharray="2 6"
+                stroke="rgba(148, 163, 184, 0.3)"
                 vertical={false}
                 horizontal={true}
               />
@@ -310,37 +305,20 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
                 stroke="var(--text-secondary)"
                 style={{ fontSize: getFontSize().axis }}
               />
-              <Tooltip
-                active={false}
-                contentStyle={{
-                  background: 'var(--card-bg)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  padding: '8px 12px'
-                }}
-                formatter={(value: any, name: string) => {
-                  if (value === null || value === undefined) {
-                    return 'Sem dados';
-                  }
-                  if (typeof value === 'number') {
-                    return value.toFixed(1);
-                  }
-                  return value;
-                }}
-              />
-              <Bar 
-                dataKey="score" 
-                radius={[4, 4, 0, 0]} 
+
+              <Bar
+                dataKey="score"
+                radius={[4, 4, 0, 0]}
+                isAnimationActive={false}
                 label={(props: any) => {
                   const { x, y, width, value } = props;
                   if (value === null || value === undefined) return null;
                   return (
-                    <text 
-                      x={x + width / 2} 
-                      y={y - 5} 
-                      fill="var(--text-secondary)" 
-                      textAnchor="middle" 
+                    <text
+                      x={x + width / 2}
+                      y={y - 5}
+                      fill="var(--text-secondary)"
+                      textAnchor="middle"
                       fontSize={10}
                     >
                       {value.toFixed(1)}
@@ -349,12 +327,12 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
                 }}
               >
                 {data.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
+                  <Cell
+                    key={`cell-${index}`}
                     fill={
-                      entry.score === null ? 'transparent' : 
-                      entry.score === 0 ? '#fbbf24' : 
-                      (targetValue !== null && entry.score < targetValue ? '#ef4444' : '#22c55e')
+                      entry.score === null ? 'transparent' :
+                        entry.score === 0 ? '#fbbf24' :
+                          (targetValue !== null && entry.score < targetValue ? '#ef4444' : '#22c55e')
                     }
                   />
                 ))}
@@ -486,7 +464,7 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
           </button>
 
           <div className="individual-compact-grid" key={`compact-${currentCarouselIndex}`}>
-            {metricsConfig.slice(currentCarouselIndex, currentCarouselIndex + 2).map(metric => 
+            {metricsConfig.slice(currentCarouselIndex, currentCarouselIndex + 2).map(metric =>
               renderChart(metric.data, metric.title, metric.color)
             )}
           </div>
@@ -506,15 +484,6 @@ const IndividualMetrics: React.FC<IndividualMetricsProps> = ({ supplierId, selec
         </div>
       )}
 
-      {/* Modal de Regressão */}
-      {currentRegression && (
-        <RegressionModal
-          isOpen={showModal}
-          onClose={() => setShowModal(false)}
-          data={currentRegression}
-          metricName={currentMetric}
-        />
-      )}
     </>
   );
 };
