@@ -2227,6 +2227,13 @@ impl DatabaseManager {
         )
         .map_err(|e| format!("Erro ao excluir fornecedor: {}", e))?;
 
+        // Exclui o histórico de logs do fornecedor
+        tx.execute(
+            "DELETE FROM log_table WHERE supplier LIKE '%(' || ?1 || ')'",
+            [&supplier_id],
+        )
+        .map_err(|e| format!("Erro ao excluir histórico do fornecedor: {}", e))?;
+
         tx.commit()
             .map_err(|e| format!("Erro ao finalizar transação: {}", e))?;
 

@@ -194,7 +194,7 @@ function CriteriaTab() {
             <button className="criterios-carousel-btn prev" onClick={handlePrevCard}>
               <i className="bi bi-chevron-left"></i>
             </button>
-            
+
             <div className="criterios-carousel-track">
               {criteriaCards[currentCardIndex]}
             </div>
@@ -203,7 +203,7 @@ function CriteriaTab() {
               <i className="bi bi-chevron-right"></i>
             </button>
           </div>
-          
+
           <div className="criterios-carousel-indicators">
             {criteriaCards.map((_, index) => (
               <button
@@ -217,121 +217,121 @@ function CriteriaTab() {
         </>
       ) : (
         <div className="criterios-grid">
-        {/* OTIF */}
-        <div className="criterio-card">
-          <div className="criterio-header">
-            <i className="bi bi-clock-history"></i>
-            <h3>OTIF</h3>
-          </div>
-          <div className="criterio-body">
-            <p className="criterio-description">As notas são de 0 a 100%, porém a conversão para adição é multiplicar por 10.</p>
-            <div className="criterio-example">
-              <strong>Exemplo:</strong> 87% × 10 = 8,7
+          {/* OTIF */}
+          <div className="criterio-card">
+            <div className="criterio-header">
+              <i className="bi bi-clock-history"></i>
+              <h3>OTIF</h3>
             </div>
-            <div className="criterio-table">
-              <div className="table-row header">
-                <span>OTIF (%)</span>
-                <span>Nota Final</span>
+            <div className="criterio-body">
+              <p className="criterio-description">As notas são de 0 a 100%, porém a conversão para adição é multiplicar por 10.</p>
+              <div className="criterio-example">
+                <strong>Exemplo:</strong> 87% × 10 = 8,7
               </div>
-              <div className="table-row nota-10">
-                <span>100%</span>
-                <span>10,0</span>
-              </div>
-              <div className="table-row nota-9">
-                <span>90%</span>
-                <span>9,0</span>
-              </div>
-              <div className="table-row nota-8">
-                <span>87%</span>
-                <span>8,7</span>
-              </div>
-              <div className="table-row nota-7">
-                <span>75%</span>
-                <span>7,5</span>
-              </div>
-              <div className="table-row nota-5">
-                <span>50%</span>
-                <span>5,0</span>
-              </div>
-              <div className="table-row nota-0">
-                <span>0%</span>
-                <span>0,0</span>
+              <div className="criterio-table">
+                <div className="table-row header">
+                  <span>OTIF (%)</span>
+                  <span>Nota Final</span>
+                </div>
+                <div className="table-row nota-10">
+                  <span>100%</span>
+                  <span>10,0</span>
+                </div>
+                <div className="table-row nota-9">
+                  <span>90%</span>
+                  <span>9,0</span>
+                </div>
+                <div className="table-row nota-8">
+                  <span>87%</span>
+                  <span>8,7</span>
+                </div>
+                <div className="table-row nota-7">
+                  <span>75%</span>
+                  <span>7,5</span>
+                </div>
+                <div className="table-row nota-5">
+                  <span>50%</span>
+                  <span>5,0</span>
+                </div>
+                <div className="table-row nota-0">
+                  <span>0%</span>
+                  <span>0,0</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* NIL */}
-        <div className="criterio-card">
-          <div className="criterio-header">
-            <i className="bi bi-box-seam"></i>
-            <h3>NIL</h3>
-          </div>
-          <div className="criterio-body">
-            <div className="criterio-rules">
-              <div className="rule-item nota-10">
-                <i className="bi bi-check-circle-fill"></i>
-                <span><strong>0 problemas</strong> → Nota 10</span>
-              </div>
-              <div className="rule-item nota-5">
-                <i className="bi bi-exclamation-triangle-fill"></i>
-                <span><strong>1 problema</strong> → Nota 5</span>
-              </div>
-              <div className="rule-item nota-0">
-                <i className="bi bi-x-circle-fill"></i>
-                <span><strong>Mais de 1 problema</strong> → Nota 0</span>
+          {/* NIL */}
+          <div className="criterio-card">
+            <div className="criterio-header">
+              <i className="bi bi-box-seam"></i>
+              <h3>NIL</h3>
+            </div>
+            <div className="criterio-body">
+              <div className="criterio-rules">
+                <div className="rule-item nota-10">
+                  <i className="bi bi-check-circle-fill"></i>
+                  <span><strong>0 problemas</strong> → Nota 10</span>
+                </div>
+                <div className="rule-item nota-5">
+                  <i className="bi bi-exclamation-triangle-fill"></i>
+                  <span><strong>1 problema</strong> → Nota 5</span>
+                </div>
+                <div className="rule-item nota-0">
+                  <i className="bi bi-x-circle-fill"></i>
+                  <span><strong>Mais de 1 problema</strong> → Nota 0</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* PICKUP */}
-        <div className="criterio-card">
-          <div className="criterio-header">
-            <i className="bi bi-truck"></i>
-            <h3>Pickup</h3>
-          </div>
-          <div className="criterio-body">
-            <div className="criterio-rules">
-              <div className="rule-item nota-10">
-                <i className="bi bi-check-circle-fill"></i>
-                <span><strong>0 problemas</strong> → Nota 10</span>
-              </div>
-              <div className="rule-item nota-5">
-                <i className="bi bi-exclamation-triangle-fill"></i>
-                <span><strong>1 problema</strong> → Nota 5</span>
-              </div>
-              <div className="rule-item nota-0">
-                <i className="bi bi-x-circle-fill"></i>
-                <span><strong>Mais de 1 problema</strong> → Nota 0</span>
+          {/* PICKUP */}
+          <div className="criterio-card">
+            <div className="criterio-header">
+              <i className="bi bi-truck"></i>
+              <h3>Pickup</h3>
+            </div>
+            <div className="criterio-body">
+              <div className="criterio-rules">
+                <div className="rule-item nota-10">
+                  <i className="bi bi-check-circle-fill"></i>
+                  <span><strong>0 problemas</strong> → Nota 10</span>
+                </div>
+                <div className="rule-item nota-5">
+                  <i className="bi bi-exclamation-triangle-fill"></i>
+                  <span><strong>1 problema</strong> → Nota 5</span>
+                </div>
+                <div className="rule-item nota-0">
+                  <i className="bi bi-x-circle-fill"></i>
+                  <span><strong>Mais de 1 problema</strong> → Nota 0</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* PACKAGE */}
-        <div className="criterio-card">
-          <div className="criterio-header">
-            <i className="bi bi-box"></i>
-            <h3>Package</h3>
-          </div>
-          <div className="criterio-body">
-            <div className="criterio-rules">
-              <div className="rule-item nota-10">
-                <i className="bi bi-check-circle-fill"></i>
-                <span><strong>0 problemas</strong> → Nota 10</span>
-              </div>
-              <div className="rule-item nota-5">
-                <i className="bi bi-exclamation-triangle-fill"></i>
-                <span><strong>1 problema</strong> → Nota 5</span>
-              </div>
-              <div className="rule-item nota-0">
-                <i className="bi bi-x-circle-fill"></i>
-                <span><strong>Mais de 1 problema</strong> → Nota 0</span>
+          {/* PACKAGE */}
+          <div className="criterio-card">
+            <div className="criterio-header">
+              <i className="bi bi-box"></i>
+              <h3>Package</h3>
+            </div>
+            <div className="criterio-body">
+              <div className="criterio-rules">
+                <div className="rule-item nota-10">
+                  <i className="bi bi-check-circle-fill"></i>
+                  <span><strong>0 problemas</strong> → Nota 10</span>
+                </div>
+                <div className="rule-item nota-5">
+                  <i className="bi bi-exclamation-triangle-fill"></i>
+                  <span><strong>1 problema</strong> → Nota 5</span>
+                </div>
+                <div className="rule-item nota-0">
+                  <i className="bi bi-x-circle-fill"></i>
+                  <span><strong>Mais de 1 problema</strong> → Nota 0</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
         </div>
       )}
     </div>
@@ -468,7 +468,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
 
           if (otif !== '' || nil !== '' || pickup !== '' || pack !== '') {
             const scores: { value: number, weight: number }[] = [];
-            
+
             if (otif !== '') {
               const otifNum = parseFloat(otif);
               if (!isNaN(otifNum)) scores.push({ value: otifNum, weight: criteriaWeights.otif });
@@ -485,7 +485,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
               const packageNum = parseFloat(pack);
               if (!isNaN(packageNum)) scores.push({ value: packageNum, weight: criteriaWeights.package });
             }
-            
+
             if (scores.length > 0) {
               const totalWeightedScore = scores.reduce((sum, s) => sum + (s.value * s.weight), 0);
               const totalWeight = scores.reduce((sum, s) => sum + s.weight, 0);
@@ -569,7 +569,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
 
   const handleInputBlur = async (supplierId: string, month: number, field?: string) => {
     const rowKey = `${supplierId}-${month}`;
-    
+
     // Cria cópia dos inputValues para usar/modificar
     let currentValues = new Map(inputValues);
 
@@ -623,32 +623,32 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
   const updateTotal = (supplierId: string, month: number, values: Map<string, any>) => {
     const rowKey = `${supplierId}-${month}`;
     const scores: { value: number, weight: number }[] = [];
-    
+
     const otifValue = values.get(`${rowKey}-otif`);
     if (otifValue !== null && otifValue !== undefined && otifValue !== '') {
       const otif = parseFloat(otifValue);
       if (!isNaN(otif)) scores.push({ value: otif, weight: criteriaWeights.otif });
     }
-    
+
     const nilValue = values.get(`${rowKey}-nil`);
     if (nilValue !== null && nilValue !== undefined && nilValue !== '') {
       const nil = parseFloat(nilValue);
       if (!isNaN(nil)) scores.push({ value: nil, weight: criteriaWeights.nil });
     }
-    
+
     const pickupValue = values.get(`${rowKey}-pickup`);
     if (pickupValue !== null && pickupValue !== undefined && pickupValue !== '') {
       const pickup = parseFloat(pickupValue);
       if (!isNaN(pickup)) scores.push({ value: pickup, weight: criteriaWeights.pickup });
     }
-    
+
     const packageValue = values.get(`${rowKey}-package`);
     if (packageValue !== null && packageValue !== undefined && packageValue !== '') {
       const packageScore = parseFloat(packageValue);
       if (!isNaN(packageScore)) scores.push({ value: packageScore, weight: criteriaWeights.package });
     }
-    
-    const total = scores.length > 0 
+
+    const total = scores.length > 0
       ? (scores.reduce((sum, s) => sum + (s.value * s.weight), 0) / scores.reduce((sum, s) => sum + s.weight, 0))
       : null;
 
@@ -662,7 +662,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         const nilVal = nilValue !== '' ? parseFloat(nilValue) : null;
         const pickupVal = pickupValue !== '' ? parseFloat(pickupValue) : null;
         const packageVal = packageValue !== '' ? parseFloat(packageValue) : null;
-        
+
         monthData.otif = (otifVal !== null && !isNaN(otifVal)) ? otifVal : null;
         monthData.nil = (nilVal !== null && !isNaN(nilVal)) ? nilVal : null;
         monthData.pickup = (pickupVal !== null && !isNaN(pickupVal)) ? pickupVal : null;
@@ -738,7 +738,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
 
       // Calcula o total
       const scores: { value: number, weight: number }[] = [];
-      
+
       if (otif !== null && otif !== '') {
         const otifNum = parseFloat(otif);
         if (!isNaN(otifNum)) scores.push({ value: otifNum, weight: criteriaWeights.otif });
@@ -755,7 +755,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         const packageNum = parseFloat(packageScore);
         if (!isNaN(packageNum)) scores.push({ value: packageNum, weight: criteriaWeights.package });
       }
-      
+
       const totalScore = scores.length > 0
         ? (scores.reduce((sum, s) => sum + (s.value * s.weight), 0) / scores.reduce((sum, s) => sum + s.weight, 0))
         : null;
@@ -800,7 +800,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         data.set(supplierId, months);
         setYearlyData(data);
       }
-      
+
       // Atualiza os originalValues para refletir os valores salvos
       const newOriginalValues = new Map(originalValues);
       newOriginalValues.set(`${rowKey}-otif`, currentOtif);
@@ -809,7 +809,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
       newOriginalValues.set(`${rowKey}-package`, currentPackage);
       newOriginalValues.set(`${rowKey}-comments`, currentComment);
       setOriginalValues(newOriginalValues);
-      
+
       showToast(`${monthNames[month - 1]} salvo!`, 'success');
       console.log('✅ SUCESSO - Mês', month, 'salvo!');
 
@@ -844,7 +844,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
         setCommentModalOpen(false);
         return;
       }
-      
+
       console.log('💾 [SALVANDO COMENTÁRIO] Mês:', selectedComment.month);
 
       // Agora salva com o valor atualizado
@@ -883,7 +883,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
 
         // Calcula o total
         const scores: { value: number, weight: number }[] = [];
-        
+
         if (otif !== null && otif !== '') {
           const otifNum = parseFloat(otif);
           if (!isNaN(otifNum)) scores.push({ value: otifNum, weight: criteriaWeights.otif });
@@ -900,7 +900,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
           const packageNum = parseFloat(packageScore);
           if (!isNaN(packageNum)) scores.push({ value: packageNum, weight: criteriaWeights.package });
         }
-        
+
         const totalScore = scores.length > 0
           ? (scores.reduce((sum, s) => sum + (s.value * s.weight), 0) / scores.reduce((sum, s) => sum + s.weight, 0))
           : null;
@@ -1359,7 +1359,7 @@ function Score() {
         const privilege = (user.user_privilege || '').toLowerCase();
         const isSuper = privilege === 'super admin';
         setIsSuperAdmin(isSuper);
-        
+
         // Carregar configuração de import/export
         const importExportEnabled = localStorage.getItem('allowImportExport') === 'true';
         setAllowImportExport(importExportEnabled);
@@ -1478,7 +1478,7 @@ function Score() {
   // Função para calcular o total score
   const calculateTotalScore = (supplierId: string, values: Map<string, any>): string | null => {
     const scores: { value: number, weight: number }[] = [];
-    
+
     const otifValue = values.get(`${supplierId}-otif`);
     if (otifValue !== null && otifValue !== undefined && otifValue !== '') {
       const otif = parseFloat(otifValue);
@@ -1486,7 +1486,7 @@ function Score() {
         scores.push({ value: otif, weight: criteriaWeights.otif });
       }
     }
-    
+
     const nilValue = values.get(`${supplierId}-nil`);
     if (nilValue !== null && nilValue !== undefined && nilValue !== '') {
       const nil = parseFloat(nilValue);
@@ -1494,7 +1494,7 @@ function Score() {
         scores.push({ value: nil, weight: criteriaWeights.nil });
       }
     }
-    
+
     const pickupValue = values.get(`${supplierId}-pickup`);
     if (pickupValue !== null && pickupValue !== undefined && pickupValue !== '') {
       const pickup = parseFloat(pickupValue);
@@ -1502,7 +1502,7 @@ function Score() {
         scores.push({ value: pickup, weight: criteriaWeights.pickup });
       }
     }
-    
+
     const packageValue = values.get(`${supplierId}-package`);
     if (packageValue !== null && packageValue !== undefined && packageValue !== '') {
       const packageScore = parseFloat(packageValue);
@@ -1510,12 +1510,12 @@ function Score() {
         scores.push({ value: packageScore, weight: criteriaWeights.package });
       }
     }
-    
+
     if (scores.length === 0) return null;
-    
+
     const totalWeightedScore = scores.reduce((sum, s) => sum + (s.value * s.weight), 0);
     const totalWeight = scores.reduce((sum, s) => sum + s.weight, 0);
-    
+
     return (totalWeightedScore / totalWeight).toFixed(2);
   };
 
@@ -1611,12 +1611,12 @@ function Score() {
   const saveScore = async (supplierId: string, updatedValues?: Map<string, any>) => {
     console.log('🔵 INÍCIO saveScore - supplierId:', supplierId);
     console.log('🔵 selectedMonth:', selectedMonth, 'selectedYear:', selectedYear);
-    
+
     if (!selectedMonth || !selectedYear) {
       console.log('❌ BLOQUEADO: Mês ou ano não selecionado');
       return;
     }
-    
+
     if (isSaving) {
       console.log('❌ BLOQUEADO: Já está salvando');
       return;
@@ -1666,7 +1666,7 @@ function Score() {
         userName,
         userWwid: userWwid3
       });
-      
+
       const result = await invoke('save_supplier_score', {
         supplierId: supplierId,
         supplierName: supplier.vendor_name,
@@ -1713,7 +1713,7 @@ function Score() {
     if (normalViewSelectedComment) {
       const { supplierId } = normalViewSelectedComment;
       const key = `${supplierId}-comments`;
-      
+
       const newValues = new Map(inputValues);
       newValues.set(key, comment);
       setInputValues(newValues);
@@ -1838,7 +1838,7 @@ function Score() {
               ignored++;
               return;
             }
-            
+
             // Só cria se NÃO existe registro algum
             console.log(`➕ Supplier ${supplier.supplier_id} não tem registro para ${fullScoreMonth}/${fullScoreYear}, vai criar`);
 
@@ -2166,16 +2166,7 @@ function Score() {
                           onClick={() => setShowOptionsMenu(false)}
                         />
                         <div className="options-menu-dropdown">
-                          <button
-                            className="options-menu-item"
-                            onClick={() => {
-                              setShowFullScoreModal(true);
-                              setShowOptionsMenu(false);
-                            }}
-                          >
-                            <i className="bi bi-stars"></i>
-                            <span>Gerar nota cheia</span>
-                          </button>
+
 
                           {(isSuperAdmin || allowImportExport) && (
                             <>

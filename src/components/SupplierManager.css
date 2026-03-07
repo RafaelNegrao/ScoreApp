@@ -88,7 +88,7 @@
 
 .col-checkbox input {
   cursor: pointer;
-  transform: scale(1.1);
+  transform: scale(1.4);
   accent-color: var(--accent-primary);
 }
 
