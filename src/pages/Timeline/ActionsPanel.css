@@ -102,6 +102,7 @@
   box-shadow: none;
   cursor: pointer;
 }
+
 .actions-panel-check {
   display: flex;
   align-items: center;
@@ -140,8 +141,16 @@
   cursor: pointer;
 }
 
-.actions-btn:hover { background: rgba(0,0,0,0.03); color: var(--accent-primary); }
+.actions-btn:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--accent-primary);
+}
 
-.actions-btn.delete:hover { color: var(--text-error); background: rgba(239,68,68,0.08); }
+.actions-btn.delete:hover {
+  color: var(--text-error);
+  background: rgba(239, 68, 68, 0.08);
+}
 
-.actions-panel-item.done .actions-panel-text { color: var(--text-muted); }
+.actions-panel-item.done .actions-panel-text {
+  color: var(--text-muted);
+}

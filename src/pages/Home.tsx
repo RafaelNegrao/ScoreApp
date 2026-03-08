@@ -238,7 +238,7 @@ function Home() {
             <div className="info-body">
               <div className="info-row">
                 <span className="info-label">Versão:</span>
-                <span className="info-value">1.1.5</span>
+                <span className="info-value">1.1.7</span>
               </div>
               <div className="info-row">
                 <span className="info-label">Banco:</span>

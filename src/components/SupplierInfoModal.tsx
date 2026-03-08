@@ -91,6 +91,42 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
     return list.find((item) => item.name === name) || null;
   };
 
+  const copyToClipboard = async (value?: string | null, label = 'Valor') => {
+    const text = (value || '').toString();
+    if (!text) {
+      showToast(`${label} vazio. Nada para copiar.`, 'error');
+      return;
+    }
+    try {
+      if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      showToast(`${label} copiado para a área de transferência`, 'success');
+    } catch (err) {
+      console.error('Erro ao copiar:', err);
+      showToast('Erro ao copiar para a área de transferência', 'error');
+    }
+  };
+
+  const copyAllEmails = () => {
+    const source = isEditing ? formData.supplier_email : currentSupplier?.supplier_email;
+    const list = splitEmails(source);
+    if (!list || list.length === 0) {
+      showToast('Nenhum email para copiar', 'error');
+      return;
+    }
+    copyToClipboard(list.join('; '), 'Emails');
+  };
+
   const splitEmails = (raw: string | undefined) => {
     if (!raw) return [];
     return raw
@@ -354,7 +390,6 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
           </div>
           <div className="supplier-info-main">
             <div className="supplier-info-scrollable">
-              <div className="supplier-info-section-title">Infos</div>
               <div className="supplier-info-fields">
               <div className="supplier-info-row">
                 <div className="supplier-info-item">
@@ -371,7 +406,20 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                       placeholder="Nome do fornecedor"
                     />
                   ) : (
-                    <span className="supplier-info-value">{currentSupplier.vendor_name || '-'}</span>
+                    <div className="supplier-info-value-row">
+                      <span className="supplier-info-value">{currentSupplier.vendor_name || '-'}</span>
+                      <button
+                        type="button"
+                        className="supplier-info-copy-btn"
+                        onClick={() => copyToClipboard(currentSupplier.vendor_name, 'Fornecedor')}
+                        title="Copiar fornecedor"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                          <rect x="4" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                          <rect x="10" y="4" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                        </svg>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -465,7 +513,20 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                       placeholder="PO"
                     />
                   ) : (
-                    <span className="supplier-info-value">{currentSupplier.supplier_po || '-'}</span>
+                    <div className="supplier-info-value-row">
+                      <span className="supplier-info-value">{currentSupplier.supplier_po || '-'}</span>
+                      <button
+                        type="button"
+                        className="supplier-info-copy-btn"
+                        onClick={() => copyToClipboard(currentSupplier.supplier_po, 'PO')}
+                        title="Copiar PO"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                          <rect x="4" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                          <rect x="10" y="4" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                        </svg>
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div className="supplier-info-item">
@@ -529,12 +590,31 @@ const SupplierInfoModal: React.FC<SupplierInfoModalProps> = ({ isOpen, supplier,
                       />
                     </div>
                   ) : splitEmails(currentSupplier.supplier_email).length > 0 ? (
-                    <div className="supplier-info-email-chips-list">
-                      {splitEmails(currentSupplier.supplier_email).map((email) => (
-                        <span key={email} className="supplier-info-email-chip supplier-info-email-chip-readonly">
-                          <span>{email}</span>
-                        </span>
-                      ))}
+                    <div className="supplier-info-email-chips-list-wrapper">
+                      <div className="supplier-info-email-chips-list">
+                        {splitEmails(currentSupplier.supplier_email).map((email) => (
+                          <button
+                            key={email}
+                            type="button"
+                            className="supplier-info-email-chip supplier-info-email-chip-readonly"
+                            onClick={() => copyToClipboard(email, 'Email')}
+                            title={`Copiar ${email}`}
+                          >
+                            <span>{email}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="supplier-info-copy-all-btn"
+                        onClick={copyAllEmails}
+                        title="Copiar todos os emails"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                          <rect x="4" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.6" fill="none" />
+                          <rect x="10" y="4" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.6" fill="none" />
+                        </svg>
+                      </button>
                     </div>
                   ) : (
                     <span className="supplier-info-email-placeholder">-</span>

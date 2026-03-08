@@ -134,4 +134,4 @@ Thank you for the time. I am happy to demonstrate any page live or dive deeper i
 
 **Developed by:** Rafael Negrão de Souza (AN62H)  
 **Intellectual Author:** Cleiton Bianchi dos Santos (IV838)  
-**Version:** 1.1.5 | **Date:** Nov/2025
+**Version:** 1.1.7 | **Date:** Nov/2025

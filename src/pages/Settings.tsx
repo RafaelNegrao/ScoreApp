@@ -643,7 +643,7 @@ function Settings() {
                   <div className="info-card-settings">
                     <i className="bi bi-tag"></i>
                     <h4>Version</h4>
-                    <p>1.1.6</p>
+                    <p>1.1.7</p>
                   </div>
                   
                   <div className="info-card-settings">

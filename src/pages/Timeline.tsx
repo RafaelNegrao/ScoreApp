@@ -128,7 +128,7 @@ function Timeline() {
   const tabs = [
     { id: "metricas", label: "Metrics", icon: BarChart2 },
     { id: "graficos", label: "Charts", icon: TrendingUp },
-    { id: "tabela", label: "Tabela", icon: Grid3x3 },
+    { id: "tabela", label: "Table", icon: Grid3x3 },
     { id: "actions", label: "Actions", icon: ListChecks },
   ];
 

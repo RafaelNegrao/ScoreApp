@@ -113,9 +113,9 @@ function ActionsPanel({ supplierId }: ActionsPanelProps) {
     <div className="actions-panel">
       {actions.length === 0 ? (
         <div className="empty-state">
-          <i className="bi bi-list-check" style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.5 }}></i>
-          <p style={{ fontSize: '0.95rem', fontWeight: 400, color: 'var(--text-muted)', opacity: 0.85 }}>Nenhuma ação registrada</p>
-        </div>
+            <i className="bi bi-list-check" style={{ fontSize: '3rem', color: 'var(--text-muted)', opacity: 0.5 }}></i>
+            <p style={{ fontSize: '0.95rem', fontWeight: 400, color: 'var(--text-muted)', opacity: 0.85 }}>Nenhuma ação registrada</p>
+          </div>
       ) : (
         <div className="actions-panel-list">
           {actions.map((action) => (

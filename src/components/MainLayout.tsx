@@ -80,11 +80,11 @@ function MainLayout() {
     { path: "/", icon: "bi-house", label: "Home", permission: permissions.canAccessHome },
     { path: "/score", icon: "bi-trophy", label: "Score", permission: permissions.canAccessScore },
     { path: "/timeline", icon: "bi-clock-history", label: "Timeline", permission: permissions.canAccessTimeline },
-    { path: "/contributors", icon: "bi-people", label: "Contributors", permission: permissions.canAccessContributors },
     { path: "/risks", icon: "bi-exclamation-triangle", label: "Risks", permission: permissions.canAccessRisks },
     { path: "/email", icon: "bi-envelope", label: "Email", permission: permissions.canAccessEmail && (isSuperAdmin || allowEmailTab) },
+    { path: "/contributors", icon: "bi-people", label: "Contributors", permission: permissions.canAccessContributors },
   ];
-  
+
   // Filtra apenas os itens que o usuário tem permissão
   const menuItems = allMenuItems.filter(item => item.permission);
 
@@ -94,7 +94,7 @@ function MainLayout() {
 
   return (
     <div className="main-layout">
-      <button 
+      <button
         className={`toggle-btn ${menuOpen ? 'active' : ''}`}
         onClick={toggleMenu}
       >
@@ -119,7 +119,7 @@ function MainLayout() {
             );
           })}
         </div>
-        
+
         <div className="sidebar-footer">
           {permissions.canAccessSettings && (
             <button
@@ -134,7 +134,7 @@ function MainLayout() {
           )}
         </div>
       </nav>
-      
+
       <main className={`main-content ${menuOpen ? 'expanded' : ''}`}>
         <Outlet />
       </main>
