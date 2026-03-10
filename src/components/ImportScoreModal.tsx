@@ -226,21 +226,28 @@ const ImportScoreModal: React.FC<ImportScoreModalProps> = ({ isOpen, onClose, on
               id="criteria-select"
               value={selectedCriteria}
               onChange={(e) => {
-                setSelectedCriteria(normalizeCriteria(e.target.value));
+                const crit = normalizeCriteria(e.target.value);
+                setSelectedCriteria(crit);
                 setValidationResult(null);
-                // Revalida se já tem arquivo selecionado
-                if (selectedFile) {
+                // Revalida se já tem arquivo selecionado e critério é OTIF
+                if (crit === 'otif' && selectedFile) {
                   validateFile(selectedFile);
                 }
               }}
               disabled={isImporting || isValidating}
               className="form-select"
+              style={{ borderColor: selectedCriteria !== 'otif' ? '#e55353' : undefined }}
             >
               {isPermissionActive(userPermissions.otif) && <option value="otif">OTIF</option>}
               {isPermissionActive(userPermissions.nil) && <option value="nil">NIL</option>}
               {isPermissionActive(userPermissions.pickup) && <option value="pickup">Pickup</option>}
               {isPermissionActive(userPermissions.package) && <option value="package">Package</option>}
             </select>
+            {selectedCriteria !== 'otif' && (
+              <div style={{ marginTop: '8px', background: '#fff0f0', color: '#8a1f1f', padding: '6px 8px', borderRadius: '6px', fontStyle: 'italic' }}>
+                In development
+              </div>
+            )}
           </div>
 
           {/* Seletor de Arquivo */}
@@ -250,7 +257,7 @@ const ImportScoreModal: React.FC<ImportScoreModalProps> = ({ isOpen, onClose, on
               <button
                 className="btn-file-select"
                 onClick={handleFileSelect}
-                disabled={isImporting || isValidating}
+                disabled={isImporting || isValidating || selectedCriteria !== 'otif'}
               >
                 <Upload size={18} />
                 {selectedFile ? 'Alterar Arquivo' : 'Selecionar Arquivo'}
@@ -346,9 +353,10 @@ const ImportScoreModal: React.FC<ImportScoreModalProps> = ({ isOpen, onClose, on
             className="btn-import"
             onClick={(e) => {
               e.stopPropagation();
+              if (selectedCriteria !== 'otif') return;
               handleImport();
             }}
-            disabled={!canImport}
+            disabled={!canImport || selectedCriteria !== 'otif'}
           >
             {isImporting ? (
               <>

@@ -442,6 +442,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
             ) : (
               records.map((rec) => {
                 const rowKey = `${rec.monthNumber}`;
+                const otifValue = inputValues.get(`${rowKey}-otif`) || '';
 
                 return (
                   <tr key={rec.month}>
@@ -465,6 +466,18 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                           const newValues = new Map(inputValues);
                           newValues.set(`${rowKey}-otif`, value);
 
+                          // Se NIL, Pickup e Package estiverem vazios, popular com 10.0
+                          const nilVal = newValues.get(`${rowKey}-nil`) || '';
+                          const pickupVal = newValues.get(`${rowKey}-pickup`) || '';
+                          const packageVal = newValues.get(`${rowKey}-package`) || '';
+
+                          if (value !== '' && (nilVal === '' && pickupVal === '' && packageVal === '')) {
+                            const ten = formatScoreValue('10');
+                            newValues.set(`${rowKey}-nil`, ten);
+                            newValues.set(`${rowKey}-pickup`, ten);
+                            newValues.set(`${rowKey}-package`, ten);
+                          }
+
                           const totalScore = calculateTotalScore(rec.monthNumber, newValues);
                           newValues.set(`${rowKey}-total`, totalScore);
 
@@ -484,8 +497,37 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
 
                             setInputValues(newValues);
                           }
-                          if (autoSave) {
-                            saveScore(rec.monthNumber);
+                          // Se OTIF foi esvaziado e já existiam as demais notas,
+                          // limpar NIL/Pickup/Package automaticamente e salvar/ marcar modificado
+                          if (formatted === '') {
+                            const newValues = new Map(inputValues);
+                            const nilKey = `${rowKey}-nil`;
+                            const pickupKey = `${rowKey}-pickup`;
+                            const packageKey = `${rowKey}-package`;
+
+                            const hadNil = (newValues.get(nilKey) || '') !== '';
+                            const hadPickup = (newValues.get(pickupKey) || '') !== '';
+                            const hadPackage = (newValues.get(packageKey) || '') !== '';
+
+                            if (hadNil || hadPickup || hadPackage) {
+                              newValues.set(nilKey, '');
+                              newValues.set(pickupKey, '');
+                              newValues.set(packageKey, '');
+                              newValues.set(`${rowKey}-total`, '0.0');
+
+                              setInputValues(newValues);
+
+                              // marcar como modificada para permitir salvar manualmente
+                              setModifiedRows(prev => new Set(prev).add(rowKey));
+
+                              if (autoSave) {
+                                saveScore(rec.monthNumber, newValues);
+                              }
+                            }
+                          } else {
+                            if (autoSave) {
+                              saveScore(rec.monthNumber);
+                            }
                           }
                         }}
                       />
@@ -498,10 +540,10 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                         max="10"
                         step="0.1"
                         value={inputValues.get(`${rowKey}-nil`) || ''}
-                        readOnly={!canEdit('nil')}
-                        disabled={!canEdit('nil')}
+                        readOnly={!canEdit('nil') || otifValue === ''}
+                        disabled={!canEdit('nil') || otifValue === ''}
                         onChange={(e) => {
-                          if (!canEdit('nil')) return;
+                          if (!canEdit('nil') || otifValue === '') return;
                           let value = e.target.value;
                           const numValue = parseFloat(value);
                           if (numValue > 10) value = '10';
@@ -517,7 +559,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                           setInputValues(newValues);
                         }}
                         onBlur={(e) => {
-                          if (!canEdit('nil')) return;
+                          if (!canEdit('nil') || otifValue === '') return;
                           const formatted = formatScoreValue(e.target.value);
                           if (formatted !== '') {
                             const newValues = new Map(inputValues);
@@ -534,7 +576,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                         }}
                       />
                     </td>
-                    <td>
+                      <td>
                       <input
                         type="number"
                         className={`yearly-score-input ${!canEdit('pickup') ? 'readonly' : ''}`}
@@ -542,10 +584,10 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                         max="10"
                         step="0.1"
                         value={inputValues.get(`${rowKey}-pickup`) || ''}
-                        readOnly={!canEdit('pickup')}
-                        disabled={!canEdit('pickup')}
+                        readOnly={!canEdit('pickup') || otifValue === ''}
+                        disabled={!canEdit('pickup') || otifValue === ''}
                         onChange={(e) => {
-                          if (!canEdit('pickup')) return;
+                          if (!canEdit('pickup') || otifValue === '') return;
                           let value = e.target.value;
                           const numValue = parseFloat(value);
                           if (numValue > 10) value = '10';
@@ -561,7 +603,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                           setInputValues(newValues);
                         }}
                         onBlur={(e) => {
-                          if (!canEdit('pickup')) return;
+                          if (!canEdit('pickup') || otifValue === '') return;
                           const formatted = formatScoreValue(e.target.value);
                           if (formatted !== '') {
                             const newValues = new Map(inputValues);
@@ -578,7 +620,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                         }}
                       />
                     </td>
-                    <td>
+                      <td>
                       <input
                         type="number"
                         className={`yearly-score-input ${!canEdit('package') ? 'readonly' : ''}`}
@@ -586,10 +628,10 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                         max="10"
                         step="0.1"
                         value={inputValues.get(`${rowKey}-package`) || ''}
-                        readOnly={!canEdit('package')}
-                        disabled={!canEdit('package')}
+                        readOnly={!canEdit('package') || otifValue === ''}
+                        disabled={!canEdit('package') || otifValue === ''}
                         onChange={(e) => {
-                          if (!canEdit('package')) return;
+                          if (!canEdit('package') || otifValue === '') return;
                           let value = e.target.value;
                           const numValue = parseFloat(value);
                           if (numValue > 10) value = '10';
@@ -605,7 +647,7 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                           setInputValues(newValues);
                         }}
                         onBlur={(e) => {
-                          if (!canEdit('package')) return;
+                          if (!canEdit('package') || otifValue === '') return;
                           const formatted = formatScoreValue(e.target.value);
                           if (formatted !== '') {
                             const newValues = new Map(inputValues);
@@ -630,14 +672,16 @@ export const DetailedRecordsTable: React.FC<DetailedRecordsTableProps> = ({
                         return isNaN(numValue) ? total : numValue.toFixed(1);
                       })()}
                     </td>
-                    <td className="comment-cell">
+                      <td className="comment-cell">
                       <button
                         className="comment-icon-btn"
-                        onClick={() => openCommentModal(rec.monthNumber, rec.month)}
-                        title={inputValues.get(`${rowKey}-comments`) ? 'Ver/editar comentário' : 'Adicionar comentário'}
+                        onClick={() => otifValue !== '' && openCommentModal(rec.monthNumber, rec.month)}
+                        title={otifValue === '' ? 'Preencha OTIF antes de inserir outras notas' : (inputValues.get(`${rowKey}-comments`) ? 'Ver/editar comentário' : 'Adicionar comentário')}
+                        disabled={otifValue === ''}
                         style={{
                           color: inputValues.get(`${rowKey}-comments`) ? 'var(--accent-primary)' : 'var(--text-muted)',
-                          opacity: inputValues.get(`${rowKey}-comments`) ? 1 : 0.5
+                          opacity: inputValues.get(`${rowKey}-comments`) ? 1 : (otifValue === '' ? 0.4 : 0.5),
+                          cursor: otifValue === '' ? 'not-allowed' : 'pointer'
                         }}
                       >
                         <i className="bi bi-chat-left-text-fill"></i>

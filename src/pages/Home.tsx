@@ -102,12 +102,12 @@ function Home() {
 
   const getCardClass = (cardIndex: number): string => {
     if (cardIndex === currentCardIndex) return 'center';
-    
+
     const diff = (cardIndex - currentCardIndex + totalCards) % totalCards;
-    
+
     if (diff === 1 || diff === -(totalCards - 1)) return 'right';
     if (diff === totalCards - 1 || diff === -1) return 'left';
-    
+
     return 'hidden';
   };
 
@@ -167,7 +167,7 @@ function Home() {
         <button className="carousel-btn carousel-btn-prev" onClick={handlePrevCard}>
           <i className="bi bi-chevron-left"></i>
         </button>
-        
+
         <div className="carousel-container-wrapper">
           {/* Card 1: Perfil */}
           <div className={`carousel-card info-card ${getCardClass(0)}`}>
@@ -199,29 +199,29 @@ function Home() {
             </div>
             <div className="info-body">
               <div className="permission-item">
-                <i 
-                  className={isPermissionActive(permissions.otif) ? "bi bi-check-circle-fill" : "bi bi-x-circle-fill"} 
+                <i
+                  className={isPermissionActive(permissions.otif) ? "bi bi-check-circle-fill" : "bi bi-x-circle-fill"}
                   style={{ color: isPermissionActive(permissions.otif) ? '#10b981' : '#ef4444' }}
                 ></i>
                 <span>OTIF</span>
               </div>
               <div className="permission-item">
-                <i 
-                  className={isPermissionActive(permissions.nil) ? "bi bi-check-circle-fill" : "bi bi-x-circle-fill"} 
+                <i
+                  className={isPermissionActive(permissions.nil) ? "bi bi-check-circle-fill" : "bi bi-x-circle-fill"}
                   style={{ color: isPermissionActive(permissions.nil) ? '#10b981' : '#ef4444' }}
                 ></i>
                 <span>NIL</span>
               </div>
               <div className="permission-item">
-                <i 
-                  className={isPermissionActive(permissions.pickup) ? "bi bi-check-circle-fill" : "bi bi-x-circle-fill"} 
+                <i
+                  className={isPermissionActive(permissions.pickup) ? "bi bi-check-circle-fill" : "bi bi-x-circle-fill"}
                   style={{ color: isPermissionActive(permissions.pickup) ? '#10b981' : '#ef4444' }}
                 ></i>
                 <span>Pickup</span>
               </div>
               <div className="permission-item">
-                <i 
-                  className={isPermissionActive(permissions.package) ? "bi bi-check-circle-fill" : "bi bi-x-circle-fill"} 
+                <i
+                  className={isPermissionActive(permissions.package) ? "bi bi-check-circle-fill" : "bi bi-x-circle-fill"}
                   style={{ color: isPermissionActive(permissions.package) ? '#10b981' : '#ef4444' }}
                 ></i>
                 <span>Package</span>
@@ -283,7 +283,7 @@ function Home() {
             </div>
           )}
         </div>
-        
+
         <button className="carousel-btn carousel-btn-next" onClick={handleNextCard}>
           <i className="bi bi-chevron-right"></i>
         </button>

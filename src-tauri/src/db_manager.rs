@@ -1797,34 +1797,29 @@ impl DatabaseManager {
             .unwrap_or(0);
         println!("🔍 Registros que correspondem à busca: {}", match_count);
         
-        let limit_clause = if query == "%" { "" } else { "LIMIT 50" };
-
-        let query_string = format!(
-            "SELECT DISTINCT 
-                 COALESCE(CAST(supplier_id AS TEXT), '') as supplier_id,
-                 COALESCE(CAST(supplier_po AS TEXT), '') as supplier_po, 
-                 COALESCE(vendor_name, '') as vendor_name,
-                 bu,
-                 supplier_email,
-                 supplier_status,
-                 planner,
-                 country,
-                 supplier_category,
-                 continuity,
-                 sourcing,
-                 sqie,
-                 ssid
-             FROM supplier_database_table 
-             WHERE LOWER(COALESCE(CAST(supplier_po AS TEXT), '')) LIKE LOWER(?1) 
-                 OR LOWER(COALESCE(vendor_name, '')) LIKE LOWER(?1)
-                 OR LOWER(COALESCE(bu, '')) LIKE LOWER(?1)
-             ORDER BY vendor_name
-             {}",
-             limit_clause
-        );
-
         let mut stmt = conn
-            .prepare(&query_string)
+            .prepare(
+                     "SELECT DISTINCT 
+                          COALESCE(CAST(supplier_id AS TEXT), '') as supplier_id,
+                          COALESCE(CAST(supplier_po AS TEXT), '') as supplier_po, 
+                          COALESCE(vendor_name, '') as vendor_name,
+                          bu,
+                          supplier_email,
+                          supplier_status,
+                          planner,
+                          country,
+                          supplier_category,
+                          continuity,
+                          sourcing,
+                          sqie,
+                          ssid
+                 FROM supplier_database_table 
+                          WHERE LOWER(COALESCE(CAST(supplier_po AS TEXT), '')) LIKE LOWER(?1) 
+                              OR LOWER(COALESCE(vendor_name, '')) LIKE LOWER(?1)
+                              OR LOWER(COALESCE(bu, '')) LIKE LOWER(?1)
+                 ORDER BY vendor_name
+                 LIMIT 50"
+            )
             .map_err(|e| {
                 println!("❌ Erro ao preparar statement: {}", e);
                 format!("Erro ao preparar query: {}", e)
@@ -2226,13 +2221,6 @@ impl DatabaseManager {
             [&supplier_id],
         )
         .map_err(|e| format!("Erro ao excluir fornecedor: {}", e))?;
-
-        // Exclui o histórico de logs do fornecedor
-        tx.execute(
-            "DELETE FROM log_table WHERE supplier LIKE '%(' || ?1 || ')'",
-            [&supplier_id],
-        )
-        .map_err(|e| format!("Erro ao excluir histórico do fornecedor: {}", e))?;
 
         tx.commit()
             .map_err(|e| format!("Erro ao finalizar transação: {}", e))?;
@@ -3743,7 +3731,7 @@ impl DatabaseManager {
                 return Err("Mês e ano são obrigatórios quando incluir notas existentes".to_string());
             }
 
-            // Verifica se existe pelo menos um registro para o período
+            // Verifica se existe pelo menos um registro para o período — apenas loga se não encontrar
             let conn_guard = Self::get_connection()?;
             if conn_guard.is_none() {
                 return Err("Conexão não inicializada".to_string());
@@ -3756,11 +3744,12 @@ impl DatabaseManager {
                 .map_err(|e| format!("Erro ao verificar período: {}", e))?;
 
             if count == 0 {
-                return Err(format!(
-                    "Não existem registros de notas para o período {}/{}",
+                println!(
+                    "⚠️ Nenhum registro de notas encontrado para o período {}/{} — será gerado formulário vazio",
                     month.unwrap(),
                     year.unwrap()
-                ));
+                );
+                // continuar gerando o arquivo (export_data terá scores vazios)
             }
         }
 
@@ -4266,6 +4255,26 @@ impl DatabaseManager {
         let mut workbook: Xlsx<_> = open_workbook(&file_path)
             .map_err(|e| format!("Erro ao abrir arquivo: {}", e))?;
 
+        // Busca dados de controle primeiro para saber mês e ano se não houver record_id
+        let mut export_month: i32 = 0;
+        let mut export_year: i32 = 0;
+        
+        if let Ok(control_range) = workbook.worksheet_range("_control_") {
+            println!("✅ Aba '_control_' encontrada para consulta de período");
+            for row in control_range.rows() {
+                if row.len() >= 2 {
+                    let key = row[0].to_string();
+                    let value = row[1].to_string();
+                    match key.as_str() {
+                        "Month" => export_month = value.parse().unwrap_or(0),
+                        "Year" => export_year = value.parse().unwrap_or(0),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        println!("📅 Período identificado: {}/{}", export_month, export_year);
+
         // Busca a primeira aba (Sheet1)
         let sheet_names = workbook.sheet_names().to_owned();
         if sheet_names.is_empty() {
@@ -4334,17 +4343,13 @@ impl DatabaseManager {
         // Itera sobre as linhas (pulando o cabeçalho na linha 0)
         for (row_idx, row) in range.rows().enumerate() {
             if row_idx == 0 {
-                println!("📋 Cabeçalho:");
-                for (col_idx, cell) in row.iter().enumerate() {
-                    println!("   Coluna {}: {}", col_idx, cell);
-                }
+                // ...existing header print logic...
                 continue; // Pula cabeçalho
             }
 
-            println!("\n📝 Linha {} - Total de colunas: {}", row_idx + 1, row.len());
-
             if row.len() < 5 {
                 println!("⚠️ Linha {} ignorada: estrutura incompleta ({} colunas)", row_idx + 1, row.len());
+                continue;
             }
 
             // Lê os dados da linha usando índices atualizados
@@ -4356,23 +4361,12 @@ impl DatabaseManager {
             let score_opt = row.get(5).and_then(|cell| cell_to_f64(cell));
             let comment_str = row.get(6).map(|cell| cell_to_string(cell)).unwrap_or_default();
 
-            println!("   [0] record_id: {:?}", record_id_opt);
-            println!("   [1] supplier_id: '{}'", supplier_id_str);
-            println!("   [2] vendor_name: '{}'", vendor_name_str);
-            println!("   [3] bu: '{}'", _bu_str);
-            println!("   [4] supplier_po: '{}'", supplier_po_str);
-            println!("   [5] score: {:?}", score_opt);
-            println!("   [6] comment: '{}'", comment_str);
-
-            // Valida record_id
-            let record_id = match record_id_opt {
-                Some(id) if id > 0 => id,
-                _ => {
-                    println!("⚠️ record_id inválido na linha {}", row_idx + 1);
-                    error_count += 1;
-                    continue;
-                }
-            };
+            // Valida supplier_id (necessário para busca se record_id faltar)
+            if supplier_id_str.is_empty() {
+                println!("⚠️ supplier_id vazio na linha {}, pulando", row_idx + 1);
+                error_count += 1;
+                continue;
+            }
 
             // Valida nota
             let score = match score_opt {
@@ -4391,65 +4385,86 @@ impl DatabaseManager {
                 continue;
             }
 
-            // Busca o registro atual para pegar todos os scores existentes
-            let current_record = conn.query_row(
-                "SELECT otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE id = ?",
-                params![record_id],
-                |row| {
-                    Ok((
-                        row.get::<_, Option<f64>>(0)?,
-                        row.get::<_, Option<f64>>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                        row.get::<_, Option<String>>(3)?,
-                    ))
-                }
-            );
+            // Determina o record_id ou busca se necessário
+            let mut record_id = record_id_opt.filter(|&id| id > 0);
+            let mut is_new_record = false;
 
-            let (mut otif, mut nil, mut pickup, mut package) = match current_record {
-                Ok(data) => {
-                    println!("📊 Scores atuais do record {}: OTIF={:?}, NIL={:?}, Pickup={:?}, Package={:?}", 
-                             record_id, data.0, data.1, data.2, data.3);
-                    data
-                },
-                Err(e) => {
-                    println!("⚠️ Record {} não encontrado no banco: {}", record_id, e);
-                    error_count += 1;
-                    continue;
+            if record_id.is_none() {
+                println!("🔍 Buscando record_id para supplier {} em {}/{}", supplier_id_str, export_month, export_year);
+                let find_result = conn.query_row(
+                    "SELECT id FROM supplier_score_records_table WHERE lower(trim(supplier_id)) = lower(trim(?1)) AND month = ?2 AND year = ?3",
+                    params![supplier_id_str, export_month, export_year],
+                    |r| r.get::<_, i32>(0)
+                );
+                
+                match find_result {
+                    Ok(id) => {
+                        println!("   ✅ Encontrado record_id: {}", id);
+                        record_id = Some(id);
+                    },
+                    Err(_) => {
+                        println!("   ✨ Registro não encontrado. Será criado um novo.");
+                        is_new_record = true;
+                    }
                 }
+            }
+
+            let (mut otif, mut nil, mut pickup, mut package) = if !is_new_record {
+                // Busca o registro atual para pegar todos os scores existentes
+                let current_record = conn.query_row(
+                    "SELECT otif, nil, quality_pickup, quality_package FROM supplier_score_records_table WHERE id = ?",
+                    params![record_id.unwrap()],
+                    |r| {
+                        Ok((
+                            r.get::<_, Option<f64>>(0)?,
+                            r.get::<_, Option<f64>>(1)?,
+                            r.get::<_, Option<String>>(2)?,
+                            r.get::<_, Option<String>>(3)?,
+                        ))
+                    }
+                );
+
+                match current_record {
+                    Ok(data) => {
+                        println!("📊 Scores atuais do record {}: OTIF={:?}, NIL={:?}, Pickup={:?}, Package={:?}", 
+                                 record_id.unwrap(), data.0, data.1, data.2, data.3);
+                        data
+                    },
+                    Err(e) => {
+                        println!("⚠️ Record {:?} não encontrado no banco: {}", record_id, e);
+                        error_count += 1;
+                        continue;
+                    }
+                }
+            } else {
+                // Novos registros começam com 10.0 por padrão para outros campos (conforme regra de negócio observada no OTIF)
+                (Some(10.0), Some(10.0), Some("10.0".to_string()), Some("10.0".to_string()))
             };
 
             // Atualiza APENAS o score do critério específico que está sendo importado
+            let mut filled_missing = is_new_record;
             match criteria.to_lowercase().as_str() {
                 "otif" => {
-                    println!("🔄 Atualizando OTIF: {} → {}", otif.unwrap_or(0.0), score);
                     otif = Some(score);
+                    if !is_new_record && nil.is_none() && pickup.is_none() && package.is_none() {
+                        println!("⚙️ Nenhuma nota além de OTIF — preenchendo NIL/Pickup/Package com 10.0");
+                        nil = Some(10.0);
+                        pickup = Some("10.0".to_string());
+                        package = Some("10.0".to_string());
+                        filled_missing = true;
+                    }
                 },
-                "nil" => {
-                    println!("🔄 Atualizando NIL: {} → {}", nil.unwrap_or(0.0), score);
-                    nil = Some(score);
-                },
-                "pickup" => {
-                    println!("🔄 Atualizando Pickup: {:?} → {}", pickup, score);
-                    pickup = Some(score.to_string());
-                },
-                "package" => {
-                    println!("🔄 Atualizando Package: {:?} → {}", package, score);
-                    package = Some(score.to_string());
-                },
+                "nil" => nil = Some(score),
+                "pickup" => pickup = Some(score.to_string()),
+                "package" => package = Some(score.to_string()),
                 _ => {}
             }
 
-            // Recalcula o total_score usando TODAS as 4 notas (a nova + as antigas)
+            // Recalcula o total_score
             let otif_val = otif.unwrap_or(0.0);
             let nil_val = nil.unwrap_or(0.0);
             let pickup_val = pickup.as_ref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
             let package_val = package.as_ref().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
-
-            println!("📐 Calculando total_score:");
-            println!("   OTIF: {} × {} = {}", otif_val, criteria_weights.0, otif_val * criteria_weights.0);
-            println!("   NIL: {} × {} = {}", nil_val, criteria_weights.1, nil_val * criteria_weights.1);
-            println!("   Pickup: {} × {} = {}", pickup_val, criteria_weights.2, pickup_val * criteria_weights.2);
-            println!("   Package: {} × {} = {}", package_val, criteria_weights.3, package_val * criteria_weights.3);
 
             let total_score = 
                 (otif_val * criteria_weights.0) +
@@ -4458,94 +4473,92 @@ impl DatabaseManager {
                 (package_val * criteria_weights.3);
 
             let total_score_str = format!("{:.2}", total_score);
-            println!("   Total Score: {}", total_score_str);
 
-            // Atualiza o registro no banco (inclui comment se não estiver vazio)
-            let update_query = if !comment_str.is_empty() {
-                format!(
-                    "UPDATE supplier_score_records_table 
-                     SET {} = ?, total_score = ?, comment = ?, change_date = ?, changed_by = ? 
-                     WHERE id = ?",
-                    score_column
-                )
-            } else {
-                format!(
-                    "UPDATE supplier_score_records_table 
-                     SET {} = ?, total_score = ?, change_date = ?, changed_by = ? 
-                     WHERE id = ?",
-                    score_column
-                )
-            };
+            if is_new_record {
+                // INSERT
+                let insert_query = "INSERT INTO supplier_score_records_table 
+                    (supplier_id, supplier_name, month, year, otif, nil, quality_pickup, quality_package, 
+                     total_score, comment, register_date, registered_by, change_date, changed_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                
+                let exec_result = conn.execute(
+                    insert_query,
+                    params![
+                        supplier_id_str,
+                        vendor_name_str,
+                        export_month.to_string(),
+                        export_year.to_string(),
+                        otif,
+                        nil,
+                        pickup,
+                        package,
+                        total_score_str,
+                        comment_str,
+                        now,
+                        "Import System",
+                        now,
+                        "Import System"
+                    ]
+                );
 
-            println!("🔧 Query SQL: {}", update_query);
-            println!("🔧 Parâmetros:");
-            println!("   {} = {}", score_column, score);
-            println!("   total_score = {}", total_score_str);
-            if !comment_str.is_empty() {
-                println!("   comment = {}", comment_str);
-            }
-            println!("   change_date = {}", now);
-            println!("   changed_by = Import System");
-            println!("   id = {}", record_id);
-
-            let exec_result = if !comment_str.is_empty() {
-                if score_column == "quality_pickup" || score_column == "quality_package" {
-                    conn.execute(
-                        &update_query,
-                        params![score.to_string(), total_score_str.clone(), comment_str.clone(), now.clone(), "Import System", record_id]
-                    )
-                } else {
-                    conn.execute(
-                        &update_query,
-                        params![score, total_score_str.clone(), comment_str.clone(), now.clone(), "Import System", record_id]
-                    )
-                }
-            } else {
-                if score_column == "quality_pickup" || score_column == "quality_package" {
-                    conn.execute(
-                        &update_query,
-                        params![score.to_string(), total_score_str.clone(), now.clone(), "Import System", record_id]
-                    )
-                } else {
-                    conn.execute(
-                        &update_query,
-                        params![score, total_score_str.clone(), now.clone(), "Import System", record_id]
-                    )
-                }
-            };
-
-            match exec_result {
-                Ok(rows_affected) => {
-                    println!("🔍 Linhas afetadas: {}", rows_affected);
-                    if rows_affected > 0 {
-                        println!("✅ Record {} atualizado: {} = {}, total_score = {}{}", 
-                                 record_id, score_column, score, total_score_str,
-                                 if !comment_str.is_empty() { format!(", comment = {}", comment_str) } else { "".to_string() });
+                match exec_result {
+                    Ok(_) => {
+                        println!("✅ Novo registro criado para supplier {}", supplier_id_str);
                         updated_count += 1;
-                    } else {
-                        println!("⚠️ Record {} não foi atualizado (0 linhas afetadas)", record_id);
-                        println!("   Possível causa: ID {} não existe na tabela", record_id);
+                    },
+                    Err(e) => {
+                        println!("❌ Erro ao inserir novo registro: {}", e);
                         error_count += 1;
                     }
                 }
-                Err(e) => {
-                    println!("❌ Erro ao atualizar record {}: {}", record_id, e);
-                    error_count += 1;
+            } else {
+                // UPDATE
+                let update_query = if filled_missing || !comment_str.is_empty() {
+                    format!("UPDATE supplier_score_records_table SET otif = ?, nil = ?, quality_pickup = ?, quality_package = ?, total_score = ?, comment = ?, change_date = ?, changed_by = ? WHERE id = ?")
+                } else {
+                    format!("UPDATE supplier_score_records_table SET {} = ?, total_score = ?, change_date = ?, changed_by = ? WHERE id = ?", score_column)
+                };
+
+                let exec_result = if filled_missing || !comment_str.is_empty() {
+                    conn.execute(
+                        &update_query,
+                        params![otif, nil, pickup, package, total_score_str, comment_str, now, "Import System", record_id.unwrap()]
+                    )
+                } else {
+                    if score_column == "quality_pickup" || score_column == "quality_package" {
+                        conn.execute(
+                            &update_query,
+                            params![score.to_string(), total_score_str, now, "Import System", record_id.unwrap()]
+                        )
+                    } else {
+                        conn.execute(
+                            &update_query,
+                            params![score, total_score_str, now, "Import System", record_id.unwrap()]
+                        )
+                    }
+                };
+
+                match exec_result {
+                    Ok(rows_affected) if rows_affected > 0 => {
+                        println!("✅ Record {} atualizado", record_id.unwrap());
+                        updated_count += 1;
+                    },
+                    _ => {
+                        println!("⚠️ Record {:?} não atualizado", record_id);
+                        error_count += 1;
+                    }
                 }
             }
         }
 
         println!("✅ Importação concluída:");
-        println!("   {} registros atualizados", updated_count);
+        println!("   {} registros processados", updated_count);
         println!("   {} erros encontrados", error_count);
 
         if error_count > 0 {
-            Ok(format!(
-                "Atualizados: {} registros\nErros: {} registros",
-                updated_count, error_count
-            ))
+            Ok(format!("Processados: {} registros\nErros: {} registros", updated_count, error_count))
         } else {
-            Ok(format!("✅ {} registros atualizados com sucesso!", updated_count))
+            Ok(format!("✅ {} registros processados com sucesso!", updated_count))
         }
     }
 

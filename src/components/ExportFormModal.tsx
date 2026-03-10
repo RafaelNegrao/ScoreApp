@@ -89,10 +89,10 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
       showToast('Por favor, selecione o mês e ano.', 'warning');
       return;
     }
-
     setIsExporting(true);
     try {
       const criteriaToExport = normalizeCriteria(selectedCriteria);
+      // Sempre exporta o que existir para o mês selecionado
       await onExport(criteriaToExport, true, selectedMonth, selectedYear);
     } finally {
       setIsExporting(false);
@@ -133,6 +133,7 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
               onChange={(e) => setSelectedCriteria(normalizeCriteria(e.target.value))}
               disabled={isExporting}
               className="form-select"
+              style={{ borderColor: selectedCriteria !== 'otif' ? '#e55353' : undefined }}
             >
               {isPermissionActive(userPermissions.otif) && <option value="otif">OTIF</option>}
               {isPermissionActive(userPermissions.nil) && <option value="nil">NIL</option>}
@@ -140,6 +141,8 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
               {isPermissionActive(userPermissions.package) && <option value="package">Package</option>}
             </select>
           </div>
+
+          {/* checkbox removido: sempre exportar o que existir para o mês selecionado */}
 
           {/* Seletores de Mês e Ano */}
           <div className="date-selectors">
@@ -188,6 +191,20 @@ const ExportFormModal: React.FC<ExportFormModalProps> = ({ isOpen, onClose, onEx
               </select>
             </div>
           </div>
+
+          {/* Mensagem para critérios em desenvolvimento */}
+          {selectedCriteria !== 'otif' && (
+            <div style={{
+              marginTop: '8px',
+              background: '#fff0f0',
+              color: '#8a1f1f',
+              padding: '6px 8px',
+              borderRadius: '6px',
+              fontStyle: 'italic'
+            }}>
+              In development
+            </div>
+          )}
 
         </div>
 

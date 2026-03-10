@@ -79,6 +79,16 @@ function CriteriaTab() {
         <h3>OTIF</h3>
       </div>
       <div className="criterio-body">
+        <div className="criterio-observacao" style={{
+          background: 'linear-gradient(90deg, rgba(255,249,230,1) 0%, rgba(255,247,230,1) 100%)',
+          borderLeft: '4px solid #f6c343',
+          padding: '8px 10px',
+          marginBottom: '10px',
+          borderRadius: '4px',
+          color: 'var(--text-primary)'
+        }}>
+          <strong>Observação:</strong> A nota <strong>OTIF</strong> é a nota padrão inicial. Sem a nota OTIF preenchida (valor vazio/NULL) não é possível inserir as demais notas (NIL, Pickup, Package).
+        </div>
         <p className="criterio-description">As notas são de 0 a 100%, porém a conversão para adição é multiplicar por 10.</p>
         <div className="criterio-example">
           <strong>Exemplo:</strong> 87% × 10 = 8,7
@@ -188,6 +198,7 @@ function CriteriaTab() {
 
   return (
     <div className="criterios-content">
+
       {isCarousel ? (
         <>
           <div className="criterios-carousel">
@@ -224,6 +235,16 @@ function CriteriaTab() {
               <h3>OTIF</h3>
             </div>
             <div className="criterio-body">
+              <div className="criterio-observacao" style={{
+                background: 'linear-gradient(90deg, rgba(255,249,230,1) 0%, rgba(255,247,230,1) 100%)',
+                borderLeft: '4px solid #f6c343',
+                padding: '8px 10px',
+                marginBottom: '10px',
+                borderRadius: '4px',
+                color: 'var(--text-primary)'
+              }}>
+                <strong>Observação:</strong> A nota <strong>OTIF</strong> é a nota padrão inicial. Sem a nota OTIF preenchida (valor vazio/NULL) não é possível inserir as demais notas (NIL, Pickup, Package).
+              </div>
               <p className="criterio-description">As notas são de 0 a 100%, porém a conversão para adição é multiplicar por 10.</p>
               <div className="criterio-example">
                 <strong>Exemplo:</strong> 87% × 10 = 8,7
@@ -559,6 +580,26 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
 
     const newInputValues = new Map(inputValues);
     newInputValues.set(key, value);
+
+    // Se o campo alterado for OTIF e foi preenchido, preencher automaticamente
+    // NIL, Pickup e Package com 10.0 apenas se TODOS estiverem vazios
+    if (field === 'otif' && value !== '') {
+      const nilKey = `${rowKey}-nil`;
+      const pickupKey = `${rowKey}-pickup`;
+      const packageKey = `${rowKey}-package`;
+
+      const nilVal = newInputValues.get(nilKey) ?? '';
+      const pickupVal = newInputValues.get(pickupKey) ?? '';
+      const packageVal = newInputValues.get(packageKey) ?? '';
+
+      if ((nilVal === '' || nilVal === null) && (pickupVal === '' || pickupVal === null) && (packageVal === '' || packageVal === null)) {
+        // define com 1 casa decimal
+        newInputValues.set(nilKey, '10.0');
+        newInputValues.set(pickupKey, '10.0');
+        newInputValues.set(packageKey, '10.0');
+      }
+    }
+
     setInputValues(newInputValues);
 
     // Recalcula o total
@@ -587,6 +628,41 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
 
           // Recalcula o total com o valor formatado
           updateTotal(supplierId, month, currentValues);
+        }
+      }
+    }
+
+    // Se OTIF foi esvaziado, limpar NIL/Pickup/Package caso já existissem
+    if (field === 'otif') {
+      const otifKey = `${rowKey}-otif`;
+      const otifVal = currentValues.get(otifKey) || '';
+
+      if (otifVal === '') {
+        const nilKey = `${rowKey}-nil`;
+        const pickupKey = `${rowKey}-pickup`;
+        const packageKey = `${rowKey}-package`;
+
+        const hadNil = (currentValues.get(nilKey) || '') !== '';
+        const hadPickup = (currentValues.get(pickupKey) || '') !== '';
+        const hadPackage = (currentValues.get(packageKey) || '') !== '';
+
+        if (hadNil || hadPickup || hadPackage) {
+          currentValues.set(nilKey, '');
+          currentValues.set(pickupKey, '');
+          currentValues.set(packageKey, '');
+
+          setInputValues(currentValues);
+          updateTotal(supplierId, month, currentValues);
+
+          // marcar células como modificadas para permitir salvar manualmente
+          setModifiedCells(prev => {
+            const next = new Set(prev);
+            next.add(`${supplierId}-${month}-otif`);
+            next.add(`${supplierId}-${month}-nil`);
+            next.add(`${supplierId}-${month}-pickup`);
+            next.add(`${supplierId}-${month}-package`);
+            return next;
+          });
         }
       }
     }
@@ -1108,6 +1184,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                     <tbody>
                       {months.map((monthData) => {
                         const rowKey = `${supplierId}-${monthData.month}`;
+                        const otifValue = inputValues.get(`${rowKey}-otif`) || '';
                         const hasModifications = ['otif', 'nil', 'pickup', 'package', 'comments'].some(
                           field => modifiedCells.has(`${supplierId}-${monthData.month}-${field}`)
                         );
@@ -1137,7 +1214,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                             <td>
                               <input
                                 type="number"
-                                className={`yearly-score-input ${!canEdit('nil') || isFutureMonth(monthData.month) ? 'readonly' : ''}`}
+                                className={`yearly-score-input ${!canEdit('nil') || isFutureMonth(monthData.month) || otifValue === '' ? 'readonly' : ''}`}
                                 value={inputValues.get(`${rowKey}-nil`) || ''}
                                 onChange={(e) => handleInputChange(supplierId, monthData.month, 'nil', e.target.value)}
                                 onFocus={() => {
@@ -1147,8 +1224,12 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                                   setOriginalValues(newOriginal);
                                 }}
                                 onBlur={() => handleInputBlur(supplierId, monthData.month, 'nil')}
-                                disabled={!canEdit('nil') || isFutureMonth(monthData.month)}
-                                title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
+                                disabled={!canEdit('nil') || isFutureMonth(monthData.month) || otifValue === ''}
+                                title={
+                                  isFutureMonth(monthData.month)
+                                    ? 'Não é possível editar meses futuros'
+                                    : (otifValue === '' ? 'Preencha OTIF antes de inserir outras notas' : '')
+                                }
                                 max="10"
                                 step="0.1"
                               />
@@ -1156,7 +1237,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                             <td>
                               <input
                                 type="number"
-                                className={`yearly-score-input ${!canEdit('pickup') || isFutureMonth(monthData.month) ? 'readonly' : ''}`}
+                                className={`yearly-score-input ${!canEdit('pickup') || isFutureMonth(monthData.month) || otifValue === '' ? 'readonly' : ''}`}
                                 value={inputValues.get(`${rowKey}-pickup`) || ''}
                                 onChange={(e) => handleInputChange(supplierId, monthData.month, 'pickup', e.target.value)}
                                 onFocus={() => {
@@ -1166,8 +1247,12 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                                   setOriginalValues(newOriginal);
                                 }}
                                 onBlur={() => handleInputBlur(supplierId, monthData.month, 'pickup')}
-                                disabled={!canEdit('pickup') || isFutureMonth(monthData.month)}
-                                title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
+                                disabled={!canEdit('pickup') || isFutureMonth(monthData.month) || otifValue === ''}
+                                title={
+                                  isFutureMonth(monthData.month)
+                                    ? 'Não é possível editar meses futuros'
+                                    : (otifValue === '' ? 'Preencha OTIF antes de inserir outras notas' : '')
+                                }
                                 max="10"
                                 step="0.1"
                               />
@@ -1175,7 +1260,7 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                             <td>
                               <input
                                 type="number"
-                                className={`yearly-score-input ${!canEdit('package') || isFutureMonth(monthData.month) ? 'readonly' : ''}`}
+                                className={`yearly-score-input ${!canEdit('package') || isFutureMonth(monthData.month) || otifValue === '' ? 'readonly' : ''}`}
                                 value={inputValues.get(`${rowKey}-package`) || ''}
                                 onChange={(e) => handleInputChange(supplierId, monthData.month, 'package', e.target.value)}
                                 onFocus={() => {
@@ -1185,8 +1270,12 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                                   setOriginalValues(newOriginal);
                                 }}
                                 onBlur={() => handleInputBlur(supplierId, monthData.month, 'package')}
-                                disabled={!canEdit('package') || isFutureMonth(monthData.month)}
-                                title={isFutureMonth(monthData.month) ? 'Não é possível editar meses futuros' : ''}
+                                disabled={!canEdit('package') || isFutureMonth(monthData.month) || otifValue === ''}
+                                title={
+                                  isFutureMonth(monthData.month)
+                                    ? 'Não é possível editar meses futuros'
+                                    : (otifValue === '' ? 'Preencha OTIF antes de inserir outras notas' : '')
+                                }
                                 max="10"
                                 step="0.1"
                               />
@@ -1195,17 +1284,17 @@ function YearlyViewTable({ selectedSuppliers, selectedYear, getSupplierById, per
                             <td className="comment-cell">
                               <button
                                 className="comment-icon-btn"
-                                onClick={() => !isFutureMonth(monthData.month) && handleCommentClick(supplierId, monthData.month, monthData.monthName)}
-                                disabled={isFutureMonth(monthData.month)}
+                                onClick={() => !isFutureMonth(monthData.month) && otifValue !== '' && handleCommentClick(supplierId, monthData.month, monthData.monthName)}
+                                disabled={isFutureMonth(monthData.month) || otifValue === ''}
                                 title={
                                   isFutureMonth(monthData.month)
                                     ? 'Não é possível adicionar comentários em meses futuros'
-                                    : (inputValues.get(`${rowKey}-comments`) ? 'Ver/Editar comentário' : 'Adicionar comentário')
+                                    : (otifValue === '' ? 'Preencha OTIF antes de inserir outras notas' : (inputValues.get(`${rowKey}-comments`) ? 'Ver/Editar comentário' : 'Adicionar comentário'))
                                 }
                                 style={{
-                                  opacity: isFutureMonth(monthData.month) ? '0.3' : (inputValues.get(`${rowKey}-comments`) ? '1' : '0.5'),
+                                  opacity: isFutureMonth(monthData.month) ? '0.3' : (inputValues.get(`${rowKey}-comments`) ? '1' : (otifValue === '' ? '0.4' : '0.5')),
                                   color: isFutureMonth(monthData.month) ? 'var(--text-muted)' : (inputValues.get(`${rowKey}-comments`) ? 'var(--accent-primary)' : 'var(--text-muted)'),
-                                  cursor: isFutureMonth(monthData.month) ? 'not-allowed' : 'pointer'
+                                  cursor: isFutureMonth(monthData.month) ? 'not-allowed' : (otifValue === '' ? 'not-allowed' : 'pointer')
                                 }}
                               >
                                 <i className="bi bi-chat-left-text-fill"></i>
@@ -2311,8 +2400,22 @@ function Score() {
                                         let value = e.target.value;
                                         const numValue = parseFloat(value);
                                         if (numValue > 10) value = '10.0';
+
                                         const newValues = new Map(inputValues);
                                         newValues.set(`${supplierId}-otif`, value);
+
+                                        // Se preencheu OTIF e as outras estão vazias, preencher com 10.0
+                                        if (value !== '') {
+                                          const nilVal = newValues.get(`${supplierId}-nil`) ?? '';
+                                          const pickupVal = newValues.get(`${supplierId}-pickup`) ?? '';
+                                          const packageVal = newValues.get(`${supplierId}-package`) ?? '';
+
+                                          if (nilVal === '' && pickupVal === '' && packageVal === '') {
+                                            newValues.set(`${supplierId}-nil`, '10.0');
+                                            newValues.set(`${supplierId}-pickup`, '10.0');
+                                            newValues.set(`${supplierId}-package`, '10.0');
+                                          }
+                                        }
 
                                         // Calcular e atualizar o total score em tempo real
                                         const totalScore = calculateTotalScore(supplierId, newValues);
@@ -2325,9 +2428,22 @@ function Score() {
                                       }}
                                       onBlur={(e) => {
                                         if (!canEdit('otif') || !selectedMonth || !selectedYear) return;
-                                        const formatted = formatScoreValue(e.target.value);
+                                        const value = e.target.value;
+                                        const formatted = formatScoreValue(value);
                                         const newValues = new Map(inputValues);
                                         newValues.set(`${supplierId}-otif`, formatted);
+
+                                        // Se limpou OTIF, limpar as outras notas também
+                                        if (formatted === '') {
+                                          newValues.set(`${supplierId}-nil`, '');
+                                          newValues.set(`${supplierId}-pickup`, '');
+                                          newValues.set(`${supplierId}-package`, '');
+
+                                          // Recalcular total score após limpar
+                                          const totalScore = calculateTotalScore(supplierId, newValues);
+                                          newValues.set(`${supplierId}-total`, totalScore);
+                                        }
+
                                         setInputValues(newValues);
                                         if (autoSave) {
                                           console.log('💾 [SALVANDO MENSAL - OTIF]', supplierId);
@@ -2339,13 +2455,13 @@ function Score() {
                                   <td>
                                     <input
                                       type="number"
-                                      className={`score-input ${!canEdit('nil') || !selectedMonth || !selectedYear ? 'readonly' : ''}`}
+                                      className={`score-input ${!canEdit('nil') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim() ? 'readonly' : ''}`}
                                       max="10"
                                       step="0.1"
 
                                       value={inputValues.get(`${supplierId}-nil`) || ''}
-                                      readOnly={!canEdit('nil') || !selectedMonth || !selectedYear}
-                                      disabled={!canEdit('nil') || !selectedMonth || !selectedYear}
+                                      readOnly={!canEdit('nil') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim()}
+                                      disabled={!canEdit('nil') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim()}
                                       onChange={(e) => {
                                         if (!canEdit('nil') || !selectedMonth || !selectedYear) return;
                                         let value = e.target.value;
@@ -2379,13 +2495,13 @@ function Score() {
                                   <td>
                                     <input
                                       type="number"
-                                      className={`score-input ${!canEdit('pickup') || !selectedMonth || !selectedYear ? 'readonly' : ''}`}
+                                      className={`score-input ${!canEdit('pickup') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim() ? 'readonly' : ''}`}
                                       max="10"
                                       step="0.1"
 
                                       value={inputValues.get(`${supplierId}-pickup`) || ''}
-                                      readOnly={!canEdit('pickup') || !selectedMonth || !selectedYear}
-                                      disabled={!canEdit('pickup') || !selectedMonth || !selectedYear}
+                                      readOnly={!canEdit('pickup') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim()}
+                                      disabled={!canEdit('pickup') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim()}
                                       onChange={(e) => {
                                         if (!canEdit('pickup') || !selectedMonth || !selectedYear) return;
                                         let value = e.target.value;
@@ -2419,13 +2535,13 @@ function Score() {
                                   <td>
                                     <input
                                       type="number"
-                                      className={`score-input ${!canEdit('package') || !selectedMonth || !selectedYear ? 'readonly' : ''}`}
+                                      className={`score-input ${!canEdit('package') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim() ? 'readonly' : ''}`}
                                       max="10"
                                       step="0.1"
 
                                       value={inputValues.get(`${supplierId}-package`) || ''}
-                                      readOnly={!canEdit('package') || !selectedMonth || !selectedYear}
-                                      disabled={!canEdit('package') || !selectedMonth || !selectedYear}
+                                      readOnly={!canEdit('package') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim()}
+                                      disabled={!canEdit('package') || !selectedMonth || !selectedYear || !(inputValues.get(`${supplierId}-otif`) || '').trim()}
                                       onChange={(e) => {
                                         if (!canEdit('package') || !selectedMonth || !selectedYear) return;
                                         let value = e.target.value;
